@@ -2,13 +2,64 @@
 if (!defined('ABSPATH')) {
     exit;
 }
-
-$apiBase   = esc_url_raw( untrailingslashit( rest_url('tpma/v1') ) );
-$restNonce = wp_create_nonce( 'wp_rest' );
-?>
-<style>
-.tpma-wrap { font-size:13px; }
-.tpma-filter-row { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px; align-items:center; }
+.tpma-badge-required {
+    display:inline-block;
+    padding:1px 4px;
+    margin-left:4px;
+    font-size:10px;
+    background:#c00;
+    color:#fff;
+    border-radius:3px;
+}
+.tpma-error {
+    border-color:#c00 !important;
+    background:#fff4f4;
+}
+.tpma-lecturer-select-row {
+    display:flex;
+    gap:6px;
+    align-items:center;
+    margin-bottom:4px;
+}
+.tpma-lecturer-select-row select {
+    flex:1;
+}
+.tpma-lecturer-form {
+    border:1px solid #ddd;
+    background:#f9f9f9;
+    padding:8px;
+    margin-bottom:8px;
+    font-size:12px;
+}
+.tpma-lecturer-form-title {
+    margin:0 0 6px;
+    font-weight:bold;
+}
+.tpma-lecturer-form-row {
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    align-items:center;
+    margin-bottom:6px;
+}
+.tpma-lecturer-form-row label {
+    font-weight:bold;
+    margin:0;
+}
+.tpma-lecturer-form-row input {
+    flex:1;
+    min-width:140px;
+    padding:3px 4px;
+    font-size:13px;
+}
+.tpma-lecturer-form-hint {
+    font-size:12px;
+    color:#666;
+}
+.tpma-lecturer-form-actions {
+    display:flex;
+    gap:6px;
+}
 .tpma-filter-row input,
 .tpma-filter-row select { padding:3px 6px; font-size:13px; }
 .tpma-btn { padding:3px 8px; font-size:12px; cursor:pointer; margin:0 4px 4px 0; }
@@ -63,17 +114,73 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                 <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
                 <option value="B2">董事與股東會事務</option>
                 <option value="B3">公司所屬產業之業務、商務</option>
-                <option value="B4">風險管理、內部控制、數位治理</option>
-                <option value="B5">其他</option>
-            </optgroup>
-        </select>
-        <select id="tpma-filter-lecturer">
-            <option value="">全部講師</option>
-        </select>
-        <select id="tpma-filter-course">
-            <option value="">全部課程名稱</option>
-        </select>
-    </div>
+                <option value="B4">風險管理、內部控制、數位治理</option>    function lecturerLabelByCode(code) {
+        if (!code) return '';
+        const l = lecturers.find(x => x.code === code);
+        return l ? lecturerLabel(l) : '';
+    }
+    function normalizeLecturer(l) {
+        if (!l) return null;
+        const sort = parseInt(l.sort_order, 10);
+        return {
+            id: l.id,
+            code: l.code,
+            name: l.name,
+            title: l.title || '',
+            sort_order: Number.isNaN(sort) ? null : sort
+        };
+    }
+    function sortLecturers() {
+        if (!Array.isArray(lecturers)) {
+            lecturers = [];
+            return;
+        }
+        lecturers.sort((a, b) => {
+            const sa = typeof a.sort_order === 'number' ? a.sort_order : Number.MAX_SAFE_INTEGER;
+            const sb = typeof b.sort_order === 'number' ? b.sort_order : Number.MAX_SAFE_INTEGER;
+            if (sa !== sb) return sa - sb;
+            return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+        });
+    }
+    function populateLecturerSelect(selectEl, selectedValue) {
+        if (!selectEl) return;
+        const target = selectedValue !== undefined ? selectedValue : selectEl.value;
+        selectEl.innerHTML = '<option value="">請選擇講師</option>';
+        lecturers.forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = l.code;
+            opt.textContent = lecturerLabel(l);
+            selectEl.appendChild(opt);
+        });
+        if (target && lecturers.some(l => l.code === target)) {
+            selectEl.value = target;
+        }
+    }
+            const lecData = await lecRes.json();
+            lecturers = Array.isArray(lecData)
+                ? lecData.map(normalizeLecturer).filter(Boolean)
+                : [];
+            sortLecturers();
+
+            allCourses = await courseRes.json();
+
+            buildLecturerFilter();
+            applyFilters();
+        } catch (e) {
+    function buildLecturerFilter() {
+        if (!$lec) return;
+        const current = $lec.value;
+        $lec.innerHTML = '<option value="">全部講師</option>';
+        lecturers.forEach(l => {
+            const opt = document.createElement('option');
+            opt.value = l.code;
+            opt.textContent = lecturerLabel(l);
+            $lec.appendChild(opt);
+        });
+        if (current && lecturers.some(l => l.code === current)) {
+            $lec.value = current;
+        }
+    }
 
     <div class="tpma-filter-row">
         <span>授課日期篩選：</span>
@@ -205,19 +312,211 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         }
     }
 
-    function buildLecturerFilter() {
-        if (!$lec) return;
-        $lec.innerHTML = '<option value="">全部講師</option>';
-        lecturers.forEach(l => {
-            const opt = document.createElement('option');
-            opt.value = l.code;
-            opt.textContent = lecturerLabel(l);
-            $lec.appendChild(opt);
-        });
-    }
-
-    function buildCourseNameFilter(courses) {
-        if (!$course) return;
+            <label>講師<span class="tpma-badge-required">必填</span></label>
+            <div class="tpma-lecturer-select-row">
+                <select data-field="lecturer_code">
+                    <option value="">請選擇講師</option>
+                </select>
+                <button type="button" class="tpma-btn tpma-add-lecturer">新增講師</button>
+            </div>
+            <div class="tpma-lecturer-form" data-lecturer-form style="display:none;">
+                <p class="tpma-lecturer-form-title">新增講師</p>
+                <div class="tpma-lecturer-form-row">
+                    <label>講師姓名<span class="tpma-badge-required">必填</span></label>
+                    <input type="text" data-lecturer-field="name" placeholder="請輸入講師姓名">
+                </div>
+                <div class="tpma-lecturer-form-row">
+                    <label>職稱</label>
+                    <input type="text" data-lecturer-field="title" placeholder="請輸入講師職稱">
+                </div>
+                <div class="tpma-lecturer-form-row">
+                    <label>講師代碼<span class="tpma-badge-required">必填</span></label>
+                    <input type="text" data-lecturer-field="code" placeholder="請輸入講師代碼">
+                </div>
+                <div class="tpma-lecturer-form-row">
+                    <label>顯示序號</label>
+                    <input type="number" data-lecturer-field="sort_order" placeholder="數字越小排序越前">
+                    <span class="tpma-lecturer-form-hint">留空則自動排在最後</span>
+                </div>
+                <div class="tpma-lecturer-form-actions">
+                    <button type="button" class="tpma-btn tpma-lecturer-save">儲存講師</button>
+                    <button type="button" class="tpma-btn tpma-lecturer-cancel">取消</button>
+                </div>
+            </div>
+        const lecSel = div.querySelector('[data-field="lecturer_code"]');
+        populateLecturerSelect(lecSel, c.lecturer_code || '');
+        setupLecturerForm(div, lecSel);
+    function addSessionRow(container, datetimeStr) {
+        const value = datetimeStr
+            ? datetimeStr.replace(' ', 'T').slice(0,16)
+            : '';
+        const row = document.createElement('div');
+        row.className = 'tpma-session-row';
+        row.innerHTML = `
+            <input type="datetime-local" value="${value}">
+            <button type="button" class="tpma-btn tpma-session-remove">刪除</button>
+        `;
+        const btn = row.querySelector('.tpma-session-remove');
+        if (btn) btn.addEventListener('click', () => row.remove());
+        container.appendChild(row);
+    }
+
+    function setupLecturerForm(div, lecSel) {
+        const toggleBtn = div.querySelector('.tpma-add-lecturer');
+        const form = div.querySelector('[data-lecturer-form]');
+        if (!toggleBtn || !form) return;
+
+        const nameInput = form.querySelector('[data-lecturer-field="name"]');
+        const titleInput = form.querySelector('[data-lecturer-field="title"]');
+        const codeInput = form.querySelector('[data-lecturer-field="code"]');
+        const sortInput = form.querySelector('[data-lecturer-field="sort_order"]');
+        const saveBtn = form.querySelector('.tpma-lecturer-save');
+        const cancelBtn = form.querySelector('.tpma-lecturer-cancel');
+
+        const resetForm = () => {
+            [nameInput, titleInput, codeInput, sortInput].forEach(input => {
+                if (input) input.value = '';
+            });
+        };
+
+        toggleBtn.addEventListener('click', () => {
+            const isVisible = form.style.display === 'block';
+            form.style.display = isVisible ? 'none' : 'block';
+            if (!isVisible && nameInput) {
+                nameInput.focus();
+            }
+        });
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                resetForm();
+                form.style.display = 'none';
+            });
+        }
+
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                if (saveBtn.disabled) return;
+
+                const name = (nameInput?.value || '').trim();
+                const title = (titleInput?.value || '').trim();
+                const code = (codeInput?.value || '').trim();
+                const sortRaw = (sortInput?.value || '').trim();
+
+                if (!name || !code) {
+                    alert('請輸入講師姓名與講師代碼。');
+                    if (!name && nameInput) nameInput.focus();
+                    else if (!code && codeInput) codeInput.focus();
+                    return;
+                }
+
+                if (lecturers.some(l => l.code === code)) {
+                    alert('講師代碼已存在，請重新輸入。');
+                    if (codeInput) codeInput.focus();
+                    return;
+                }
+
+                let sortVal = null;
+                if (sortRaw !== '') {
+                    const parsed = parseInt(sortRaw, 10);
+                    if (Number.isNaN(parsed)) {
+                        alert('顯示序號請輸入數字。');
+                        if (sortInput) sortInput.focus();
+                        return;
+                    }
+                    sortVal = parsed;
+                }
+
+                let shiftSort = false;
+                if (sortVal !== null) {
+                    const hasDupSort = lecturers.some(l => typeof l.sort_order === 'number' && l.sort_order === sortVal);
+                    if (hasDupSort) {
+                        const confirmShift = confirm('顯示序號已存在，是否將現有排序往後移一位？');
+                        if (!confirmShift) {
+                            return;
+                        }
+                        shiftSort = true;
+                    }
+                }
+
+                const originalText = saveBtn.textContent;
+                saveBtn.disabled = true;
+                saveBtn.textContent = '儲存中...';
+
+                try {
+                    const newLecturer = await createLecturer({
+                        id: 0,
+                        code: code,
+                        name: name,
+                        title: title,
+                        sort_order: sortVal,
+                        shift_sort: shiftSort
+                    });
+
+                    if (!newLecturer) {
+                        throw new Error('講師新增失敗');
+                    }
+
+                    lecturers.push(newLecturer);
+                    sortLecturers();
+                    buildLecturerFilter();
+
+                    document.querySelectorAll('[data-field="lecturer_code"]').forEach(sel => {
+                        const currentValue = sel === lecSel ? newLecturer.code : sel.value;
+                        populateLecturerSelect(sel, currentValue);
+                    });
+
+                    if (lecSel) {
+                        lecSel.value = newLecturer.code;
+                    }
+
+                    resetForm();
+                    form.style.display = 'none';
+                    alert('講師已新增。');
+                } catch (err) {
+                    const msg = err && err.message ? err.message : '講師新增失敗';
+                    alert(msg);
+                } finally {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = originalText;
+                }
+            });
+        }
+    }
+
+    async function createLecturer(payload) {
+        try {
+            const res = await fetch(apiBase + '/admin/lecturer/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-WP-Nonce': wpRestNonce
+                },
+                credentials: 'include',
+                body: JSON.stringify(payload)
+            });
+
+            const result = await res.json();
+            if (!res.ok) {
+                const msg = result && (result.message || (result.data && result.data.message))
+                    ? result.message || result.data.message
+                    : '講師新增失敗';
+                throw new Error(msg);
+            }
+
+            if (!result || !result.success || !result.lecturer) {
+                const msg = result && result.message ? result.message : '講師新增失敗';
+                throw new Error(msg);
+            }
+
+            return normalizeLecturer(result.lecturer);
+        } catch (err) {
+            if (err instanceof Error) throw err;
+            throw new Error('講師新增失敗');
+        }
+    }
         const current = $course.value;
         $course.innerHTML = '<option value="">全部課程名稱</option>';
         const names = new Set();
