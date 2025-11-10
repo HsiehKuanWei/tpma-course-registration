@@ -177,18 +177,49 @@ if (!defined('ABSPATH')) {
             opt.textContent = lecturerLabel(l);
             $lec.appendChild(opt);
         });
-        if (current && lecturers.some(l => l.code === current)) {
-            $lec.value = current;
+    async function fetchLecturerList() {
+        const res = await fetch(apiBase + '/admin/lecturers', {
+            credentials: 'include',
+            headers: { 'X-WP-Nonce': wpRestNonce }
+        });
+
+        if (!res.ok) {
+            throw new Error('講師列表載入失敗');
         }
+
+        const data = await res.json();
+        return Array.isArray(data)
+            ? data.map(normalizeLecturer).filter(Boolean)
+            : [];
     }
-
-    <div class="tpma-filter-row">
-        <span>授課日期篩選：</span>
-        <input type="date" id="tpma-filter-date-from">
-        <span>～</span>
-        <input type="date" id="tpma-filter-date-to">
-
-        <select id="tpma-filter-schedule-mode">
+
+    async function refreshLecturers(options = {}) {
+        const { selectElement = null, targetCode = null } = options;
+        const list = await fetchLecturerList();
+        lecturers = list;
+        sortLecturers();
+        buildLecturerFilter();
+
+        document.querySelectorAll('[data-field="lecturer_code"]').forEach(sel => {
+            const previous = sel === selectElement && targetCode ? targetCode : sel.value;
+            populateLecturerSelect(sel, previous);
+        });
+    }
+
+    async function fetchAll() {
+        try {
+            const [lecturerList, courseRes] = await Promise.all([
+                fetchLecturerList(),
+                fetch(apiBase + '/admin/courses', {
+                    credentials:'include',
+                    headers:{'X-WP-Nonce':wpRestNonce}
+                })
+            ]);
+
+            if (!courseRes.ok) throw new Error('API error');
+
+            lecturers = lecturerList;
+
             <option value="all_active">全部（不含停課）</option>
             <option value="all_with_inactive">全部（含停課）</option>
             <option value="scheduled">已安排場次（有未來日期）</option>
@@ -526,11 +557,25 @@ if (!defined('ABSPATH')) {
         Array.from(names).sort().forEach(name => {
             const opt = document.createElement('option');
             opt.value = name;
-            opt.textContent = name;
-            $course.appendChild(opt);
-        });
-        if (current && names.has(current)) {
-            $course.value = current;
+            opt.textContent = name;                    let refreshed = false;
+                    try {
+                        await refreshLecturers({ selectElement: lecSel, targetCode: newLecturer.code });
+                        refreshed = true;
+                    } catch (refreshErr) {
+                        console.error(refreshErr);
+                    }
+                    if (!refreshed) {
+                        lecturers.push(newLecturer);
+                        sortLecturers();
+                        buildLecturerFilter();
+                        document.querySelectorAll('[data-field="lecturer_code"]').forEach(sel => {
+                            const currentValue = sel === lecSel ? newLecturer.code : sel.value;
+                            populateLecturerSelect(sel, currentValue);
+                        });
+
+                        if (lecSel) {
+                            lecSel.value = newLecturer.code;
+                        }
         }
     }
 
