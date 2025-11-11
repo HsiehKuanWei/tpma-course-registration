@@ -135,18 +135,18 @@ class TPMA_CR_DB
 			  tax_id VARCHAR(20) DEFAULT NULL,
 			  department VARCHAR(255) DEFAULT NULL,
 			  job_title VARCHAR(255) DEFAULT NULL,
-			  phone VARCHAR(50) DEFAULT NULL,          -- 公司 / 承辦聯絡電話
-			  mobile VARCHAR(50) DEFAULT NULL,         -- 學員行動電話 nnnn-nnn-nnn
-			  emails TEXT DEFAULT NULL,                -- 學員mail,承辦人mail
+			  phone VARCHAR(50) DEFAULT NULL,        
+			  mobile VARCHAR(50) DEFAULT NULL,       
+			  emails TEXT DEFAULT NULL,              
 			  receiver VARCHAR(255) DEFAULT NULL,
 			  address VARCHAR(500) DEFAULT NULL,
 			  source VARCHAR(100) DEFAULT NULL,
 			  note TEXT DEFAULT NULL,
-			  contact_name VARCHAR(255) DEFAULT NULL,  -- 承辦人姓名
-			  contact_email VARCHAR(255) DEFAULT NULL, -- 承辦人 email
+			  contact_name VARCHAR(255) DEFAULT NULL, 
+			  contact_email VARCHAR(255) DEFAULT NULL, 
 			  remit_account VARCHAR(100) DEFAULT NULL,
 			  remit_date DATE DEFAULT NULL,
-			  remit_deadline DATETIME DEFAULT NULL,    -- 新增：匯款期限
+			  remit_deadline DATETIME DEFAULT NULL,    
 			  remit_amount DECIMAL(10,2) DEFAULT NULL,
 			  status VARCHAR(20) NOT NULL DEFAULT 'pending',
 			  PRIMARY KEY (id),
