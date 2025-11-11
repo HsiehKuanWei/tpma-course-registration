@@ -706,15 +706,15 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <label>課程大綱（Markdown 原始內容）</label>
             <textarea rows="5" data-field="outline">${esc(c.outline || '')}</textarea>
 
-            <label>授課時長（分鐘）</label>
-            <select data-field="duration_minutes">
-                <option value="180" ${!c.duration_minutes || c.duration_minutes==180?'selected':''}>3 小時（180）</option>
-                <option value="120" ${c.duration_minutes==120?'selected':''}>2 小時（120）</option>
-                <option value="240" ${c.duration_minutes==240?'selected':''}>4 小時（240）</option>
-                ${c.duration_minutes && [120,180,240].indexOf(parseInt(c.duration_minutes,10))===-1
-                    ? `<option value="${esc(c.duration_minutes)}" selected>${esc(c.duration_minutes)}（現有值）</option>` : ''
-                }
-            </select>
+			<label>授課時長（小時）</label>
+			<select data-field="duration_hours">
+				<option value="2" ${!c.duration_minutes || c.duration_minutes==180?'selected':''}>3 小時</option>
+				<option value="3" ${c.duration_minutes==120?'selected':''}>2 小時</option>
+				<option value="4" ${c.duration_minutes==240?'selected':''}>4 小時</option>
+				${c.duration_minutes && ![120,180,240].includes(parseInt(c.duration_minutes,10))
+					? `<option value="${(parseInt(c.duration_minutes,10)/60).toFixed(1)}" selected>${(parseInt(c.duration_minutes,10)/60).toFixed(1)} 小時（現有值）</option>` : ''
+				}
+			</select>
 
             <label>授課日期時間（多筆，可手選或貼上）</label>
             <div class="tpma-course-dates" data-field="sessions"></div>
@@ -858,7 +858,8 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         const isActiveEl = div.querySelector('[data-field="is_active"]');
         const is_active = isActiveEl ? parseInt(isActiveEl.value, 10) || 0 : 1;
-        const duration = parseInt(getVal('duration_minutes') || '180', 10) || 180;
+		const durationHours = parseFloat(getVal('duration_hours') || '3') || 3;
+		const duration = Math.round(durationHours * 60);
 
         const payload = {
             id: id,
