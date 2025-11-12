@@ -165,3 +165,11 @@ add_action('rest_api_init', function () {
     });
 });
 
+
+
+// Ensure schema updated after plugin load
+add_action('plugins_loaded', function(){
+    if (class_exists('TPMA_CR_DB')) {
+        TPMA_CR_DB::ensure_schema_current();
+    }
+});

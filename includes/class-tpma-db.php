@@ -74,33 +74,43 @@ class TPMA_CR_DB
         return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
     }
 
-
     public static function ensure_reg_no_not_unique() {
-        global $wpdb;
-        $regs_table = self::table('regs');
+    global $wpdb;
+    $table = self::table('regs'); // 會自帶 prefix
 
-        // 查目前索引，若存在唯一索引 reg_no_unique 則移除，改成一般索引
-        $indexes = $wpdb->get_results( $wpdb->prepare(
-            "SHOW INDEX FROM {$regs_table} WHERE Key_name = %s",
-            'reg_no_unique'
-        ), ARRAY_A );
-
-        if ($indexes && isset($indexes[0]) && (int)$indexes[0]['Non_unique'] === 0) {
-            // 移除唯一索引
-            $wpdb->query("ALTER TABLE {$regs_table} DROP INDEX reg_no_unique");
-            // 補上一個一般索引（若尚未存在）
-            $has_non_unique = $wpdb->get_var( $wpdb->prepare(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
-                 WHERE TABLE_SCHEMA = DATABASE()
-                   AND TABLE_NAME = %s
-                   AND INDEX_NAME = %s",
-                $regs_table, 'reg_no_idx'
-            ) );
-            if (!$has_non_unique) {
-                $wpdb->query("ALTER TABLE {$regs_table} ADD INDEX reg_no_idx (reg_no)");
-            }
-        }
+    // 刪掉舊的 UNIQUE（名稱可能是 reg_no_unique）
+    $hasUnique = $wpdb->get_var(
+        $wpdb->prepare("SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                          AND TABLE_NAME = %s
+                          AND INDEX_NAME = 'reg_no_unique'
+                          AND NON_UNIQUE = 0", $table)
+    );
+    if ($hasUnique) {
+        $wpdb->query("ALTER TABLE {$table} DROP INDEX reg_no_unique");
     }
+
+    // 確保有一般索引
+    $hasIdx = $wpdb->get_var(
+        $wpdb->prepare("SELECT COUNT(1) FROM INFORMATION_SCHEMA.STATISTICS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                          AND TABLE_NAME = %s
+                          AND INDEX_NAME = 'reg_no_idx'", $table)
+    );
+    if (!$hasIdx) {
+        $wpdb->query("CREATE INDEX reg_no_idx ON {$table} (reg_no)");
+    }
+}
+
+    public static function ensure_schema_current() {
+        // 你原本就有這個可擴充的話，把其他「補欄位」一起放這裡
+        self::ensure_reg_no_not_unique();
+
+        // （例）也可在這裡順便補你後來新增的欄位，略…
+    }
+
+
+
 
     /**
 
@@ -209,7 +219,7 @@ class TPMA_CR_DB
 			  receipt_type VARCHAR(20) NOT NULL DEFAULT 'electronic',
 			  status VARCHAR(20) NOT NULL DEFAULT 'pending',
 			  PRIMARY KEY (id),
-			  UNIQUE KEY reg_no_unique (reg_no),
+			  KEY reg_no_idx (reg_no),
 			  KEY course_id_idx (course_id),
 			  KEY student_name_idx (student_name),
 			  KEY phone_idx (phone),

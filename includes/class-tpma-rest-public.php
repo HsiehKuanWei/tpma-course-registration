@@ -265,7 +265,13 @@ class TPMA_CR_REST_Public
             $wpdb->insert($regs_table, $insert);
 
             if (!$wpdb->insert_id) {
-                return new WP_Error('db_error', '無法寫入報名資料', array('status' => 500));
+                error_log('[TPMA register] INSERT FAILED: ' . $wpdb->last_error);
+                error_log('[TPMA register] LAST QUERY: ' . $wpdb->last_query);
+                return new WP_Error(
+                    'db_error',
+                    '無法寫入報名資料：' . ($wpdb->last_error ?: '未知錯誤') . "\nSQL: " . $wpdb->last_query,
+                    array('status' => 500)
+                );
             }
 
             return rest_ensure_response(array(
