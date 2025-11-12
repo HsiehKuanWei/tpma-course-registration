@@ -42,7 +42,37 @@ class TPMA_CR_DB
 
     }
 
+    public static function generate_reg_no( $type = 'A' ) {
+        global $wpdb;
+        $regs_table = self::table('regs');
 
+        // 用 WP 本地時間
+        $ts    = current_time('timestamp');
+        $year  = date('Y', $ts);
+        $month = date('m', $ts);
+
+        // $type 用來控制中間那個字元，目前你要的是 'A'
+        $prefix = $year . $type . $month;
+
+        // 找出該年月前綴下最後一筆編號
+        $last = $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT reg_no
+                    FROM {$regs_table}
+                    WHERE reg_no LIKE %s
+                    ORDER BY reg_no DESC
+                    LIMIT 1",
+                $prefix . '%'
+            )
+        );
+
+        $seq = 1;
+        if ( $last && preg_match('/^' . preg_quote($prefix, '/') . '(\d{3})$/', $last, $m) ) {
+            $seq = (int) $m[1] + 1;
+        }
+
+        return $prefix . str_pad($seq, 3, '0', STR_PAD_LEFT);
+    }
 
     /**
 
@@ -148,6 +178,7 @@ class TPMA_CR_DB
 			  remit_date DATE DEFAULT NULL,
 			  remit_deadline DATETIME DEFAULT NULL,    
 			  remit_amount DECIMAL(10,2) DEFAULT NULL,
+			  receipt_type VARCHAR(20) NOT NULL DEFAULT 'electronic',
 			  status VARCHAR(20) NOT NULL DEFAULT 'pending',
 			  PRIMARY KEY (id),
 			  UNIQUE KEY reg_no_unique (reg_no),

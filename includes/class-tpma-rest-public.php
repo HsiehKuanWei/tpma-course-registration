@@ -220,7 +220,7 @@ class TPMA_CR_REST_Public
 
 			$remit_deadline = date('Y-m-d H:i:s', $deadline);
 
-			$reg_no = 'R' . date('YmdHis') . wp_rand(100, 999);
+			$reg_no = TPMA_CR_DB::generate_reg_no('A');
 
 			$insert = array(
 				'reg_no'        => $reg_no,
@@ -239,6 +239,9 @@ class TPMA_CR_REST_Public
 				'emails'        => sanitize_text_field($d['emails'] ?? ''),         // 學員mail,承辦mail
 				'receiver'      => sanitize_text_field($d['receiver'] ?? ''),
 				'address'       => sanitize_text_field($d['address'] ?? ''),
+                'receipt_type' => in_array(($d['receipt_type'] ?? ''), ['electronic','paper'], true)
+                    ? $d['receipt_type']
+                    : 'paper',
 				'source'        => sanitize_text_field($d['source'] ?? ''),
 				'note'          => sanitize_textarea_field($d['note'] ?? ''),
 				'contact_name'  => sanitize_text_field($d['contact_name'] ?? ''),
