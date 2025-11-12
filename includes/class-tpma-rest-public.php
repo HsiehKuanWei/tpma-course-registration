@@ -155,113 +155,125 @@ class TPMA_CR_REST_Public
      */
 
 		public static function register($request) {
-			global $wpdb;
+            global $wpdb;
 
-			$regs_table     = TPMA_CR_DB::table('regs');
-			$courses_table  = TPMA_CR_DB::table('courses');
-			$sessions_table = TPMA_CR_DB::table('sessions');
+            $regs_table     = TPMA_CR_DB::table('regs');
+            $courses_table  = TPMA_CR_DB::table('courses');
+            $sessions_table = TPMA_CR_DB::table('sessions');
 
-			$d = $request->get_json_params();
+            $d = $request->get_json_params();
 
-			if (empty($d['course_id']) || empty($d['student_name'])) {
-				return new WP_Error('invalid_data', '缺少必要欄位', array('status' => 400));
-			}
+            if (empty($d['course_id']) || empty($d['student_name'])) {
+                return new WP_Error('invalid_data', '缺少必要欄位', array('status' => 400));
+            }
 
-			$course_id  = intval($d['course_id']);
-			$session_id = intval($d['session_id'] ?? 0);
+            $course_id  = intval($d['course_id']);
+            $session_id = intval($d['session_id'] ?? 0);
 
-			// 課程資料
-			$course = $wpdb->get_row(
-				$wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $course_id)
-			);
+            // 課程資料
+            $course = $wpdb->get_row(
+                $wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $course_id)
+            );
 
-			// 場次資料（算開課日 & 匯款期限用）
-			$session = null;
-			if ($session_id) {
-				$session = $wpdb->get_row(
-					$wpdb->prepare("SELECT * FROM {$sessions_table} WHERE id = %d", $session_id)
-				);
-			}
+            // 場次資料（算開課日 & 匯款期限用）
+            $session = null;
+            if ($session_id) {
+                $session = $wpdb->get_row(
+                    $wpdb->prepare("SELECT * FROM {$sessions_table} WHERE id = %d", $session_id)
+                );
+            }
 
-			// class_date 優先用場次日期
-			$class_date = null;
-			if ($session && !empty($session->session_datetime)) {
-				$class_date = date('Y-m-d', strtotime($session->session_datetime));
-			} elseif (!empty($d['class_date'])) {
-				$class_date = sanitize_text_field($d['class_date']);
-			}
+            // class_date 優先用場次日期
+            $class_date = null;
+            if ($session && !empty($session->session_datetime)) {
+                $class_date = date('Y-m-d', strtotime($session->session_datetime));
+            } elseif (!empty($d['class_date'])) {
+                $class_date = sanitize_text_field($d['class_date']);
+            }
 
-			// 匯款金額：每小時 1000 元
-			$duration_minutes = intval($course->duration_minutes ?? 0);
-			$hours = $duration_minutes / 60;
-			$remit_amount = (int) round($hours * 1000);
+            // 匯款金額：每小時 1000 元（你原本的規則）
+            $duration_minutes = intval($course->duration_minutes ?? 0);
+            $hours = $duration_minutes / 60;
+            $remit_amount = (int) round($hours * 1000);
 
-			// 匯款期限：
-			// 預設：報名日 +7 天 23:59:59
-			// 若超過開課日，則改為 +1 天 23:59:59
-			$now_ts = current_time('timestamp');
-			$base7 = strtotime('+7 days', $now_ts);
-			$deadline7 = mktime(23, 59, 59,
-				date('m', $base7), date('d', $base7), date('Y', $base7)
-			);
+            // 匯款期限（你原本的規則）
+            $now_ts = current_time('timestamp');
+            $base7 = strtotime('+7 days', $now_ts);
+            $deadline7 = mktime(23, 59, 59,
+                date('m', $base7), date('d', $base7), date('Y', $base7)
+            );
 
-			$session_ts = ($session && $session->session_datetime)
-				? strtotime($session->session_datetime)
-				: null;
+            $session_ts = ($session && $session->session_datetime)
+                ? strtotime($session->session_datetime)
+                : null;
 
-			if ($session_ts && $deadline7 > $session_ts) {
-				$base1 = strtotime('+1 day', $now_ts);
-				$deadline = mktime(23, 59, 59,
-					date('m', $base1), date('d', $base1), date('Y', $base1)
-				);
-			} else {
-				$deadline = $deadline7;
-			}
+            if ($session_ts && $deadline7 > $session_ts) {
+                $base1 = strtotime('+1 day', $now_ts);
+                $deadline = mktime(23, 59, 59,
+                    date('m', $base1), date('d', $base1), date('Y', $base1)
+                );
+            } else {
+                $deadline = $deadline7;
+            }
+            $remit_deadline = date('Y-m-d H:i:s', $deadline);
 
-			$remit_deadline = date('Y-m-d H:i:s', $deadline);
+            // === 這裡改：支援同批共用編號 ===
+            // 允許前端帶 reg_no 或 reg_group_no；若未提供或格式不符，則由系統依「YYYY + 'A' + MM + 3位流水號」產生
+            $client_reg_no = sanitize_text_field($d['reg_no'] ?? ($d['reg_group_no'] ?? ''));
+            $pattern = '/^\d{4}A\d{2}\d{3}$/'; // 例：2025A11xxx
 
-			$reg_no = TPMA_CR_DB::generate_reg_no('A');
+            if ($client_reg_no && preg_match($pattern, $client_reg_no)) {
+                $reg_no = $client_reg_no;
+            } else {
+                // 系統產生（第一筆）
+                if (method_exists('TPMA_CR_DB', 'generate_reg_no')) {
+                    $reg_no = TPMA_CR_DB::generate_reg_no('A'); // 你的既有新規則方法
+                } else {
+                    // 後備：避免不存在方法時整個壞掉
+                    $reg_no = 'R' . date('YmdHis') . wp_rand(100, 999);
+                }
+            }
 
-			$insert = array(
-				'reg_no'        => $reg_no,
-				'created_at'    => current_time('mysql'),
-				'course_id'     => $course_id,
-				'course_name'   => sanitize_text_field($d['course_name'] ?? ($course->course_name ?? '')),
-				'lecturer'      => sanitize_text_field($d['lecturer'] ?? ($course->lecturer ?? '')),
-				'class_date'    => $class_date,
-				'student_name'  => sanitize_text_field($d['student_name']),
-				'company_name'  => sanitize_text_field($d['company_name'] ?? ''),
-				'tax_id'        => sanitize_text_field($d['tax_id'] ?? ''),
-				'department'    => sanitize_text_field($d['department'] ?? ''),
-				'job_title'     => sanitize_text_field($d['job_title'] ?? ''),
-				'phone'         => sanitize_text_field($d['phone'] ?? ''),          // 公司/承辦電話
-				'mobile'        => sanitize_text_field($d['mobile'] ?? ''),         // 學員手機 nnnn-nnn-nnn
-				'emails'        => sanitize_text_field($d['emails'] ?? ''),         // 學員mail,承辦mail
-				'receiver'      => sanitize_text_field($d['receiver'] ?? ''),
-				'address'       => sanitize_text_field($d['address'] ?? ''),
-                'receipt_type' => in_array(($d['receipt_type'] ?? ''), ['electronic','paper'], true)
-                    ? $d['receipt_type']
-                    : 'paper',
-				'source'        => sanitize_text_field($d['source'] ?? ''),
-				'note'          => sanitize_textarea_field($d['note'] ?? ''),
-				'contact_name'  => sanitize_text_field($d['contact_name'] ?? ''),
-				'contact_email' => sanitize_text_field($d['contact_email'] ?? ''),
-				'remit_deadline'=> $remit_deadline,
-				'remit_amount'  => $remit_amount,
-				'status'        => 'pending',
-			);
+            $insert = array(
+                'reg_no'        => $reg_no,
+                'created_at'    => current_time('mysql'),
+                'course_id'     => $course_id,
+                'course_name'   => sanitize_text_field($d['course_name'] ?? ($course->course_name ?? '')),
+                'lecturer'      => sanitize_text_field($d['lecturer'] ?? ($course->lecturer ?? '')),
+                'class_date'    => $class_date,
+                'student_name'  => sanitize_text_field($d['student_name']),
+                'company_name'  => sanitize_text_field($d['company_name'] ?? ''),
+                'tax_id'        => sanitize_text_field($d['tax_id'] ?? ''),
+                'department'    => sanitize_text_field($d['department'] ?? ''),
+                'job_title'     => sanitize_text_field($d['job_title'] ?? ''),
+                'phone'         => sanitize_text_field($d['phone'] ?? ''),   // 公司/承辦電話
+                'mobile'        => sanitize_text_field($d['mobile'] ?? ''),  // 學員手機 nnnn-nnn-nnn
+                'emails'        => sanitize_text_field($d['emails'] ?? ''),  // 學員mail,承辦mail
+                'receiver'      => sanitize_text_field($d['receiver'] ?? ''),
+                'address'       => sanitize_text_field($d['address'] ?? ''),
+                'receipt_type'  => in_array(($d['receipt_type'] ?? ''), ['electronic','paper'], true)
+                                    ? $d['receipt_type'] : 'paper',
+                'source'        => sanitize_text_field($d['source'] ?? ''),
+                'note'          => sanitize_textarea_field($d['note'] ?? ''),
+                'contact_name'  => sanitize_text_field($d['contact_name'] ?? ''),
+                'contact_email' => sanitize_text_field($d['contact_email'] ?? ''),
+                'remit_deadline'=> $remit_deadline,
+                'remit_amount'  => $remit_amount,
+                'status'        => 'pending',
+            );
 
-			$wpdb->insert($regs_table, $insert);
+            $wpdb->insert($regs_table, $insert);
 
-			if (!$wpdb->insert_id) {
-				return new WP_Error('db_error', '無法寫入報名資料', array('status' => 500));
-			}
+            if (!$wpdb->insert_id) {
+                return new WP_Error('db_error', '無法寫入報名資料', array('status' => 500));
+            }
 
-			return rest_ensure_response(array(
-				'success' => true,
-				'reg_no'  => $reg_no,
-			));
-		}
+            return rest_ensure_response(array(
+                'success' => true,
+                'reg_no'  => $reg_no,
+            ));
+        }
+
 
 
 
