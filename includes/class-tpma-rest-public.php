@@ -191,10 +191,11 @@ class TPMA_CR_REST_Public
                 $class_date = sanitize_text_field($d['class_date']);
             }
 
-            // 匯款金額：每小時 1000 元（你原本的規則）
-            $duration_minutes = intval($course->duration_minutes ?? 0);
-            $hours = $duration_minutes / 60;
-            $remit_amount = (int) round($hours * 1000);
+			// 匯款金額：每小時 1000 元（先算出基礎金額，尚未套用折扣）
+			$duration_minutes   = intval($course->duration_minutes ?? 0);
+			$hours              = $duration_minutes / 60;
+			$base_remit_amount  = (int) round($hours * 1000);  // 例如 3 小時 → 3000
+			$remit_amount       = $base_remit_amount;
 
 			$remit_paid_at = null;
 
@@ -214,6 +215,37 @@ class TPMA_CR_REST_Public
                     $reg_no = 'R' . date('YmdHis') . wp_rand(100, 999);
                 }
             }
+			
+			// 同一報名編號滿 6 人以上，全部學員按 8 折金額
+			if ($reg_no && $base_remit_amount > 0) {
+				// 目前已經有幾筆使用這個 reg_no
+				$existing_count = (int) $wpdb->get_var(
+					$wpdb->prepare(
+						"SELECT COUNT(*) FROM {$regs_table} WHERE reg_no = %s",
+						$reg_no
+					)
+				);
+
+				// 加上這一筆之後的總人數
+				$total_after_insert = $existing_count + 1;
+
+				if ($total_after_insert >= 6) {
+					// 例：3 小時 → 基礎 3000，打 8 折 → 2400
+					$discount_amount = (int) round($base_remit_amount * 0.8);
+
+					// 更新之前已經寫入資料庫的同一報名編號（前 5 位或更多）
+					if ($existing_count > 0) {
+						$wpdb->update(
+							$regs_table,
+							array('remit_amount' => $discount_amount),
+							array('reg_no' => $reg_no)
+						);
+					}
+
+					// 本筆也用折扣後金額
+					$remit_amount = $discount_amount;
+				}
+			}			
 
             $insert = array(
                 'reg_no'        => $reg_no,
