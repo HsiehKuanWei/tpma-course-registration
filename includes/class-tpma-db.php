@@ -214,7 +214,7 @@ class TPMA_CR_DB
 			  contact_email VARCHAR(255) DEFAULT NULL, 
 			  remit_account VARCHAR(100) DEFAULT NULL,
 			  remit_date DATE DEFAULT NULL,
-			  remit_deadline DATETIME DEFAULT NULL,    
+			  remit_paid_at DATETIME DEFAULT NULL,    
 			  remit_amount DECIMAL(10,2) DEFAULT NULL,
 			  receipt_type VARCHAR(20) NOT NULL DEFAULT 'electronic',
 			  status VARCHAR(20) NOT NULL DEFAULT 'pending',

@@ -196,26 +196,7 @@ class TPMA_CR_REST_Public
             $hours = $duration_minutes / 60;
             $remit_amount = (int) round($hours * 1000);
 
-            // 匯款期限（你原本的規則）
-            $now_ts = current_time('timestamp');
-            $base7 = strtotime('+7 days', $now_ts);
-            $deadline7 = mktime(23, 59, 59,
-                date('m', $base7), date('d', $base7), date('Y', $base7)
-            );
-
-            $session_ts = ($session && $session->session_datetime)
-                ? strtotime($session->session_datetime)
-                : null;
-
-            if ($session_ts && $deadline7 > $session_ts) {
-                $base1 = strtotime('+1 day', $now_ts);
-                $deadline = mktime(23, 59, 59,
-                    date('m', $base1), date('d', $base1), date('Y', $base1)
-                );
-            } else {
-                $deadline = $deadline7;
-            }
-            $remit_deadline = date('Y-m-d H:i:s', $deadline);
+			$remit_paid_at = null;
 
             // === 這裡改：支援同批共用編號 ===
             // 允許前端帶 reg_no 或 reg_group_no；若未提供或格式不符，則由系統依「YYYY + 'A' + MM + 3位流水號」產生
@@ -257,7 +238,7 @@ class TPMA_CR_REST_Public
                 'note'          => sanitize_textarea_field($d['note'] ?? ''),
                 'contact_name'  => sanitize_text_field($d['contact_name'] ?? ''),
                 'contact_email' => sanitize_text_field($d['contact_email'] ?? ''),
-                'remit_deadline'=> $remit_deadline,
+                'remit_paid_at'=> $remit_paid_at,
                 'remit_amount'  => $remit_amount,
                 'status'        => 'pending',
             );
