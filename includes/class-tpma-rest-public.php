@@ -79,71 +79,51 @@ class TPMA_CR_REST_Public
      */
 
     public static function get_courses($request)
-
     {
-
         global $wpdb;
 
-        $courses_table  = TPMA_CR_DB::table('courses');
-
-        $sessions_table = TPMA_CR_DB::table('sessions');
+        $courses_table   = TPMA_CR_DB::table('courses');
+        $sessions_table  = TPMA_CR_DB::table('sessions');
+        $lecturers_table = TPMA_CR_DB::table('lecturers');
 
         $now = current_time('mysql');
 
-
-
         $sql = $wpdb->prepare("
-
             SELECT
-
                 c.id            AS course_id,
-
                 c.course_code,
-
                 c.course_name,
-
                 c.category,
-
                 c.category_code,
-
-                c.lecturer,
-
                 c.lecturer_code,
-
+                CONCAT(
+                    l.lecturers_name,
+                    CASE
+                        WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
+                        THEN ''
+                        ELSE CONCAT(' ', l.lecturers_title)
+                    END
+                ) AS lecturer,
                 c.intro,
-
                 c.outline,
-
                 c.duration_minutes,
-
-                s.id            AS session_id,
-
+                s.id             AS session_id,
                 s.session_datetime
-
-            FROM {$courses_table} c
-
+            FROM {$courses_table}  c
             INNER JOIN {$sessions_table} s
-
-                ON c.id = s.course_id
-
+                ON s.course_id = c.id
+            LEFT JOIN {$lecturers_table} l
+                ON l.lecturers_code = c.lecturer_code
             WHERE
-
                 c.is_active = 1
-
                 AND s.is_active = 1
-
                 AND s.session_datetime >= %s
-
             ORDER BY s.session_datetime ASC
-
         ", $now);
-
-
 
         $rows = $wpdb->get_results($sql);
 
         return rest_ensure_response($rows);
-
     }
 
 
@@ -251,8 +231,6 @@ class TPMA_CR_REST_Public
                 'reg_no'        => $reg_no,
                 'created_at'    => current_time('mysql'),
                 'course_id'     => $course_id,
-                'course_name'   => sanitize_text_field($d['course_name'] ?? ($course->course_name ?? '')),
-                'lecturer'      => sanitize_text_field($d['lecturer'] ?? ($course->lecturer ?? '')),
                 'class_date'    => $class_date,
                 'student_name'  => sanitize_text_field($d['student_name']),
                 'company_name'  => sanitize_text_field($d['company_name'] ?? ''),
@@ -260,7 +238,7 @@ class TPMA_CR_REST_Public
                 'department'    => sanitize_text_field($d['department'] ?? ''),
                 'job_title'     => sanitize_text_field($d['job_title'] ?? ''),
                 'phone'         => sanitize_text_field($d['phone'] ?? ''),   // 公司/承辦電話
-                'mobile'        => sanitize_text_field($d['mobile'] ?? ''),  // 學員手機 nnnn-nnn-nnn
+                'mobile'        => sanitize_text_field($d['mobile'] ?? ''),  // 學員手機
                 'emails'        => sanitize_text_field($d['emails'] ?? ''),  // 學員mail,承辦mail
                 'receiver'      => sanitize_text_field($d['receiver'] ?? ''),
                 'address'       => sanitize_text_field($d['address'] ?? ''),
@@ -270,10 +248,11 @@ class TPMA_CR_REST_Public
                 'note'          => sanitize_textarea_field($d['note'] ?? ''),
                 'contact_name'  => sanitize_text_field($d['contact_name'] ?? ''),
                 'contact_email' => sanitize_text_field($d['contact_email'] ?? ''),
-                'remit_paid_at'=> $remit_paid_at,
+                'remit_paid_at' => $remit_paid_at,
                 'remit_amount'  => $remit_amount,
                 'status'        => 'pending',
             );
+
 
             $wpdb->insert($regs_table, $insert);
 
@@ -303,94 +282,73 @@ class TPMA_CR_REST_Public
      */
 
     public static function search_registration($request)
-
     {
-
         global $wpdb;
 
-        $regs_table = TPMA_CR_DB::table('regs');
+        $regs_table      = TPMA_CR_DB::table('regs');
+        $courses_table   = TPMA_CR_DB::table('courses');
+        $lecturers_table = TPMA_CR_DB::table('lecturers');
 
         $p = $request->get_json_params();
 
-
-
         $where  = array();
-
         $params = array();
 
-
-
+        // 支援模糊查詢的欄位
         $like_fields = array(
-
-            'reg_no'       => 'reg_no',
-
-            'student_name' => 'student_name',
-
-            'company_name' => 'company_name',
-
-            'tax_id'       => 'tax_id',
-
-            'phone'        => 'phone',
-
+            'reg_no'       => 'r.reg_no',
+            'course_name'  => 'c.course_name',
+            'student_name' => 'r.student_name',
+            'company_name' => 'r.company_name',
+            'tax_id'       => 'r.tax_id',
+            'phone'        => 'r.phone',
         );
 
-
-
         foreach ($like_fields as $key => $col) {
-
             if (!empty($p[$key])) {
-
                 $where[]  = "$col LIKE %s";
-
                 $params[] = '%' . $wpdb->esc_like($p[$key]) . '%';
-
             }
-
         }
-
-
-
-        if (!empty($p['email'])) {
-
-            $where[]  = "emails LIKE %s";
-
-            $params[] = '%' . $wpdb->esc_like($p['email']) . '%';
-
-        }
-
-
 
         if (empty($where)) {
-
             return new WP_Error('no_criteria', '缺少查詢條件', array('status' => 400));
-
         }
 
-
-
-        $sql = "SELECT id, reg_no, course_name, lecturer, class_date,
-
-                       student_name, company_name, tax_id, status
-
-                FROM {$regs_table}
-
-                WHERE " . implode(' AND ', $where);
-
-
+        $sql = "
+            SELECT
+                r.id,
+                r.reg_no,
+                c.course_name,
+                CONCAT(
+                    l.lecturers_name,
+                    CASE
+                        WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
+                        THEN ''
+                        ELSE CONCAT(' ', l.lecturers_title)
+                    END
+                ) AS lecturer,
+                r.class_date,
+                r.student_name,
+                r.company_name,
+                r.tax_id,
+                r.status
+            FROM {$regs_table} r
+            LEFT JOIN {$courses_table} c
+                ON c.id = r.course_id
+            LEFT JOIN {$lecturers_table} l
+                ON l.lecturers_code = c.lecturer_code
+            WHERE " . implode(' AND ', $where);
 
         if (!empty($params)) {
-
             $sql = $wpdb->prepare($sql, ...$params);
-
         }
-
-
 
         $rows = $wpdb->get_results($sql);
 
         return rest_ensure_response($rows);
-
     }
+
 
 
 

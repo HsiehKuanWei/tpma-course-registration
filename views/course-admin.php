@@ -371,6 +371,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                 const msg = (json && json.message) ? json.message : '儲存失敗';
                 mErr.textContent = msg;
                 mErr.style.display = 'block';
+                window.alert(msg);   // ⬅ 新增這行
                 return;
             }
 
@@ -395,9 +396,13 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     rebuildLecturerSelect(currentLecturerTargetSelect);
                     currentLecturerTargetSelect.value = json.lecturer.code;
                 }
+
+                // 🔔 成功提示
+                window.alert('講師已儲存');
             }
 
             closeLecturerModal();
+
         } catch (e) {
             mErr.textContent = '講師儲存失敗，請稍後再試';
             mErr.style.display = 'block';
@@ -668,9 +673,14 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         div.innerHTML = `
             <div class="tpma-tags">
-                ${c.course_code ? '<span>課程編號：' + esc(c.course_code) + '</span>' : '<span>課程編號：儲存時自動產生</span>'}
                 ${isClosed ? '<span style="color:#c00;">[已停課]</span>' : ''}
             </div>
+
+            <label>課程編號（可留空由系統自動產生）</label>
+            <input type="text"
+                   data-field="course_code"
+                   value="${esc(c.course_code || '')}"
+                   placeholder="例：講師碼 + 類別碼 + 流水號">
 
             <label>課程名稱 <span class="tpma-required-label">必填</span></label>
             <input type="text" data-field="course_name" value="${esc(c.course_name || '')}">
@@ -708,8 +718,8 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
 			<label>授課時長（小時）</label>
 			<select data-field="duration_hours">
-				<option value="2" ${!c.duration_minutes || c.duration_minutes==180?'selected':''}>3 小時</option>
-				<option value="3" ${c.duration_minutes==120?'selected':''}>2 小時</option>
+				<option value="3" ${!c.duration_minutes || c.duration_minutes==180?'selected':''}>3 小時</option>
+				<option value="2" ${c.duration_minutes==120?'selected':''}>2 小時</option>
 				<option value="4" ${c.duration_minutes==240?'selected':''}>4 小時</option>
 				${c.duration_minutes && ![120,180,240].includes(parseInt(c.duration_minutes,10))
 					? `<option value="${(parseInt(c.duration_minutes,10)/60).toFixed(1)}" selected>${(parseInt(c.duration_minutes,10)/60).toFixed(1)} 小時（現有值）</option>` : ''

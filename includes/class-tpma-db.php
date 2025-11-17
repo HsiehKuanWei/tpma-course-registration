@@ -149,39 +149,21 @@ class TPMA_CR_DB
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 
             course_code VARCHAR(50) NOT NULL,
-
             course_name VARCHAR(255) NOT NULL,
-
             category VARCHAR(100) DEFAULT NULL,
-
             category_code VARCHAR(10) DEFAULT NULL,
-
-            lecturer VARCHAR(255) DEFAULT NULL,
-
             lecturer_code VARCHAR(20) DEFAULT NULL,
-
             intro TEXT DEFAULT NULL,
-
             outline LONGTEXT DEFAULT NULL,
-
             class_date DATE NULL DEFAULT NULL,
-
             updated_at DATETIME NOT NULL,
-
             is_active TINYINT(1) NOT NULL DEFAULT 1,
-
             duration_minutes INT NOT NULL DEFAULT 180,
-
             PRIMARY KEY (id),
-
             UNIQUE KEY course_code_unique (course_code),
-
             KEY course_name_idx (course_name),
-
             KEY category_code_idx (category_code),
-
             KEY lecturer_code_idx (lecturer_code),
-
             KEY is_active_idx (is_active)
 
         ) {$charset_collate};";
@@ -195,8 +177,6 @@ class TPMA_CR_DB
 			reg_no VARCHAR(30) NOT NULL,
 			created_at DATETIME NOT NULL,
 			course_id BIGINT UNSIGNED NOT NULL,
-			course_name VARCHAR(255) NOT NULL,
-			lecturer VARCHAR(255) DEFAULT NULL,
 			class_date DATE DEFAULT NULL,
 			student_name VARCHAR(255) NOT NULL,
 			department VARCHAR(255) DEFAULT NULL,
@@ -231,23 +211,14 @@ class TPMA_CR_DB
         $sql_sessions = "CREATE TABLE {$sessions_table} (
 
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-
             course_id BIGINT UNSIGNED NOT NULL,
-
             session_datetime DATETIME NOT NULL,
-
             is_active TINYINT(1) NOT NULL DEFAULT 1,
-
             created_at DATETIME NOT NULL,
-
             PRIMARY KEY (id),
-
             KEY course_id_idx (course_id),
-
             KEY session_datetime_idx (session_datetime),
-
             KEY is_active_idx (is_active)
-
         ) {$charset_collate};";
 
 
@@ -257,21 +228,13 @@ class TPMA_CR_DB
         $sql_lecturers = "CREATE TABLE {$lecturers_table} (
 
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-
-            code VARCHAR(20) NOT NULL,
-
-            name VARCHAR(255) NOT NULL,
-
-            title VARCHAR(255) DEFAULT NULL,
-
-            sort_order INT NOT NULL DEFAULT 0,
-
+            lecturers_code VARCHAR(20) NOT NULL,
+            lecturers_name VARCHAR(255) NOT NULL,
+            lecturers_title VARCHAR(255) DEFAULT NULL,
+            lecturers_sort_order INT NOT NULL DEFAULT 0,
             PRIMARY KEY (id),
-
-            UNIQUE KEY code_unique (code),
-
-            KEY sort_order_idx (sort_order)
-
+            UNIQUE KEY lecturers_code_unique (lecturers_code),
+            KEY lecturers_sort_order_idx (lecturers_sort_order)
         ) {$charset_collate};";
 
 
