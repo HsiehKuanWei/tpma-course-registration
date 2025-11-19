@@ -78,108 +78,205 @@ class TPMA_CR_REST_Admin
 
     /* ---------- 報名管理 ---------- */
 
-    public static function admin_get_regs($request)
-    {
-        global $wpdb;
+public static function admin_get_regs($request)
+{
+    global $wpdb;
 
-        $regs_table      = TPMA_CR_DB::table('regs');
-        $courses_table   = TPMA_CR_DB::table('courses');
-        $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $regs_table      = TPMA_CR_DB::table('regs');
+    $courses_table   = TPMA_CR_DB::table('courses');
+    $lecturers_table = TPMA_CR_DB::table('lecturers');
 
-        $reg_no       = $request->get_param('reg_no');
-        $course_name  = $request->get_param('course_name');
-        $student_name = $request->get_param('student_name');
-        $status       = $request->get_param('status');
+    // 新增的綜合文字搜尋
+    $q = $request->get_param('q');
 
-        $where  = array('1=1');
-        $params = array();
+    // 保留原本的個別欄位（相容舊呼叫）
+    $reg_no       = $request->get_param('reg_no');
+    $course_name  = $request->get_param('course_name');
+    $student_name = $request->get_param('student_name');
 
-        if ($reg_no) {
-            $where[]  = "r.reg_no LIKE %s";
-            $params[] = '%' . $wpdb->esc_like($reg_no) . '%';
+    // 新增選單篩選
+    $course_id      = intval($request->get_param('course_id'));
+    $class_date     = $request->get_param('class_date');
+    $receipt_type   = $request->get_param('receipt_type');
+    $status         = $request->get_param('status');
+    $receipt_status = $request->get_param('receipt_status');
+
+    // 日期篩選
+    $date_field = $request->get_param('date_field'); // 'created' or 'paid'
+    $date_from  = $request->get_param('date_from');
+    $date_to    = $request->get_param('date_to');
+
+    $where  = array('1=1');
+    $params = array();
+
+    // 文字模糊搜尋：reg_no / student_name / contact_name / company_name
+    if ($q) {
+        $like = '%' . $wpdb->esc_like($q) . '%';
+        $where[] = "(r.reg_no LIKE %s OR r.student_name LIKE %s OR r.contact_name LIKE %s OR r.company_name LIKE %s)";
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+        $params[] = $like;
+    }
+
+    // 延續舊參數（若你在別處仍有用到）
+    if ($reg_no) {
+        $where[]  = "r.reg_no LIKE %s";
+        $params[] = '%' . $wpdb->esc_like($reg_no) . '%';
+    }
+
+    if ($course_name) {
+        $where[]  = "c.course_name LIKE %s";
+        $params[] = '%' . $wpdb->esc_like($course_name) . '%';
+    }
+
+    if ($student_name) {
+        $where[]  = "r.student_name LIKE %s";
+        $params[] = '%' . $wpdb->esc_like($student_name) . '%';
+    }
+
+    if ($course_id) {
+        $where[]  = "r.course_id = %d";
+        $params[] = $course_id;
+    }
+
+    if ($class_date) {
+        $where[]  = "r.class_date = %s";
+        $params[] = $class_date;
+    }
+
+    if ($receipt_type) {
+        $where[]  = "r.receipt_type = %s";
+        $params[] = $receipt_type;
+    }
+
+    if ($status) {
+        $where[]  = "r.status = %s";
+        $params[] = $status;
+    }
+
+    if ($receipt_status) {
+        $where[]  = "r.receipt_status = %s";
+        $params[] = $receipt_status;
+    }
+
+    // 日期篩選：預設用 created_at
+    $field = ($date_field === 'paid') ? 'r.remit_paid_at' : 'r.created_at';
+
+    if ($date_from) {
+        if ($field === 'r.created_at' && strlen($date_from) === 10) {
+            // date_from 只有日期 → 自動補 00:00:00
+            $where[]  = "{$field} >= %s";
+            $params[] = $date_from . ' 00:00:00';
+        } else {
+            $where[]  = "{$field} >= %s";
+            $params[] = $date_from;
         }
+    }
 
-        if ($course_name) {
-            $where[]  = "c.course_name LIKE %s";
-            $params[] = '%' . $wpdb->esc_like($course_name) . '%';
+    if ($date_to) {
+        if ($field === 'r.created_at' && strlen($date_to) === 10) {
+            // date_to 只有日期 → 自動補 23:59:59
+            $where[]  = "{$field} <= %s";
+            $params[] = $date_to . ' 23:59:59';
+        } else {
+            $where[]  = "{$field} <= %s";
+            $params[] = $date_to;
         }
+    }
 
-        if ($student_name) {
-            $where[]  = "r.student_name LIKE %s";
-            $params[] = '%' . $wpdb->esc_like($student_name) . '%';
-        }
-
-        if ($status) {
-            $where[]  = "r.status = %s";
-            $params[] = $status;
-        }
-
-        $sql = "
-            SELECT
-                r.*,
-                c.course_name,
-                CONCAT(
-                    l.lecturers_name,
-                    CASE
-                        WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
+    $sql = "
+        SELECT
+            r.*,
+            c.course_name,
+            CONCAT(
+                l.lecturers_name,
+                CASE
+                    WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
                         THEN ''
-                        ELSE CONCAT(' ', l.lecturers_title)
-                    END
-                ) AS lecturer
-            FROM {$regs_table} r
-            LEFT JOIN {$courses_table} c
-                ON c.id = r.course_id
-            LEFT JOIN {$lecturers_table} l
-                ON l.lecturers_code = c.lecturer_code
-            WHERE " . implode(' AND ', $where) . "
-            ORDER BY r.created_at DESC
-        ";
+                    ELSE CONCAT(' ', l.lecturers_title)
+                END
+            ) AS lecturer
+        FROM {$regs_table} r
+        LEFT JOIN {$courses_table} c
+            ON c.id = r.course_id
+        LEFT JOIN {$lecturers_table} l
+            ON l.lecturers_code = c.lecturer_code
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY r.created_at DESC
+    ";
 
-        if (!empty($params)) {
-            $sql = $wpdb->prepare($sql, ...$params);
-        }
-
-        $rows = $wpdb->get_results($sql, ARRAY_A);
-
-        return rest_ensure_response($rows);
+    if (!empty($params)) {
+        $sql = $wpdb->prepare($sql, ...$params);
     }
 
+    $rows = $wpdb->get_results($sql, ARRAY_A);
 
-    public static function admin_update_reg($request)
-    {
-        global $wpdb;
+    return rest_ensure_response($rows);
+}
 
-        $regs_table = TPMA_CR_DB::table('regs');
-        $d = $request->get_json_params();
 
-        $id = intval($d['id'] ?? 0);
-        if (!$id) {
-            return new WP_Error('invalid', '缺少 id', array('status' => 400));
-        }
 
-        // 不再包含 course_name / lecturer，這兩個改由 JOIN 算出
-        $fields = array(
-            'class_date',
-            'student_name', 'company_name', 'tax_id', 'department',
-            'job_title', 'phone', 'emails', 'receiver', 'address',
-            'source', 'note',
-        );
+public static function admin_update_reg($request)
+{
+    global $wpdb;
 
-        $update = array();
-        foreach ($fields as $f) {
-            if (isset($d[$f])) {
-                $update[$f] = sanitize_text_field($d[$f]);
-            }
-        }
+    $regs_table = TPMA_CR_DB::table('regs');
+    $d = $request->get_json_params();
 
-        if (empty($update)) {
-            return new WP_Error('no_data', '沒有可更新欄位', array('status' => 400));
-        }
-
-        $wpdb->update($regs_table, $update, array('id' => $id));
-
-        return rest_ensure_response(array('success' => true));
+    $id = intval($d['id'] ?? 0);
+    if (!$id) {
+        return new WP_Error('invalid', '缺少 id', array('status' => 400));
     }
+
+    // 不包含 reg_no / created_at / source（source 唯讀在這頁）
+    $fields = array(
+        'class_date',
+
+        'student_name',
+        'company_name',
+        'tax_id',
+        'department',
+        'job_title',
+
+        'mobile',
+        'phone',
+        'emails',
+
+        'contact_name',
+        'contact_email',
+
+        'receiver',
+        'address',
+
+        'receipt_type',
+        'receipt_status',
+
+        'status',          // 報名狀態
+        'remit_paid_at',   // 匯款日期
+        'remit_amount',    // 匯款金額
+
+        'note',
+        'test_score',
+        'certificate_id',
+        // 如果你真的想在這頁也能改 source，就把 'source' 加回來
+    );
+
+    $update = array();
+    foreach ($fields as $f) {
+        if (isset($d[$f])) {
+            $update[$f] = sanitize_text_field($d[$f]);
+        }
+    }
+
+    if (empty($update)) {
+        return new WP_Error('no_data', '沒有可更新欄位', array('status' => 400));
+    }
+
+    $wpdb->update($regs_table, $update, array('id' => $id));
+
+    return rest_ensure_response(array('success' => true));
+}
 
 
     /* ---------- 講師 ---------- */

@@ -147,7 +147,6 @@ class TPMA_CR_DB
         $sql_courses = "CREATE TABLE {$courses_table} (
 
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-
             course_code VARCHAR(50) NOT NULL,
             course_name VARCHAR(255) NOT NULL,
             category VARCHAR(100) DEFAULT NULL,
@@ -189,6 +188,7 @@ class TPMA_CR_DB
 			tax_id VARCHAR(20) DEFAULT NULL,
 			phone VARCHAR(50) DEFAULT NULL,        
 			receipt_type VARCHAR(20) NOT NULL DEFAULT 'electronic',
+			receipt_status DEFAULT NULL,
 			address VARCHAR(500) DEFAULT NULL,
 			receiver VARCHAR(255) DEFAULT NULL,
 			source VARCHAR(100) DEFAULT NULL,
@@ -197,6 +197,8 @@ class TPMA_CR_DB
 			remit_paid_at DATE DEFAULT NULL,    
 			remit_amount DECIMAL(10,2) DEFAULT NULL,
 			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			test_score VARCHAR(30) DEFAULT NULL,
+			certificate_id VARCHAR(30) DEFAULT NULL,
 			PRIMARY KEY (id),
 			KEY reg_no_idx (reg_no),
 			KEY course_id_idx (course_id),
