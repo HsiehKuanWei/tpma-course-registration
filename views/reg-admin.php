@@ -539,12 +539,12 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
     function statusChipClass(code){ return 'tpma-chip-status-' + (code || 'pending'); }
 
-    function trimToMinute(datetimeStr){
-        if (!datetimeStr) return '';
-        const s = String(datetimeStr);
-        return s.length >= 16 ? s.substring(0,16) : s;
-    }
-
+	function trimToMinute(datetimeStr){
+		if (!datetimeStr) return '';
+		const s = String(datetimeStr);
+		return s.length >= 16 ? s.substring(0,16) : s;
+	}
+	
     // 取得這筆課程的時數（小時）
     function getCourseHoursForRow(row){
         const tryParse = (v)=> {
@@ -566,15 +566,45 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         }
         return 3; // 找不到就先當成 3 小時
     }
+	
+    // 依課程 sessions，幫這筆找到實際上課 datetime（如果 class_date 只有日期）
+    function findSessionDatetimeForRow(row){
+        if (!allCourses || !allCourses.length) return null;
+        if (!row.course_id || !row.class_date) return null;
+
+        const course = allCourses.find(c => String(c.id) === String(row.course_id));
+        if (!course || !Array.isArray(course.sessions) || !course.sessions.length) {
+            return null;
+        }
+
+        const dateOnly = String(row.class_date).substring(0,10);
+        const sameDay = course.sessions.find(
+            s => s.session_datetime && String(s.session_datetime).substring(0,10) === dateOnly
+        );
+        return sameDay ? sameDay.session_datetime : null;
+    }
+	
 
     // 授課日期顯示：日期 + 起迄時間（加課程時數）
     function buildClassDateRangeHtml(row){
-        const dtStr = row.class_date;
+        let dtStr = row.class_date;
         if (!dtStr) return '';
-        const s = String(dtStr);
+
+        let s = String(dtStr);
+
+        // 如果只有日期，試著用 sessions 找同一天的實際上課時間
+        if (s.length <= 10 || s.indexOf(' ') === -1) {
+            const sessionDt = findSessionDatetimeForRow(row);
+            if (sessionDt) {
+                s = String(sessionDt);
+            }
+        }
+
+        // 還是沒有時間，就直接輸出原字串
         if (s.length < 16) {
             return esc(s);
         }
+
         const datePart = s.substring(0,10);
         const timePart = s.substring(11,16); // HH:MM
         let endTimeStr = '';
@@ -593,6 +623,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         const secondLine = endTimeStr ? (timePart + '–' + endTimeStr) : timePart;
         return esc(datePart) + '<br>' + esc(secondLine);
     }
+
 
     function formatAmount(val){
         if (val == null || val === '') return '';
@@ -912,17 +943,23 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         updatePaginationControls();
     }
 
-    function appendFieldView(section, labelText, val){
+    function appendFieldView(section, labelText, val, asHtml){
         const label = document.createElement('label');
         label.textContent = labelText;
         section.appendChild(label);
 
         const div = document.createElement('div');
         div.className = 'value';
-        div.innerHTML = esc(display(val));
+        if (asHtml) {
+            // 直接當 HTML 用，給已經組好的 <br> 等標籤
+            div.innerHTML = val || '';
+        } else {
+            // 原本行為：當純文字顯示
+            div.innerHTML = esc(display(val));
+        }
         section.appendChild(div);
     }
-
+	
     function renderDetailView(container, row){
         container.innerHTML = '';
 
@@ -937,7 +974,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         appendFieldView(basic, '報名時間', trimToMinute(row.created_at));
         appendFieldView(basic, '課程名稱', row.course_name);
         appendFieldView(basic, '授課講師', row.lecturer);
-        appendFieldView(basic, '授課日期時間', row.class_date);
+        appendFieldView(basic, '授課日期時間', buildClassDateRangeHtml(row), true);
         grid.appendChild(basic);
 
         // 學員資訊
