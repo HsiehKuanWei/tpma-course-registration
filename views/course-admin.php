@@ -90,7 +90,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
     background:#fff5f5;
 }
 
-/* Modalï¼šæ–°å¢è¬›å¸« */
+/* Modal¡G·s¼WÁ¿®v */
 .tpma-modal-backdrop {
     position:fixed;
     inset:0;
@@ -140,80 +140,80 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
 <div id="tpma-course-admin" class="tpma-wrap">
     <div class="tpma-filter-row">
-        <input type="text" id="tpma-filter-q" placeholder="é—œéµå­—ï¼šèª²ç¨‹ç·¨è™Ÿ / èª²ç¨‹åç¨± / é¡åˆ¥ / è¬›å¸«ï¼ˆå³æ™‚ç¯©é¸ï¼‰">
+        <input type="text" id="tpma-filter-q" placeholder="ÃöÁä¦r¡G½Òµ{½s¸¹ / ½Òµ{¦WºÙ / Ãş§O / Á¿®v¡]§Y®É¿z¿ï¡^">
 
         <select id="tpma-filter-category">
-            <option value="">å…¨éƒ¨é¡åˆ¥</option>
-            <optgroup label="æ ¸å¿ƒèª²ç¨‹">
-                <option value="A1">è‘£äº‹çš„æ³•å¾‹ç¾©å‹™èˆ‡è²¬ä»»</option>
-                <option value="A2">è‘£äº‹æœƒçš„æ¶æ§‹èˆ‡é‹ä½œ</option>
-                <option value="A3">æå‡è‘£äº‹æœƒç¸¾æ•ˆ</option>
-                <option value="A4">è²¡å‹™ã€æœƒè¨ˆ</option>
-                <option value="A5">æ°¸çºŒç™¼å±•</option>
+            <option value="">¥ş³¡Ãş§O</option>
+            <optgroup label="®Ö¤ß½Òµ{">
+                <option value="A1">¸³¨Æªºªk«ß¸q°È»P³d¥ô</option>
+                <option value="A2">¸³¨Æ·|ªº¬[ºc»P¹B§@</option>
+                <option value="A3">´£¤É¸³¨Æ·|ÁZ®Ä</option>
+                <option value="A4">°]°È¡B·|­p</option>
+                <option value="A5">¥ÃÄòµo®i</option>
             </optgroup>
-            <optgroup label="å°ˆæ¥­èª²ç¨‹">
-                <option value="B1">è‘£äº‹æœƒæˆå“¡å’Œç®¡ç†åœ˜éšŠä¹‹é–“çš„é—œä¿‚èˆ‡åˆä½œ</option>
-                <option value="B2">è‘£äº‹èˆ‡è‚¡æ±æœƒäº‹å‹™</option>
-                <option value="B3">å…¬å¸æ‰€å±¬ç”¢æ¥­ä¹‹æ¥­å‹™ã€å•†å‹™</option>
-                <option value="B4">é¢¨éšªç®¡ç†ã€å…§éƒ¨æ§åˆ¶ã€æ•¸ä½æ²»ç†</option>
-                <option value="B5">å…¶ä»–</option>
+            <optgroup label="±M·~½Òµ{">
+                <option value="B1">¸³¨Æ·|¦¨­û©MºŞ²z¹Î¶¤¤§¶¡ªºÃö«Y»P¦X§@</option>
+                <option value="B2">¸³¨Æ»PªÑªF·|¨Æ°È</option>
+                <option value="B3">¤½¥q©ÒÄİ²£·~¤§·~°È¡B°Ó°È</option>
+                <option value="B4">­·ÀIºŞ²z¡B¤º³¡±±¨î¡B¼Æ¦ìªv²z</option>
+                <option value="B5">¨ä¥L</option>
             </optgroup>
         </select>
 
         <select id="tpma-filter-lecturer">
-            <option value="">å…¨éƒ¨è¬›å¸«</option>
+            <option value="">¥ş³¡Á¿®v</option>
         </select>
 
         <select id="tpma-filter-course">
-            <option value="">å…¨éƒ¨èª²ç¨‹åç¨±</option>
+            <option value="">¥ş³¡½Òµ{¦WºÙ</option>
         </select>
     </div>
 
     <div class="tpma-filter-row">
-        <span>æˆèª²æ—¥æœŸç¯©é¸ï¼š</span>
+        <span>±Â½Ò¤é´Á¿z¿ï¡G</span>
         <input type="date" id="tpma-filter-date-from">
-        <span>ï½</span>
+        <span>¡ã</span>
         <input type="date" id="tpma-filter-date-to">
 
         <select id="tpma-filter-mode">
-            <option value="open_only">å…¨éƒ¨ï¼ˆä¸å«åœèª²ï¼‰</option>
-            <option value="with_closed">å…¨éƒ¨ï¼ˆå«åœèª²ï¼‰</option>
-            <option value="scheduled_future">å·²å®‰æ’å ´æ¬¡ï¼ˆæœ‰æœªä¾†æ—¥æœŸï¼‰</option>
+            <option value="open_only">¥ş³¡¡]¤£§t°±½Ò¡^</option>
+            <option value="with_closed">¥ş³¡¡]§t°±½Ò¡^</option>
+            <option value="scheduled_future">¤w¦w±Æ³õ¦¸¡]¦³¥¼¨Ó¤é´Á¡^</option>
         </select>
 
         <span style="font-size:12px;color:#666;">
-            ä¸é¸æ—¥æœŸæ™‚ä¾æ¨¡å¼é¡¯ç¤ºèª²ç¨‹ï¼šé è¨­åƒ…åˆ—å‡ºé–‹èª²ä¸­ï¼Œå¯åˆ‡æ›å«åœèª²æˆ–åƒ…æœ‰æœªä¾†å ´æ¬¡ã€‚
+            ¤£¿ï¤é´Á®É¨Ì¼Ò¦¡Åã¥Ü½Òµ{¡G¹w³]¶È¦C¥X¶}½Ò¤¤¡A¥i¤Á´«§t°±½Ò©Î¶È¦³¥¼¨Ó³õ¦¸¡C
         </span>
     </div>
 
     <div class="tpma-filter-row">
-        <button class="tpma-btn" id="tpma-add-course">æ–°å¢èª²ç¨‹</button>
-        <button class="tpma-btn" id="tpma-reset-filter">é‡ç½®ç¯©é¸</button>
+        <button class="tpma-btn" id="tpma-add-course">·s¼W½Òµ{</button>
+        <button class="tpma-btn" id="tpma-reset-filter">­«¸m¿z¿ï</button>
     </div>
 
     <div id="tpma-course-list">
-        <p>è¼‰å…¥ä¸­...</p>
+        <p>¸ü¤J¤¤...</p>
     </div>
 </div>
 
-<!-- æ–°å¢è¬›å¸« Modal -->
+<!-- ·s¼WÁ¿®v Modal -->
 <div id="tpma-lecturer-backdrop" class="tpma-modal-backdrop"></div>
 <div id="tpma-lecturer-modal" class="tpma-modal">
-    <h3>æ–°å¢è¬›å¸«</h3>
-    <label>è¬›å¸«ä»£ç¢¼<span class="tpma-required-label">å¿…å¡«</span></label>
-    <input type="text" id="tpma-lect-code" placeholder="ä¾‹ï¼šHSSA">
-    <label>è¬›å¸«å§“å<span class="tpma-required-label">å¿…å¡«</span></label>
-    <input type="text" id="tpma-lect-name" placeholder="è¬›å¸«å§“å">
-    <label>è¬›å¸«ç¨±è¬‚</label>
-    <input type="text" id="tpma-lect-title" placeholder="ä¾‹ï¼šå¾‹å¸« / æ•™æˆ">
-    <label>è¬›å¸«æ’åºï¼ˆæ•¸å­—ï¼Œå¯ç•™ç©ºè‡ªå‹•å¸¶å…¥ï¼‰</label>
-    <input type="number" id="tpma-lect-sort" placeholder="ä¾‹ï¼š10">
+    <h3>·s¼WÁ¿®v</h3>
+    <label>Á¿®v¥N½X<span class="tpma-required-label">¥²¶ñ</span></label>
+    <input type="text" id="tpma-lect-code" placeholder="¨Ò¡GHSSA">
+    <label>Á¿®v©m¦W<span class="tpma-required-label">¥²¶ñ</span></label>
+    <input type="text" id="tpma-lect-name" placeholder="Á¿®v©m¦W">
+    <label>Á¿®vºÙ¿×</label>
+    <input type="text" id="tpma-lect-title" placeholder="¨Ò¡G«ß®v / ±Ğ±Â">
+    <label>Á¿®v±Æ§Ç¡]¼Æ¦r¡A¥i¯dªÅ¦Û°Ê±a¤J¡^</label>
+    <input type="number" id="tpma-lect-sort" placeholder="¨Ò¡G10">
 
     <div class="tpma-error" id="tpma-lect-error" style="display:none;"></div>
 
     <div class="tpma-modal-actions">
-        <button type="button" class="tpma-btn" id="tpma-lect-cancel-btn">å–æ¶ˆ</button>
-        <button type="button" class="tpma-btn" id="tpma-lect-save-btn">å„²å­˜è¬›å¸«</button>
+        <button type="button" class="tpma-btn" id="tpma-lect-cancel-btn">¨ú®ø</button>
+        <button type="button" class="tpma-btn" id="tpma-lect-save-btn">Àx¦sÁ¿®v</button>
     </div>
 </div>
 
@@ -225,7 +225,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
     let allCourses = [];
     let lecturers = [];
-    let currentLecturerTargetSelect = null; // ç•¶å‰æ­£åœ¨ç·¨è¼¯èª²ç¨‹çš„è¬›å¸«ä¸‹æ‹‰ï¼ˆç”¨ä¾†å›å¡«æ–°è¬›å¸«ï¼‰
+    let currentLecturerTargetSelect = null; // ·í«e¥¿¦b½s¿è½Òµ{ªºÁ¿®v¤U©Ô¡]¥Î¨Ó¦^¶ñ·sÁ¿®v¡^
 
     const courseListEl = document.getElementById('tpma-course-list');
 
@@ -261,16 +261,16 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
     function catCodeToLabel(code) {
         switch(code) {
-            case 'A1': return 'è‘£äº‹çš„æ³•å¾‹ç¾©å‹™èˆ‡è²¬ä»»';
-            case 'A2': return 'è‘£äº‹æœƒçš„æ¶æ§‹èˆ‡é‹ä½œ';
-            case 'A3': return 'æå‡è‘£äº‹æœƒç¸¾æ•ˆ';
-            case 'A4': return 'è²¡å‹™ã€æœƒè¨ˆ';
-            case 'A5': return 'æ°¸çºŒç™¼å±•';
-            case 'B1': return 'è‘£äº‹æœƒæˆå“¡å’Œç®¡ç†åœ˜éšŠä¹‹é–“çš„é—œä¿‚èˆ‡åˆä½œ';
-            case 'B2': return 'è‘£äº‹èˆ‡è‚¡æ±æœƒäº‹å‹™';
-            case 'B3': return 'å…¬å¸æ‰€å±¬ç”¢æ¥­ä¹‹æ¥­å‹™ã€å•†å‹™';
-            case 'B4': return 'é¢¨éšªç®¡ç†ã€å…§éƒ¨æ§åˆ¶ã€æ•¸ä½æ²»ç†';
-            case 'B5': return 'å…¶ä»–';
+            case 'A1': return '¸³¨Æªºªk«ß¸q°È»P³d¥ô';
+            case 'A2': return '¸³¨Æ·|ªº¬[ºc»P¹B§@';
+            case 'A3': return '´£¤É¸³¨Æ·|ÁZ®Ä';
+            case 'A4': return '°]°È¡B·|­p';
+            case 'A5': return '¥ÃÄòµo®i';
+            case 'B1': return '¸³¨Æ·|¦¨­û©MºŞ²z¹Î¶¤¤§¶¡ªºÃö«Y»P¦X§@';
+            case 'B2': return '¸³¨Æ»PªÑªF·|¨Æ°È';
+            case 'B3': return '¤½¥q©ÒÄİ²£·~¤§·~°È¡B°Ó°È';
+            case 'B4': return '­·ÀIºŞ²z¡B¤º³¡±±¨î¡B¼Æ¦ìªv²z';
+            case 'B5': return '¨ä¥L';
         }
         return '';
     }
@@ -316,7 +316,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         const sortStr = mSort.value.trim();
 
         if (!code || !name) {
-            mErr.textContent = 'è¬›å¸«ä»£ç¢¼èˆ‡å§“åç‚ºå¿…å¡«';
+            mErr.textContent = 'Á¿®v¥N½X»P©m¦W¬°¥²¶ñ';
             mErr.style.display = 'block';
             return;
         }
@@ -325,7 +325,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         if (sortStr !== '') {
             sortVal = parseInt(sortStr, 10);
             if (isNaN(sortVal)) {
-                mErr.textContent = 'æ’åºå¿…é ˆæ˜¯æ•¸å­—æˆ–ç•™ç©º';
+                mErr.textContent = '±Æ§Ç¥²¶·¬O¼Æ¦r©Î¯dªÅ';
                 mErr.style.display = 'block';
                 return;
             }
@@ -336,11 +336,11 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             const hasConflict = lecturers.some(l => parseInt(l.sort_order,10) === sortVal);
             if (hasConflict) {
                 const ok = window.confirm(
-                    'æ’åºå€¼ ' + sortVal + ' å·²å­˜åœ¨ã€‚\n' +
-                    'æ˜¯å¦å°‡ç›®å‰æ’åºç‚º ' + sortVal + ' ä»¥åŠä¹‹å¾Œçš„è¬›å¸«åºè™Ÿå…¨éƒ¨å¾€å¾Œç§»ä¸€ä½ï¼Œè®“å‡º ' + sortVal + ' çµ¦æ–°è¬›å¸«ï¼Ÿ'
+                    '±Æ§Ç­È ' + sortVal + ' ¤w¦s¦b¡C\n' +
+                    '¬O§_±N¥Ø«e±Æ§Ç¬° ' + sortVal + ' ¥H¤Î¤§«áªºÁ¿®v§Ç¸¹¥ş³¡©¹«á²¾¤@¦ì¡AÅı¥X ' + sortVal + ' µ¹·sÁ¿®v¡H'
                 );
                 if (!ok) {
-                    mErr.textContent = 'è«‹ä¿®æ”¹æ’åºæ•¸å­—ï¼Œæˆ–å†æ¬¡é€å‡ºåŒæ„è‡ªå‹•å¾Œç§»ã€‚';
+                    mErr.textContent = '½Ğ­×§ï±Æ§Ç¼Æ¦r¡A©Î¦A¦¸°e¥X¦P·N¦Û°Ê«á²¾¡C';
                     mErr.style.display = 'block';
                     return;
                 }
@@ -368,15 +368,15 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             const json = await res.json();
 
             if (!res.ok || !json || !json.success) {
-                const msg = (json && json.message) ? json.message : 'å„²å­˜å¤±æ•—';
+                const msg = (json && json.message) ? json.message : 'Àx¦s¥¢±Ñ';
                 mErr.textContent = msg;
                 mErr.style.display = 'block';
-                window.alert(msg);   // â¬… æ–°å¢é€™è¡Œ
+                window.alert(msg);   // ? ·s¼W³o¦æ
                 return;
             }
 
             if (json.lecturer) {
-                // æ›´æ–°æœ¬åœ° lecturers
+                // §ó·s¥»¦a lecturers
                 lecturers = lecturers.filter(l => l.code !== json.lecturer.code);
                 lecturers.push(json.lecturer);
                 lecturers.sort((a,b) => {
@@ -388,23 +388,23 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     return sa - sb;
                 });
 
-                // é‡å»ºç¯©é¸ç”¨ä¸‹æ‹‰
+                // ­««Ø¿z¿ï¥Î¤U©Ô
                 buildLecturerFilter();
 
-                // è‹¥æœ‰ç•¶å‰èª²ç¨‹çš„è¬›å¸«ä¸‹æ‹‰ï¼Œæ³¨å…¥æ–°è¬›å¸«ä¸¦é¸å–
+                // ­Y¦³·í«e½Òµ{ªºÁ¿®v¤U©Ô¡Aª`¤J·sÁ¿®v¨Ã¿ï¨ú
                 if (currentLecturerTargetSelect) {
                     rebuildLecturerSelect(currentLecturerTargetSelect);
                     currentLecturerTargetSelect.value = json.lecturer.code;
                 }
 
-                // ğŸ”” æˆåŠŸæç¤º
-                window.alert('è¬›å¸«å·²å„²å­˜');
+                // ?? ¦¨¥\´£¥Ü
+                window.alert('Á¿®v¤wÀx¦s');
             }
 
             closeLecturerModal();
 
         } catch (e) {
-            mErr.textContent = 'è¬›å¸«å„²å­˜å¤±æ•—ï¼Œè«‹ç¨å¾Œå†è©¦';
+            mErr.textContent = 'Á¿®vÀx¦s¥¢±Ñ¡A½Ğµy«á¦A¸Õ';
             mErr.style.display = 'block';
         }
     }
@@ -430,7 +430,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
     function buildLecturerFilter() {
         if (!$lec) return;
-        $lec.innerHTML = '<option value="">å…¨éƒ¨è¬›å¸«</option>';
+        $lec.innerHTML = '<option value="">¥ş³¡Á¿®v</option>';
         lecturers.forEach(l => {
             const opt = document.createElement('option');
             opt.value = l.code;
@@ -442,7 +442,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
     function rebuildLecturerSelect(sel) {
         if (!sel) return;
         const current = sel.value;
-        sel.innerHTML = '<option value="">è«‹é¸æ“‡è¬›å¸«</option>';
+        sel.innerHTML = '<option value="">½Ğ¿ï¾ÜÁ¿®v</option>';
         lecturers.forEach(l => {
             const opt = document.createElement('option');
             opt.value = l.code;
@@ -454,7 +454,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
     function buildCourseNameFilter(courses) {
         const current = $course.value;
-        $course.innerHTML = '<option value="">å…¨éƒ¨èª²ç¨‹åç¨±</option>';
+        $course.innerHTML = '<option value="">¥ş³¡½Òµ{¦WºÙ</option>';
         const names = new Set();
         courses.forEach(c => { if (c.course_name) names.add(c.course_name); });
         Array.from(names).sort().forEach(name => {
@@ -470,7 +470,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         if (!dtStr) return '';
         const d = parseDate(dtStr.replace(' ','T'));
         if (!d) return esc(dtStr);
-        const weekdays = ['æ—¥','ä¸€','äºŒ','ä¸‰','å››','äº”','å…­'];
+        const weekdays = ['¤é','¤@','¤G','¤T','¥|','¤­','¤»'];
         const y = d.getFullYear();
         const m = ('0'+(d.getMonth()+1)).slice(-2);
         const day = ('0'+d.getDate()).slice(-2);
@@ -481,7 +481,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         const end = new Date(d.getTime() + dur * 60000);
         const eh = ('0'+end.getHours()).slice(-2);
         const em = ('0'+end.getMinutes()).slice(-2);
-        return `${y}-${m}-${day}ï¼ˆ${w}ï¼‰ ${hh}:${mm}~${eh}:${em}`;
+        return `${y}-${m}-${day}¡]${w}¡^ ${hh}:${mm}~${eh}:${em}`;
     }
 
     function applyFilters() {
@@ -497,7 +497,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         let filtered = allCourses.slice();
 
-        // é¡åˆ¥ / è¬›å¸« / èª²ç¨‹åç¨±
+        // Ãş§O / Á¿®v / ½Òµ{¦WºÙ
         filtered = filtered.filter(c => {
             if (cat && c.category_code !== cat) return false;
             if (lecCode && c.lecturer_code !== lecCode) return false;
@@ -507,7 +507,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         buildCourseNameFilter(filtered);
 
-        // é—œéµå­—
+        // ÃöÁä¦r
         if (q) {
             filtered = filtered.filter(c => {
                 const catLabel = c.category || catCodeToLabel(c.category_code || '');
@@ -522,7 +522,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             });
         }
 
-        // sessions åŠ å·¥
+        // sessions ¥[¤u
         filtered = filtered.map(c => {
             const sessions = Array.isArray(c.sessions) ? c.sessions : [];
             const allSessions = sessions.slice();
@@ -553,7 +553,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             });
         });
 
-        // ä¾æ¨¡å¼æ±ºå®šèª²ç¨‹æ˜¯å¦é¡¯ç¤º
+        // ¨Ì¼Ò¦¡¨M©w½Òµ{¬O§_Åã¥Ü
         filtered = filtered.filter(c => {
             const hasSessions = (c._all_sessions || []).length > 0;
             const hasFuture = (c._all_sessions || []).some(s => {
@@ -585,7 +585,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
     function renderCourses(list) {
         courseListEl.innerHTML = '';
         if (!list || list.length === 0) {
-            courseListEl.innerHTML = '<p>æŸ¥ç„¡ç¬¦åˆæ¢ä»¶çš„èª²ç¨‹ã€‚</p>';
+            courseListEl.innerHTML = '<p>¬dµL²Å¦X±ø¥óªº½Òµ{¡C</p>';
             return;
         }
         list.forEach(c => {
@@ -610,15 +610,15 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         let sessionsHtml = '';
         if (!allSessions.length) {
-            sessionsHtml = '<span class="value">ï¼ˆå°šæœªè¨­å®šä»»ä½•æ—¥æœŸï¼Œèª²ç¨‹ä»å¯ä½¿ç”¨ï¼‰</span>';
+            sessionsHtml = '<span class="value">¡]©|¥¼³]©w¥ô¦ó¤é´Á¡A½Òµ{¤´¥i¨Ï¥Î¡^</span>';
         } else if (sessions && sessions.length) {
             sessionsHtml = '<ul>';
             sessions.forEach(s => {
-                sessionsHtml += '<li>' + esc(formatSessionLabel(s.session_datetime, c.duration_minutes)) + (s.is_active ? '' : 'ï¼ˆåœç”¨ï¼‰') + '</li>';
+                sessionsHtml += '<li>' + esc(formatSessionLabel(s.session_datetime, c.duration_minutes)) + (s.is_active ? '' : '¡]°±¥Î¡^') + '</li>';
             });
             sessionsHtml += '</ul>';
         } else {
-            sessionsHtml = '<span class="value">ï¼ˆç›®å‰ç¯©é¸æ¢ä»¶ä¸‹ç„¡ç¬¦åˆçš„æ—¥æœŸå ´æ¬¡ï¼‰</span>';
+            sessionsHtml = '<span class="value">¡]¥Ø«e¿z¿ï±ø¥ó¤UµL²Å¦Xªº¤é´Á³õ¦¸¡^</span>';
         }
 
         const catText = c.category || catCodeToLabel(c.category_code || '');
@@ -627,35 +627,35 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         div.innerHTML = `
             <div class="tpma-tags">
-                ${c.course_code ? '<span>èª²ç¨‹ç·¨è™Ÿï¼š' + esc(c.course_code) + '</span>' : ''}
-                ${catText ? '<span>é¡åˆ¥ï¼š' + esc(catText) + '</span>' : ''}
-                ${lecText ? '<span>è¬›å¸«ï¼š' + esc(lecText) + '</span>' : ''}
-                ${isClosed ? '<span style="color:#c00;">[å·²åœèª²]</span>' : ''}
+                ${c.course_code ? '<span>½Òµ{½s¸¹¡G' + esc(c.course_code) + '</span>' : ''}
+                ${catText ? '<span>Ãş§O¡G' + esc(catText) + '</span>' : ''}
+                ${lecText ? '<span>Á¿®v¡G' + esc(lecText) + '</span>' : ''}
+                ${isClosed ? '<span style="color:#c00;">[¤w°±½Ò]</span>' : ''}
             </div>
 
-            <label>èª²ç¨‹åç¨±</label>
+            <label>½Òµ{¦WºÙ</label>
             <div class="value">${esc(c.course_name || '')}</div>
 
-            <label>èª²ç¨‹ç°¡ä»‹</label>
+            <label>½Òµ{Â²¤¶</label>
             <div class="value">${esc(c.intro || '')}</div>
 
-            <label>èª²ç¨‹å¤§ç¶±ï¼ˆMarkdown å·²æ¸²æŸ“ï¼‰</label>
-            <div class="tpma-outline-view">${outlineHtml || '<span class="value">ï¼ˆå°šæœªå¡«å¯«ï¼‰</span>'}</div>
+            <label>½Òµ{¤jºõ¡]Markdown ¤w´è¬V¡^</label>
+            <div class="tpma-outline-view">${outlineHtml || '<span class="value">¡]©|¥¼¶ñ¼g¡^</span>'}</div>
 
-            <label>æˆèª²æ—¥æœŸæ™‚é–“</label>
+            <label>±Â½Ò¤é´Á®É¶¡</label>
             <div class="tpma-course-dates">
                 ${sessionsHtml}
                 ${hasExtra && allSessions.length > 0
-                    ? `<button class="tpma-btn tpma-toggle-dates">${showAllDates ? 'åƒ…é¡¯ç¤ºç¬¦åˆæ¢ä»¶å ´æ¬¡' : 'é¡¯ç¤ºå…¨éƒ¨å ´æ¬¡'}</button>`
+                    ? `<button class="tpma-btn tpma-toggle-dates">${showAllDates ? '¶ÈÅã¥Ü²Å¦X±ø¥ó³õ¦¸' : 'Åã¥Ü¥ş³¡³õ¦¸'}</button>`
                     : ''
                 }
             </div>
 
-            <label>æ›´æ–°æ—¥æœŸ</label>
+            <label>§ó·s¤é´Á</label>
             <div class="value">${esc(c.updated_at || '')}</div>
 
             <div class="tpma-row-actions">
-                <button class="tpma-btn tpma-edit">ç·¨è¼¯</button>
+                <button class="tpma-btn tpma-edit">½s¿è</button>
             </div>
         `;
 
@@ -673,78 +673,78 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         div.innerHTML = `
             <div class="tpma-tags">
-                ${isClosed ? '<span style="color:#c00;">[å·²åœèª²]</span>' : ''}
+                ${isClosed ? '<span style="color:#c00;">[¤w°±½Ò]</span>' : ''}
             </div>
 
-            <label>èª²ç¨‹ç·¨è™Ÿï¼ˆå¯ç•™ç©ºç”±ç³»çµ±è‡ªå‹•ç”¢ç”Ÿï¼‰</label>
+            <label>½Òµ{½s¸¹¡]¥i¯dªÅ¥Ñ¨t²Î¦Û°Ê²£¥Í¡^</label>
             <input type="text"
                    data-field="course_code"
                    value="${esc(c.course_code || '')}"
-                   placeholder="ä¾‹ï¼šè¬›å¸«ç¢¼ + é¡åˆ¥ç¢¼ + æµæ°´è™Ÿ">
+                   placeholder="¨Ò¡GÁ¿®v½X + Ãş§O½X + ¬y¤ô¸¹">
 
-            <label>èª²ç¨‹åç¨± <span class="tpma-required-label">å¿…å¡«</span></label>
+            <label>½Òµ{¦WºÙ <span class="tpma-required-label">¥²¶ñ</span></label>
             <input type="text" data-field="course_name" value="${esc(c.course_name || '')}">
 
-            <label>èª²ç¨‹é¡åˆ¥ <span class="tpma-required-label">å¿…å¡«</span></label>
+            <label>½Òµ{Ãş§O <span class="tpma-required-label">¥²¶ñ</span></label>
             <select data-field="category_code">
-                <option value="">è«‹é¸æ“‡</option>
-                <optgroup label="æ ¸å¿ƒèª²ç¨‹">
-                    <option value="A1">è‘£äº‹çš„æ³•å¾‹ç¾©å‹™èˆ‡è²¬ä»»</option>
-                    <option value="A2">è‘£äº‹æœƒçš„æ¶æ§‹èˆ‡é‹ä½œ</option>
-                    <option value="A3">æå‡è‘£äº‹æœƒç¸¾æ•ˆ</option>
-                    <option value="A4">è²¡å‹™ã€æœƒè¨ˆ</option>
-                    <option value="A5">æ°¸çºŒç™¼å±•</option>
+                <option value="">½Ğ¿ï¾Ü</option>
+                <optgroup label="®Ö¤ß½Òµ{">
+                    <option value="A1">¸³¨Æªºªk«ß¸q°È»P³d¥ô</option>
+                    <option value="A2">¸³¨Æ·|ªº¬[ºc»P¹B§@</option>
+                    <option value="A3">´£¤É¸³¨Æ·|ÁZ®Ä</option>
+                    <option value="A4">°]°È¡B·|­p</option>
+                    <option value="A5">¥ÃÄòµo®i</option>
                 </optgroup>
-                <optgroup label="å°ˆæ¥­èª²ç¨‹">
-                    <option value="B1">è‘£äº‹æœƒæˆå“¡å’Œç®¡ç†åœ˜éšŠä¹‹é–“çš„é—œä¿‚èˆ‡åˆä½œ</option>
-                    <option value="B2">è‘£äº‹èˆ‡è‚¡æ±æœƒäº‹å‹™</option>
-                    <option value="B3">å…¬å¸æ‰€å±¬ç”¢æ¥­ä¹‹æ¥­å‹™ã€å•†å‹™</option>
-                    <option value="B4">é¢¨éšªç®¡ç†ã€å…§éƒ¨æ§åˆ¶ã€æ•¸ä½æ²»ç†</option>
-                    <option value="B5">å…¶ä»–</option>
+                <optgroup label="±M·~½Òµ{">
+                    <option value="B1">¸³¨Æ·|¦¨­û©MºŞ²z¹Î¶¤¤§¶¡ªºÃö«Y»P¦X§@</option>
+                    <option value="B2">¸³¨Æ»PªÑªF·|¨Æ°È</option>
+                    <option value="B3">¤½¥q©ÒÄİ²£·~¤§·~°È¡B°Ó°È</option>
+                    <option value="B4">­·ÀIºŞ²z¡B¤º³¡±±¨î¡B¼Æ¦ìªv²z</option>
+                    <option value="B5">¨ä¥L</option>
                 </optgroup>
             </select>
 
-            <label>è¬›å¸« <span class="tpma-required-label">å¿…å¡«</span></label>
+            <label>Á¿®v <span class="tpma-required-label">¥²¶ñ</span></label>
             <div>
                 <select data-field="lecturer_code"></select>
-                <button type="button" class="tpma-btn tpma-add-lecturer">ï¼‹æ–°å¢è¬›å¸«</button>
+                <button type="button" class="tpma-btn tpma-add-lecturer">¡Ï·s¼WÁ¿®v</button>
             </div>
 
-            <label>èª²ç¨‹ç°¡ä»‹</label>
+            <label>½Òµ{Â²¤¶</label>
             <textarea rows="3" data-field="intro">${esc(c.intro || '')}</textarea>
 
-            <label>èª²ç¨‹å¤§ç¶±ï¼ˆMarkdown åŸå§‹å…§å®¹ï¼‰</label>
+            <label>½Òµ{¤jºõ¡]Markdown ­ì©l¤º®e¡^</label>
             <textarea rows="5" data-field="outline">${esc(c.outline || '')}</textarea>
 
-			<label>æˆèª²æ™‚é•·ï¼ˆå°æ™‚ï¼‰</label>
+			<label>±Â½Ò®Éªø¡]¤p®É¡^</label>
 			<select data-field="duration_hours">
-				<option value="3" ${!c.duration_minutes || c.duration_minutes==180?'selected':''}>3 å°æ™‚</option>
-				<option value="2" ${c.duration_minutes==120?'selected':''}>2 å°æ™‚</option>
-				<option value="4" ${c.duration_minutes==240?'selected':''}>4 å°æ™‚</option>
+				<option value="3" ${!c.duration_minutes || c.duration_minutes==180?'selected':''}>3 ¤p®É</option>
+				<option value="2" ${c.duration_minutes==120?'selected':''}>2 ¤p®É</option>
+				<option value="4" ${c.duration_minutes==240?'selected':''}>4 ¤p®É</option>
 				${c.duration_minutes && ![120,180,240].includes(parseInt(c.duration_minutes,10))
-					? `<option value="${(parseInt(c.duration_minutes,10)/60).toFixed(1)}" selected>${(parseInt(c.duration_minutes,10)/60).toFixed(1)} å°æ™‚ï¼ˆç¾æœ‰å€¼ï¼‰</option>` : ''
+					? `<option value="${(parseInt(c.duration_minutes,10)/60).toFixed(1)}" selected>${(parseInt(c.duration_minutes,10)/60).toFixed(1)} ¤p®É¡]²{¦³­È¡^</option>` : ''
 				}
 			</select>
 
-            <label>æˆèª²æ—¥æœŸæ™‚é–“ï¼ˆå¤šç­†ï¼Œå¯æ‰‹é¸æˆ–è²¼ä¸Šï¼‰</label>
+            <label>±Â½Ò¤é´Á®É¶¡¡]¦hµ§¡A¥i¤â¿ï©Î¶K¤W¡^</label>
             <div class="tpma-course-dates" data-field="sessions"></div>
             <div class="tpma-bulk">
-                ä¸€è¡Œä¸€ç­†ï¼Œæ ¼å¼ï¼šYYYY-MM-DD HH:MMï¼Œä¾‹å¦‚ï¼š2025-03-01 09:00<br>
-                <textarea rows="3" class="tpma-bulk-input" placeholder="åœ¨æ­¤è²¼ä¸Šå¤šç­†æ—¥æœŸæ™‚é–“ï¼Œè¼¸å…¥å®Œç•¢ï¼Œè«‹é»åŒ¯å…¥"></textarea>
-                <button type="button" class="tpma-btn tpma-bulk-apply">åŒ¯å…¥</button>
+                ¤@¦æ¤@µ§¡A®æ¦¡¡GYYYY-MM-DD HH:MM¡A¨Ò¦p¡G2025-03-01 09:00<br>
+                <textarea rows="3" class="tpma-bulk-input" placeholder="¦b¦¹¶K¤W¦hµ§¤é´Á®É¶¡¡A¿é¤J§¹²¦¡A½ĞÂI¶×¤J"></textarea>
+                <button type="button" class="tpma-btn tpma-bulk-apply">¶×¤J</button>
             </div>
 
             <div class="tpma-row-actions">
-                <label>èª²ç¨‹ç‹€æ…‹</label>
+                <label>½Òµ{ª¬ºA</label>
                 <select data-field="is_active">
-                    <option value="1" ${isClosed ? '' : 'selected'}>å…¬é–‹ä¸­</option>
-                    <option value="0" ${isClosed ? 'selected' : ''}>å·²åœèª²</option>
+                    <option value="1" ${isClosed ? '' : 'selected'}>¤½¶}¤¤</option>
+                    <option value="0" ${isClosed ? 'selected' : ''}>¤w°±½Ò</option>
                 </select>
             </div>
 
             <div class="tpma-row-actions">
-                <button class="tpma-btn tpma-save">å„²å­˜</button>
-                <button class="tpma-btn tpma-cancel">å–æ¶ˆ</button>
+                <button class="tpma-btn tpma-save">Àx¦s</button>
+                <button class="tpma-btn tpma-cancel">¨ú®ø</button>
                 <div class="tpma-error tpma-save-error" style="display:none;"></div>
             </div>
         `;
@@ -752,14 +752,14 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         const catSel = div.querySelector('[data-field="category_code"]');
         if (catSel && c.category_code) catSel.value = c.category_code;
 
-        // è¬›å¸«ä¸‹æ‹‰
+        // Á¿®v¤U©Ô
         const lecSel = div.querySelector('[data-field="lecturer_code"]');
         if (lecSel) {
             rebuildLecturerSelect(lecSel);
             if (c.lecturer_code) lecSel.value = c.lecturer_code;
         }
 
-        // å ´æ¬¡
+        // ³õ¦¸
         const datesWrap = div.querySelector('.tpma-course-dates[data-field="sessions"]');
         if (datesWrap) {
             if (sessions.length) {
@@ -769,7 +769,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             }
         }
 
-        // bulk åŒ¯å…¥
+        // bulk ¶×¤J
         const bulkArea = div.querySelector('.tpma-bulk-input');
         const bulkBtn  = div.querySelector('.tpma-bulk-apply');
         if (bulkBtn && bulkArea && datesWrap) {
@@ -783,7 +783,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             };
         }
 
-        // æ–°å¢è¬›å¸«ï¼ˆé–‹ Modalï¼‰
+        // ·s¼WÁ¿®v¡]¶} Modal¡^
         const addLectBtn = div.querySelector('.tpma-add-lecturer');
         if (addLectBtn && lecSel) {
             addLectBtn.onclick = () => openLecturerModal(lecSel);
@@ -799,7 +799,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         let val = '';
         if (raw) {
             const dt = raw.replace('T',' ').trim();
-            // è½‰æˆ datetime-local value
+            // Âà¦¨ datetime-local value
             const d = parseDate(dt.replace(' ','T'));
             if (d) {
                 const y = d.getFullYear();
@@ -814,7 +814,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         row.className = 'tpma-session-row';
         row.innerHTML = `
             <input type="datetime-local" value="${val}">
-            <button type="button" class="tpma-btn tpma-session-remove">åˆªé™¤</button>
+            <button type="button" class="tpma-btn tpma-session-remove">§R°£</button>
         `;
         row.querySelector('.tpma-session-remove').onclick = () => row.remove();
         container.appendChild(row);
@@ -854,7 +854,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
         if (hasError) {
             if (saveError) {
-                saveError.textContent = 'è«‹ç¢ºèªã€Œèª²ç¨‹åç¨±ï¼èª²ç¨‹é¡åˆ¥ï¼è¬›å¸«ã€çš†å·²å¡«å¯«ã€‚';
+                saveError.textContent = '½Ğ½T»{¡u½Òµ{¦WºÙ¡ş½Òµ{Ãş§O¡şÁ¿®v¡v¬Ò¤w¶ñ¼g¡C';
                 saveError.style.display = 'block';
             }
             return;
@@ -899,7 +899,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             const result = await res.json();
 
             if (!res.ok || !result || !result.success) {
-                const msg = (result && result.message) ? result.message : 'å„²å­˜å¤±æ•—';
+                const msg = (result && result.message) ? result.message : 'Àx¦s¥¢±Ñ';
                 if (saveError) {
                     saveError.textContent = msg;
                     saveError.style.display = 'block';
@@ -907,18 +907,18 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                 return;
             }
 
-            alert('å·²å„²å­˜ï¼Œèª²ç¨‹ç·¨è™Ÿï¼š' + (result.course_code || payload.course_code || ''));
+            alert('¤wÀx¦s¡A½Òµ{½s¸¹¡G' + (result.course_code || payload.course_code || ''));
 
             await fetchAll();
         } catch (e) {
             if (saveError) {
-                saveError.textContent = 'å„²å­˜ç™¼ç”ŸéŒ¯èª¤ï¼Œè«‹ç¨å¾Œé‡è©¦ã€‚';
+                saveError.textContent = 'Àx¦sµo¥Í¿ù»~¡A½Ğµy«á­«¸Õ¡C';
                 saveError.style.display = 'block';
             }
         }
     }
 
-    // ç¯©é¸äº‹ä»¶
+    // ¿z¿ï¨Æ¥ó
     [$q,$cat,$lec,$course,$dFrom,$dTo,$mode].forEach(el => {
         if (!el) return;
         el.addEventListener('input', applyFilters);
@@ -968,15 +968,15 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         });
     }
 
-    // Modal æŒ‰éˆ•äº‹ä»¶
+    // Modal «ö¶s¨Æ¥ó
     mBtnCancel.addEventListener('click', closeLecturerModal);
     modalBackdrop.addEventListener('click', closeLecturerModal);
     mBtnSave.addEventListener('click', saveLecturerFromModal);
 
-    // åˆæ¬¡è¼‰å…¥
+    // ªì¦¸¸ü¤J
     fetchAll().catch(e => {
         console.error(e);
-        courseListEl.innerHTML = '<p>è¼‰å…¥å¤±æ•—ï¼Œè«‹é‡æ–°æ•´ç†ã€‚</p>';
+        courseListEl.innerHTML = '<p>¸ü¤J¥¢±Ñ¡A½Ğ­«·s¾ã²z¡C</p>';
     });
 })();
 </script>
