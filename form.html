@@ -431,6 +431,39 @@ function formatMobileInput(input){
     input.value = v;
   }
 }
+	
+function getQueryParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    cid: params.get('course_id') || '',
+    sid: params.get('session_id') || ''
+  };
+}
+
+function applyInitialSelectionFromQuery() {
+  const { cid, sid } = getQueryParams();
+  if (!cid) return;
+
+  const courseSelect  = document.getElementById('course-select');
+  const sessionSelect = document.getElementById('session-select');
+
+  // 嘗試選中對應的課程
+  const courseOption = Array.from(courseSelect.options).find(opt => opt.value == cid);
+  if (!courseOption) return;
+
+  courseSelect.value = cid;
+  onCourseChange(); // 觸發原本的課程切換邏輯，填入講師/簡介/場次
+
+  // 如果有給 session_id，再選定場次
+  if (sid && !sessionSelect.disabled) {
+    const sessionOption = Array.from(sessionSelect.options).find(opt => opt.value == sid);
+    if (sessionOption) {
+      sessionSelect.value = sid;
+      clearError('session-select');
+    }
+  }
+}
+	
 
 function setupMobileInput(input){
   // focus 時顯示純數字方便改
@@ -514,7 +547,12 @@ async function loadCourses(){
       opt.textContent = c.course_name;
       courseSelect.appendChild(opt);
     });
+
     loadingEl.textContent = '';
+
+    // ★ 課程列表載入完成後，依網址參數自動選定課程與場次
+    applyInitialSelectionFromQuery();
+
   }catch(e){
     console.error(e);
     loadingEl.textContent = '課程資料載入失敗，請稍後再試。';

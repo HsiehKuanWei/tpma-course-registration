@@ -5,201 +5,269 @@ $apiBase   = esc_url_raw( untrailingslashit( rest_url('tpma/v1') ) );
 $restNonce = wp_create_nonce( 'wp_rest' );
 ?>
 <style>
-.tpma-wrap { font-size:13px; }
+	.tpma-wrap { font-size:14px; }
 
-/* 上方文字搜尋列 */
-.tpma-filter-row {
-    display:flex;
-    flex-wrap:wrap;
-    gap:6px;
-    margin-bottom:8px;
-    align-items:center;
-}
-.tpma-filter-row input,
-.tpma-filter-row select {
-    padding:3px 6px;
-    font-size:13px;
-}
+	/* 上方文字搜尋列 */
+	.tpma-filter-row {
+		display:flex;
+		flex-wrap:wrap;
+		gap:6px;
+		margin-bottom:8px;
+		align-items:center;
+	}
+	.tpma-filter-row input,
+	.tpma-filter-row select {
+		padding:3px 6px;
+		font-size:14px;
+	}
 
-/* 表頭＋下拉選單 */
-.tpma-th-inner {
-    position:relative;
-    display:flex;
-    align-items:center;
-    gap:4px;
-}
-.tpma-th-menu-btn {
-    border:1px solid #999;
-    background:#fff;
-    cursor:pointer;
-    font-size:10px;
-    padding:0 4px;
-    border-radius:3px;
-    line-height:1.2;
-}
-.tpma-th-menu-btn:hover {
-    background:#eee;
-}
-.tpma-th-menu-btn.tpma-filter-active {
-    background:#cfe9ff;
-    border-color:#4a90e2;
-}
-.tpma-th-menu {
-    position:absolute;
-    top:100%;
-    right:0;
-    background:#fff;
-    border:1px solid #ccc;
-    padding:6px;
-    z-index:50;
-    min-width:200px;
-    display:none;
-    box-shadow:0 2px 5px rgba(0,0,0,.15);
-}
-.tpma-th-menu h4 {
-    margin:0 0 4px;
-    font-size:11px;
-}
-.tpma-th-menu .tpma-menu-section {
-    margin-top:4px;
-    padding-top:4px;
-    border-top:1px solid #eee;
-}
-.tpma-th-menu label {
-    display:block;
-    font-size:11px;
-    margin:2px 0;
-}
-.tpma-th-menu input,
-.tpma-th-menu select {
-    width:100%;
-    box-sizing:border-box;
-    font-size:11px;
-    padding:2px 3px;
-}
-.tpma-th-menu .tpma-btn {
-    font-size:11px;
-    padding:2px 6px;
-    margin-top:4px;
-}
+	/* 表頭＋下拉選單 */
+	.tpma-th-inner {
+		position:relative;
+		display:flex;
+		align-items:center;
+		gap:4px;
+	}
+	.tpma-th-menu-btn {
+		border:1px solid #999;
+		background:#fff;
+		cursor:pointer;
+		font-size:14px;
+		padding:0 4px;
+		border-radius:3px;
+		line-height:1.2;
+	}
+	.tpma-th-menu-btn:hover {
+		background:#eee;
+	}
+	.tpma-th-menu-btn.tpma-filter-active {
+		background:#cfe9ff;
+		border-color:#4a90e2;
+	}
+	.tpma-th-menu {
+		position:absolute;
+		top:100%;
+		left:0;
+		background:#fff;
+		border:1px solid #ccc;
+		padding:6px;
+		z-index:50;
+		min-width:200px;
+		display:none;
+		box-shadow:0 2px 5px rgba(0,0,0,.15);
+	}
+	.tpma-th-menu h4 {
+		margin:0 0 4px;
+		font-size:12px;
+	}
+	.tpma-th-menu .tpma-menu-section {
+		margin-top: 4px;
+		padding-top: 4px;
+		border-top: 1px solid #eee;
+		display: grid;
+	}
+	.tpma-th-menu label {
+		display:block;
+		font-size:14px;
+		margin:2px 0;
+		text-align:left;
+	}
+	.tpma-th-menu input,
+	.tpma-th-menu select {
+		box-sizing:border-box;
+		font-size:12px;
+		padding:2px 3px;
+	}
+	.tpma-th-menu .tpma-btn {
+		font-size:12px;
+		padding:2px 6px;
+		margin-top:4px;
+	}
 
-.tpma-btn {
-    padding:3px 8px;
-    font-size:12px;
-    cursor:pointer;
-    margin:0 4px 4px 0;
-}
+	.tpma-btn {
+		padding:3px 8px;
+		font-size:14px;
+		cursor:pointer;
+		margin:0 4px 4px 0;
+		}
 
-/* 表格 */
-.tpma-reg-table {
-    width:100%;
-    border-collapse:collapse;
-    font-size:12px;
-}
-.tpma-reg-table th,
-.tpma-reg-table td {
-    border:1px solid #ddd;
-    padding:4px 6px;
-    vertical-align:top;
-}
-.tpma-reg-table th {
-    background:#f7f7f7;
-    white-space:nowrap;
-}
-.tpma-seq-col {
-    text-align:right;
-    width:40px;
-}
+	.tpma-th-menu{
+		white-space:normal;		
+	}	
+	
+	.tpma-menu-options{
+		width:100%;
+		border-radius:0;
+		padding: 3px 2px;
+		margin: 0;
+		font-size: 14px;
+		text-align: left;
+		background: #FFF;
+		color: black;
+	}
+	
+	.tpma-menu-options:hover{
+		background: #BBB;
+		color: black;
+		cursor:pointer;
+	}
+	
+	.tpma-menu-options:has(input[type="checkbox"]:checked){
+		color: #888;
+	}
 
-/* 單一儲存格：最多兩行，超出隱藏 */
-.tpma-cell-wrap {
-    display:-webkit-box;
-    -webkit-box-orient:vertical;
-    -webkit-line-clamp:2;
-    overflow:hidden;
-    word-break:break-all;
-}
+	.tpma-menu-options input[type=checkbox] {
+		display: none;
+	}	
+	
+	
+	/* 表格 */
+	.tpma-reg-table {
+		width:100%;
+		border-collapse:collapse;
+		font-size:14px;
+	}
+	.tpma-reg-table th,
+	.tpma-reg-table td {
+		border:1px solid #ddd;
+		padding:4px 6px;
+		vertical-align:top;
+	}
+	.tpma-reg-table th {
+		background:#f7f7f7;
+		white-space:nowrap;
+	}
+	.tpma-seq-col {
+		text-align:right;
+		width:40px;
+	}
 
-/* 狀態 chip */
-.tpma-chip {
-    display:inline-block;
-    padding:1px 6px;
-    border-radius:999px;
-    border:1px solid #ccc;
-    font-size:11px;
-    white-space:nowrap;
-}
-.tpma-chip-status-pending { background:#fff3cd; border-color:#ffeeba; }
-.tpma-chip-status-paid { background:#d4edda; border-color:#c3e6cb; }
-.tpma-chip-status-test_pending,
-.tpma-chip-status-cert_pending { background:#d1ecf1; border-color:#bee5eb; }
-.tpma-chip-status-completed { background:#e2e3e5; border-color:#d6d8db; }
-.tpma-chip-status-cancelled { background:#f8d7da; border-color:#f5c6cb; }
+	/* 單一儲存格：最多兩行，超出隱藏 */
+	.tpma-cell-wrap {
+		display:-webkit-box;
+		-webkit-box-orient:vertical;
+		-webkit-line-clamp:2;
+		overflow:hidden;
+		word-break:break-all;
+	}
 
-/* 詳細列：用兩欄 grid */
-.tpma-reg-detail-row {
-    background:#fcfcfc;
-}
-.tpma-reg-detail-cell {
-    padding:6px 8px;
-}
-.tpma-reg-detail-grid {
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
-    gap:8px 16px;
-}
-.tpma-reg-detail-section-title {
-    font-weight:bold;
-    border-left:3px solid #999;
-    padding-left:4px;
-    margin-bottom:4px;
-}
-.tpma-reg-detail-section label {
-    display:block;
-    font-weight:bold;
-    margin-top:4px;
-    font-size:11px;
-}
-.tpma-reg-detail-section .value {
-    margin-top:2px;
-    white-space:pre-wrap;
-}
-.tpma-reg-detail-section input,
-.tpma-reg-detail-section select,
-.tpma-reg-detail-section textarea {
-    width:100%;
-    box-sizing:border-box;
-    font-size:12px;
-    padding:3px 4px;
-}
-.tpma-reg-detail-section textarea {
-    min-height:60px;
-}
-.tpma-reg-detail-actions {
-    text-align:right;
-    margin-top:6px;
-}
+	/* 狀態 chip */
+	.tpma-chip {
+		display:inline-block;
+		padding:1px 6px;
+		border-radius:999px;
+		border:1px solid #ccc;
+		font-size:14px;
+		white-space:nowrap;
+	}
+	.tpma-chip-status-pending { background:#fff3cd; border-color:#ffeeba; }
+	.tpma-chip-status-paid { background:#d4edda; border-color:#c3e6cb; }
+	.tpma-chip-status-test_pending,
+	.tpma-chip-status-cert_pending { background:#d1ecf1; border-color:#bee5eb; }
+	.tpma-chip-status-completed { background:#e2e3e5; border-color:#d6d8db; }
+	.tpma-chip-status-cancelled { background:#f8d7da; border-color:#f5c6cb; }
 
-/* 批次按鈕 / 欄位 disabled 狀態 */
-.tpma-batch-btn:disabled,
-.tpma-batch-select:disabled,
-.tpma-batch-input:disabled {
-    opacity:0.5;
-    cursor:not-allowed;
-}
+	/* 詳細列：用兩欄 grid */
+	.tpma-reg-detail-row {
+		background:#fcfcfc;
+	}
+	.tpma-reg-detail-cell {
+		padding:6px 8px;
+	}
+	.tpma-reg-detail-grid {
+		display:grid;
+		grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
+		gap:8px 16px;
+	}
+	.tpma-reg-detail-section-title {
+		font-weight:bold;
+		border-left:3px solid #999;
+		padding-left:4px;
+		margin-bottom:4px;
+	}
+	.tpma-reg-detail-section label {
+		display:block;
+		font-weight:bold;
+		margin-top:4px;
+		font-size:14px;
+	}
+	.tpma-reg-detail-section .value {
+		margin-top:2px;
+		white-space:pre-wrap;
+	}
+	.tpma-reg-detail-section input,
+	.tpma-reg-detail-section select,
+	.tpma-reg-detail-section textarea {
+		width:100%;
+		box-sizing:border-box;
+		font-size:14px;
+		padding:3px 4px;
+	}
+	.tpma-reg-detail-section textarea {
+		min-height:60px;
+	}
+	.tpma-reg-detail-actions {
+		text-align:right;
+		margin-top:6px;
+	}
 
-/* 分頁 */
-.tpma-pagination {
-    margin-top:8px;
-    display:flex;
-    align-items:center;
-    gap:8px;
-    justify-content:flex-end;
-    font-size:12px;
-}
-.tpma-pagination-info {
-    white-space:nowrap;
-}
+	/* 批次按鈕 / 欄位 disabled 狀態 */
+	.tpma-batch-btn:disabled,
+	.tpma-batch-select:disabled,
+	.tpma-batch-input:disabled {
+		opacity:0.5;
+		cursor:not-allowed;
+	}
+
+	/* 分頁 */
+	.tpma-pagination {
+		margin-top:8px;
+		display:flex;
+		align-items:center;
+		gap:8px;
+		justify-content:flex-end;
+		font-size:14px;
+	}
+	.tpma-pagination-info {
+		white-space:nowrap;
+	}
+	
+	/* 狀態圖標 */
+	.tpma-status-icons {
+		display:flex;
+		gap:3px;
+		justify-content:center;
+		align-items:center;
+	}
+
+	.tpma-status-pill {
+		display:inline-block;
+		padding:0 4px;
+		border-radius:999px;
+		font-size:10px;
+		line-height:14px;
+		white-space:nowrap;
+		border:1px solid transparent;
+	}
+
+	/* 組一：報名狀態 */
+	.tpma-status-pill-g1-pending     { background:#fff3cd; border-color:#ffeeba; }
+	.tpma-status-pill-g1-verifying   { background:#ffe6b3; border-color:#ffcc80; }
+	.tpma-status-pill-g1-paid        { background:#d4edda; border-color:#c3e6cb; }
+	.tpma-status-pill-g1-cert        { background:#d1ecf1; border-color:#bee5eb; }
+	.tpma-status-pill-g1-completed   { background:#e2e3e5; border-color:#d6d8db; }
+	.tpma-status-pill-g1-cancelled   { background:#f8d7da; border-color:#f5c6cb; }
+
+	/* 組二：收據狀態 */
+	.tpma-status-pill-g2-pending   { background:#f0f0f0; border-color:#d6d8db; }
+	.tpma-status-pill-g2-opened    { background:#e2f0ff; border-color:#b3d4ff; }
+	.tpma-status-pill-g2-sent      { background:#d4edda; border-color:#c3e6cb; }
+
+	/* 組三：測驗狀態 */
+	.tpma-status-pill-g3-notyet   { background:#fff3cd; border-color:#ffeeba; }
+	.tpma-status-pill-g3-done     { background:#d4edda; border-color:#c3e6cb; }	
+
+
 </style>
 
 <div id="tpma-reg-admin" class="tpma-wrap">
@@ -227,20 +295,33 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     <span>報名時間</span>
                     <button class="tpma-th-menu-btn" data-menu-toggle="created_at">▾</button>
                     <div class="tpma-th-menu" data-menu-col="created_at">
-						<h4>報名時間篩選</h4>
 						<div class="tpma-menu-section">
-							<label><input type="checkbox" id="tpma-filter-created-same"> 起訖日相同</label>
-							<label>起始日期</label>
-							<input type="date" id="tpma-filter-created-from">
-							<label id="tpma-label-created-to">結束日期</label>
-							<input type="date" id="tpma-filter-created-to">
-							<button class="tpma-btn" id="tpma-btn-clear-created">清除日期</button>
+                            <label class="tpma-menu-options" data-sort-field="created_at" data-sort-dir="asc">升冪排列</label>
+                            <label class="tpma-menu-options" data-sort-field="created_at" data-sort-dir="desc">降冪排列</label>
+                        </div>						
+						<div class="tpma-menu-section">
+							<div>
+								<label class="tpma-menu-options">
+									<input type="checkbox" id="tpma-filter-created-range" style="display: none;">
+									<span>範圍搜索</span>
+								</label>
+							</div>
+							
+							<!-- 單日模式 -->
+							<div id="tpma-created-single">
+								<input type="date" id="tpma-filter-created-single" list="tpma-created-date-list">
+								<datalist id="tpma-created-date-list"></datalist>
+							</div>
+
+							<!-- 範圍模式 -->
+							<div id="tpma-created-range" style="display:none;">
+								<input type="date" id="tpma-filter-created-from" placeholder="起日">
+								<input type="date" id="tpma-filter-created-to" placeholder="訖日">
+							</div>
+							<div class="tpma-menu-section">
+								<label class="tpma-menu-options" id="tpma-btn-clear-created">清除篩選</label>
+							</div>
 						</div>
-						<div class="tpma-menu-section">
-                            <label>排序</label>
-                            <button class="tpma-btn" data-sort-field="created_at" data-sort-dir="asc">由舊到新</button>
-                            <button class="tpma-btn" data-sort-field="created_at" data-sort-dir="desc">由新到舊</button>
-                        </div>
                     </div>
                 </div>
             </th>
@@ -251,19 +332,17 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     <span>課程名稱</span>
                     <button class="tpma-th-menu-btn" data-menu-toggle="course">▾</button>
                     <div class="tpma-th-menu" data-menu-col="course">
-						<h4>課程篩選</h4>
 						<div class="tpma-menu-section">
-							<label>課程名稱</label>
+                            <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="asc">升冪排列</label>
+                            <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="desc">降冪排列</label>
+                        </div>						
+						<div class="tpma-menu-section">
 							<select id="tpma-filter-course">
 								<option value="">全部課程</option>
 							</select>
-							<button class="tpma-btn" id="tpma-btn-clear-course">清除課程</button>
+							<label class="tpma-menu-options" id="tpma-btn-clear-course">清除篩選</label>
 						</div>
-						<div class="tpma-menu-section">
-                            <label>排序</label>
-                            <button class="tpma-btn" data-sort-field="course_name" data-sort-dir="asc">課程 A→Z</button>
-                            <button class="tpma-btn" data-sort-field="course_name" data-sort-dir="desc">課程 Z→A</button>
-                        </div>
+
                     </div>
                 </div>
             </th>
@@ -274,19 +353,29 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     <span>授課日期</span>
                     <button class="tpma-th-menu-btn" data-menu-toggle="class_date">▾</button>
                     <div class="tpma-th-menu" data-menu-col="class_date">
-                        <h4>授課日期篩選</h4>
                         <div class="tpma-menu-section">
-                            <label>授課日期（依有報名資料建立）</label>
-                            <select id="tpma-filter-class-date">
-                                <option value="">全部日期</option>
-                            </select>
-                            <button class="tpma-btn" id="tpma-btn-clear-class-date">清除日期</button>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <label>排序</label>
-                            <button class="tpma-btn" data-sort-field="class_date" data-sort-dir="asc">日期 ↑</button>
-                            <button class="tpma-btn" data-sort-field="class_date" data-sort-dir="desc">日期 ↓</button>
-                        </div>
+                            <label class="tpma-menu-options" data-sort-field="class_date" data-sort-dir="asc">升冪排列</label>
+                            <label class="tpma-menu-options" data-sort-field="class_date" data-sort-dir="desc">降冪排列</label>
+                        </div>						
+						<div class="tpma-menu-section">
+							<label class="tpma-menu-options">
+								<input type="checkbox" id="tpma-filter-class-range">
+								<span>範圍搜索</span>	
+							</label>
+							<!-- 單日模式 -->
+							<div id="tpma-class-single">
+								<input type="date" id="tpma-filter-class-single" list="tpma-class-date-list">
+								<datalist id="tpma-class-date-list"></datalist>
+							</div>
+							<!-- 範圍模式 -->
+							<div id="tpma-class-range" style="display:none;">
+								<input type="date" id="tpma-filter-class-from" placeholder="起日">
+								<input type="date" id="tpma-filter-class-to" placeholder="訖日">
+							</div>
+
+							<label class="tpma-menu-options" id="tpma-btn-clear-class-date">清除篩選</label>
+						</div>
+
                     </div>
                 </div>
             </th>
@@ -297,24 +386,35 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     <span>匯款日期</span>
                     <button class="tpma-th-menu-btn" data-menu-toggle="remit_paid_at">▾</button>
                     <div class="tpma-th-menu" data-menu-col="remit_paid_at">
-						<h4>匯款日期篩選 / 批次</h4>
 						<div class="tpma-menu-section">
-							<label><input type="checkbox" id="tpma-filter-remit-same"> 起訖日相同</label>
-							<label>起始日期</label>
-							<input type="date" id="tpma-filter-remit-from">
-							<label id="tpma-label-remit-to">結束日期</label>
-							<input type="date" id="tpma-filter-remit-to">
-							<button class="tpma-btn" id="tpma-btn-clear-remit">清除日期</button>
+                            <label class="tpma-menu-options" data-sort-field="remit_paid_at" data-sort-dir="asc">升冪排列</label>
+                            <label class="tpma-menu-options" data-sort-field="remit_paid_at" data-sort-dir="desc">降冪排列</label>
+                        </div>						
+						<div class="tpma-menu-section">
+							<label class="tpma-menu-options">
+								<input type="checkbox" id="tpma-filter-remit-range">
+								<span>範圍搜索</span>
+							</label>
+
+							<!-- 單日模式 -->
+							<div id="tpma-remit-single">
+								<input type="date" id="tpma-filter-remit-single" list="tpma-remit-date-list">
+								<datalist id="tpma-remit-date-list"></datalist>
+							</div>
+
+							<!-- 範圍模式 -->
+							<div id="tpma-remit-range" style="display:none;">
+								<input type="date" id="tpma-filter-remit-from" placeholder="起日">
+								<input type="date" id="tpma-filter-remit-to" placeholder="訖日">
+							</div>
+
+							<label class="tpma-menu-options" class="tpma-btn" id="tpma-btn-clear-remit">清除篩選</label>
 						</div>
-						<div class="tpma-menu-section">
-                            <label>排序</label>
-                            <button class="tpma-btn" data-sort-field="remit_paid_at" data-sort-dir="asc">日期 ↑</button>
-                            <button class="tpma-btn" data-sort-field="remit_paid_at" data-sort-dir="desc">日期 ↓</button>
-                        </div>
+
                         <div class="tpma-menu-section">
-                            <label>批次：匯款日期</label>
+                            <label>批次修改匯款日期</label>
                             <input type="date" id="tpma-batch-remit-date" class="tpma-batch-input">
-                            <button class="tpma-btn tpma-batch-btn" data-batch-field="remit_paid_at">批次設定匯款日期</button>
+                            <button class="tpma-btn tpma-batch-btn" data-batch-field="remit_paid_at">套用批次設定</button>
                         </div>
                     </div>
                 </div>
@@ -326,11 +426,9 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     <span>學員姓名</span>
                     <button class="tpma-th-menu-btn" data-menu-toggle="student_name">▾</button>
                     <div class="tpma-th-menu" data-menu-col="student_name">
-                        <h4>學員排序</h4>
                         <div class="tpma-menu-section">
-                            <label>排序</label>
-                            <button class="tpma-btn" data-sort-field="student_name" data-sort-dir="asc">姓名 A→Z</button>
-                            <button class="tpma-btn" data-sort-field="student_name" data-sort-dir="desc">姓名 Z→A</button>
+                            <label class="tpma-menu-options" data-sort-field="student_name" data-sort-dir="asc">升冪排列</label>
+                            <label class="tpma-menu-options" data-sort-field="student_name" data-sort-dir="desc">降冪排列</label>
                         </div>
                     </div>
                 </div>
@@ -342,115 +440,105 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                     <span>公司抬頭</span>
                     <button class="tpma-th-menu-btn" data-menu-toggle="company_name">▾</button>
                     <div class="tpma-th-menu" data-menu-col="company_name">
-                        <h4>公司排序</h4>
                         <div class="tpma-menu-section">
-                            <label>排序</label>
-                            <button class="tpma-btn" data-sort-field="company_name" data-sort-dir="asc">公司 A→Z</button>
-                            <button class="tpma-btn" data-sort-field="company_name" data-sort-dir="desc">公司 Z→A</button>
+                            <label class="tpma-menu-options" data-sort-field="company_name" data-sort-dir="asc">升冪排列</label>
+                            <label class="tpma-menu-options" data-sort-field="company_name" data-sort-dir="desc">降冪排列</label>
                         </div>
                     </div>
                 </div>
             </th>
 
             <!-- 報名狀態 -->
-            <th>
-                <div class="tpma-th-inner">
-                    <span>報名狀態</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="status">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="status">
-                        <h4>報名狀態</h4>
-                        <div class="tpma-menu-section">
-                            <label>狀態篩選</label>
-                            <select id="tpma-filter-status">
-                                <option value="">全部狀態</option>
-                                <option value="pending">未付款</option>
-                                <option value="paid">已付款</option>
-                                <option value="test_pending">待測驗</option>
-                                <option value="cert_pending">待發證</option>
-                                <option value="completed">已結訓</option>
-                                <option value="cancelled">已取消</option>
-                            </select>
-                            <button class="tpma-btn" id="tpma-btn-clear-status">清除狀態</button>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <label>排序</label>
-                            <button class="tpma-btn" data-sort-field="status" data-sort-dir="asc">狀態↑</button>
-                            <button class="tpma-btn" data-sort-field="status" data-sort-dir="desc">狀態↓</button>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <label>批次修改報名狀態</label>
-                            <select id="tpma-batch-status" class="tpma-batch-select">
-                                <option value="">請選擇狀態</option>
-                                <option value="pending">未付款</option>
-                                <option value="paid">已付款</option>
-                                <option value="test_pending">待測驗</option>
-                                <option value="cert_pending">待發證</option>
-                                <option value="completed">已結訓</option>
-                                <option value="cancelled">已取消</option>
-                            </select>
-                            <button class="tpma-btn tpma-batch-btn" data-batch-field="status">批次設定狀態</button>
-                        </div>
-                    </div>
-                </div>
-            </th>
+			<!-- 狀態（報名 + 收據 + 測驗 圖標 + 多層級篩選 / 批次） -->
+			<th>
+				<div class="tpma-th-inner">
+					<span>狀態</span>
+					<button class="tpma-th-menu-btn" data-menu-toggle="status">▾</button>
+					<div class="tpma-th-menu" data-menu-col="status">
+						<h4>狀態篩選</h4>
 
-            <!-- 收據狀態 -->
-            <th>
-                <div class="tpma-th-inner">
-                    <span>收據狀態</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="receipt_status">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="receipt_status">
-                        <h4>收據狀態 / 方式</h4>
-                        <div class="tpma-menu-section">
-                            <label>收據狀態篩選</label>
-                            <select id="tpma-filter-receipt-status">
-                                <option value="">全部狀態</option>
-                                <option value="pending">待開立</option>
-                                <option value="auto">已自動開立</option>
-                                <option value="manual">已手動開立</option>
-                                <option value="sent">已寄出</option>
-                            </select>
-                            <button class="tpma-btn" id="tpma-btn-clear-receipt-status">清除狀態</button>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <label>收據方式篩選</label>
-                            <select id="tpma-filter-receipt-type">
-                                <option value="">全部方式</option>
-                                <option value="electronic">電子</option>
-                                <option value="paper">紙本</option>
-                            </select>
-                            <button class="tpma-btn" id="tpma-btn-clear-receipt-type">清除方式</button>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <label>批次修改收據狀態</label>
-                            <select id="tpma-batch-receipt-status" class="tpma-batch-select">
-                                <option value="">請選擇狀態</option>
-                                <option value="pending">待開立</option>
-                                <option value="auto">已自動開立</option>
-                                <option value="manual">已手動開立</option>
-                                <option value="sent">已寄出</option>
-                            </select>
-                            <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_status">批次設定狀態</button>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <label>批次修改收據方式</label>
-                            <select id="tpma-batch-receipt-type" class="tpma-batch-select">
-                                <option value="">請選擇方式</option>
-                                <option value="electronic">電子</option>
-                                <option value="paper">紙本</option>
-                            </select>
-                            <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_type">批次設定方式</button>
-                        </div>
-                    </div>
-                </div>
-            </th>
+						<div class="tpma-menu-section">
+							<label><strong>報名狀態</strong></label>
+							<select id="tpma-filter-status">
+								<option value="">全部</option>
+								<option value="pending">待付款</option>
+								<option value="verifying">待核帳</option>
+								<option value="paid">已付款</option>
+								<option value="cert_pending">待發證</option>
+								<option value="completed">已結訓</option>
+								<option value="cancelled">已取消</option>
+							</select>
+						</div>
+
+						<div class="tpma-menu-section">
+							<label><strong>收據狀態</strong></label>
+							<select id="tpma-filter-receipt-status">
+								<option value="">全部</option>
+								<option value="pending">待開立</option>
+								<option value="auto">已開立待寄（自動）</option>
+								<option value="manual">已開立待寄（手動）</option>
+								<option value="sent">已寄出</option>
+							</select>
+						</div>
+
+						<div class="tpma-menu-section">
+							<label><strong>測驗狀態</strong></label>
+							<select id="tpma-filter-test">
+								<option value="">全部</option>
+								<option value="notyet">待測驗</option>
+								<option value="done">已測驗</option>
+							</select>
+						</div>
+
+						<div class="tpma-menu-section">
+							<button class="tpma-btn" id="tpma-btn-clear-status-all">清除狀態篩選</button>
+						</div>
+
+						<!-- 第二層：批次修改 -->
+						<div class="tpma-menu-section">
+							<div style="font-weight:bold; margin-bottom:2px;">批次修改（第二層）</div>
+
+							<label>批次修改報名狀態</label>
+							<select id="tpma-batch-status" class="tpma-batch-select">
+								<option value="">請選擇狀態</option>
+								<option value="pending">待付款</option>
+								<option value="verifying">待核帳</option>
+								<option value="paid">已付款</option>
+								<option value="cert_pending">待發證</option>
+								<option value="completed">已結訓</option>
+								<option value="cancelled">已取消</option>
+							</select>
+							<button class="tpma-btn tpma-batch-btn" data-batch-field="status">批次設定報名狀態</button>
+
+							<label style="margin-top:4px;">批次修改收據狀態</label>
+							<select id="tpma-batch-receipt-status" class="tpma-batch-select">
+								<option value="">請選擇狀態</option>
+								<option value="pending">待開立</option>
+								<option value="auto">已開立待寄（自動）</option>
+								<option value="manual">已開立待寄（手動）</option>
+								<option value="sent">已寄出</option>
+							</select>
+							<button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_status">批次設定收據狀態</button>
+
+							<label style="margin-top:4px;">批次修改收據方式</label>
+							<select id="tpma-batch-receipt-type" class="tpma-batch-select">
+								<option value="">請選擇方式</option>
+								<option value="electronic">電子</option>
+								<option value="paper">紙本</option>
+							</select>
+							<button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_type">批次設定收據方式</button>
+						</div>
+					</div>
+				</div>
+			</th>
+
 
             <!-- 操作 -->
             <th>操作</th>
         </tr>
         </thead>
         <tbody id="tpma-reg-tbody">
-        <tr><td colspan="11">載入中...</td></tr>
+        <tr><td colspan="10">載入中...</td></tr>
         </tbody>
     </table>
 
@@ -468,22 +556,24 @@ $restNonce = wp_create_nonce( 'wp_rest' );
     const wpRestNonce = '<?php echo $restNonce; ?>';
 
     const STATUS_LABELS = {
-        pending: '未付款',
-        paid: '已付款',
-        test_pending: '待測驗',
+        pending:      '待付款',
+        verifying:    '待核帳',
+        paid:         '已付款',
         cert_pending: '待發證',
-        completed: '已結訓',
-        cancelled: '已取消'
+        completed:    '已結訓',
+        cancelled:    '已取消'
     };
+
     const RECEIPT_TYPE_LABELS = {
         electronic: '電子',
         paper: '紙本'
     };
+
     const RECEIPT_STATUS_LABELS = {
         pending: '待開立',
-        auto: '已自動開立',
-        manual: '已手動開立',
-        sent: '已寄出'
+        auto:    '已開立待寄（自動）',
+        manual:  '已開立待寄（手動）',
+        sent:    '已寄出'
     };
 
     const pageSize = 50;
@@ -501,16 +591,19 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
     // 篩選狀態
     const filterState = {
-        q: '',
-        course_id: '',
-        class_date: '',
-        status: '',
-        receipt_status: '',
-        receipt_type: '',
-        created_from: '',
-        created_to: '',
-        remit_from: '',
-        remit_to: ''
+		q: '',
+		course_id: '',
+		class_date: '',          // 單日模式
+		class_date_from: '',     // 範圍模式 起日
+		class_date_to: '',       // 範圍模式 訖日
+		status: '',
+		receipt_status: '',
+		receipt_type: '',
+		created_from: '',
+		created_to: '',
+		remit_from: '',
+		remit_to: '',
+		test_state: ''
     };
 
     // 排序狀態
@@ -531,6 +624,85 @@ $restNonce = wp_create_nonce( 'wp_rest' );
     function statusLabel(code){ return STATUS_LABELS[code] || code || ''; }
     function receiptTypeLabel(code){ return RECEIPT_TYPE_LABELS[code] || code || ''; }
     function receiptStatusLabel(code){ return RECEIPT_STATUS_LABELS[code] || code || ''; }
+	
+	    function getTestState(row){
+        const score = row.test_score;
+        if (score == null || String(score).trim() === '') {
+            return 'notyet'; // 待測驗
+        }
+        return 'done'; // 已測驗
+    }
+
+    function buildStatusIconsHtml(row){
+        const sCode = row.status || 'pending';
+        const rCode = row.receipt_status || '';
+        const testState = getTestState(row);
+
+        const sLabel = STATUS_LABELS[sCode] || sCode || '';
+        let rLabel;
+        if (rCode === 'sent') {
+            rLabel = '已寄出';
+        } else if (rCode === 'pending') {
+            rLabel = '待開立';
+        } else if (rCode === 'auto' || rCode === 'manual') {
+            rLabel = '已開立待寄';
+        } else {
+            rLabel = '';
+        }
+
+        const tLabel = (testState === 'done') ? '已測驗' : '待測驗';
+
+        const icons = [];
+
+        // 圖標組一：報名狀態
+        let g1Class = '';
+        switch (sCode) {
+            case 'pending':      g1Class = 'tpma-status-pill-g1-pending'; break;
+            case 'verifying':    g1Class = 'tpma-status-pill-g1-verifying'; break;
+            case 'paid':         g1Class = 'tpma-status-pill-g1-paid'; break;
+            case 'cert_pending': g1Class = 'tpma-status-pill-g1-cert'; break;
+            case 'completed':    g1Class = 'tpma-status-pill-g1-completed'; break;
+            case 'cancelled':    g1Class = 'tpma-status-pill-g1-cancelled'; break;
+        }
+        if (sLabel) {
+            icons.push(
+                '<span class="tpma-status-pill ' + g1Class + '" title="' + esc(sLabel) + '">' +
+                esc(sLabel) +
+                '</span>'
+            );
+        }
+
+        // 判斷哪些情況要隱藏組二 / 組三
+        const hideG2 = (sCode === 'cancelled' || sCode === 'completed');
+        const hideG3 = (sCode === 'cancelled' || sCode === 'completed' || sCode === 'cert_pending');
+
+        // 圖標組二：收據狀態
+        if (!hideG2 && rLabel) {
+            let g2Class = 'tpma-status-pill-g2-pending';
+            if (rCode === 'sent') {
+                g2Class = 'tpma-status-pill-g2-sent';
+            } else if (rCode === 'auto' || rCode === 'manual') {
+                g2Class = 'tpma-status-pill-g2-opened';
+            }
+            icons.push(
+                '<span class="tpma-status-pill ' + g2Class + '" title="' + esc(rLabel) + '">' +
+                esc(rLabel) +
+                '</span>'
+            );
+        }
+
+        // 圖標組三：測驗狀態
+        if (!hideG3) {
+            const g3Class = (testState === 'done') ? 'tpma-status-pill-g3-done' : 'tpma-status-pill-g3-notyet';
+            icons.push(
+                '<span class="tpma-status-pill ' + g3Class + '" title="' + esc(tLabel) + '">' +
+                esc(tLabel) +
+                '</span>'
+            );
+        }
+
+        return '<div class="tpma-status-icons">' + icons.join('') + '</div>';
+    }
 
     function statusChipClass(code){ return 'tpma-chip-status-' + (code || 'pending'); }
 
@@ -641,6 +813,30 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         return esc(full);
     }
 
+	//計算下拉式選單的時間<br>
+	function formatSessionDisplay(sessionDatetime, durationMinutes) {
+		// sessionDatetime = "2025-12-10 09:00:00"
+		// durationMinutes = 180
+
+		if (!sessionDatetime) return '';
+
+		const d = sessionDatetime.substring(0,10);   // yyyy-mm-dd
+		const t = sessionDatetime.substring(11,16);  // hh:mm
+
+		const [HH,MM] = t.split(':');
+		const start = new Date(d+'T'+t+':00');
+		const end = new Date(start.getTime() + (durationMinutes || 0)*60000);
+
+		const endHH = String(end.getHours()).padStart(2,'0');
+		const endMM = String(end.getMinutes()).padStart(2,'0');
+
+		// 星期
+		const wd = '日一二三四五六'[start.getDay()];
+
+		return `${d}（${wd}） ${t}~${endHH}:${endMM}`;
+	}
+
+	
 
     function formatAmount(val){
         if (val == null || val === '') return '';
@@ -704,9 +900,25 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         if (filterState.course_id) {
             list = list.filter(r => String(r.course_id) === String(filterState.course_id));
         }
-        if (filterState.class_date) {
-            list = list.filter(r => String(r.class_date) === String(filterState.class_date));
-        }
+		// 授課日期：單日模式（class_date），比對日期部分
+		if (filterState.class_date) {
+			const target = filterState.class_date;
+			list = list.filter(r=>{
+				const d = (r.class_date || '').substring(0,10);
+				return d === target;
+			});
+		}
+
+		// 授課日期：範圍模式（class_date_from / class_date_to）
+		if (filterState.class_date_from || filterState.class_date_to) {
+			list = list.filter(r=>{
+				const d = (r.class_date || '').substring(0,10);
+				if (!d) return false;
+				if (filterState.class_date_from && d < filterState.class_date_from) return false;
+				if (filterState.class_date_to   && d > filterState.class_date_to)   return false;
+				return true;
+			});
+		}
         if (filterState.status) {
             list = list.filter(r => String(r.status) === String(filterState.status));
         }
@@ -716,6 +928,13 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         if (filterState.receipt_type) {
             list = list.filter(r => String(r.receipt_type) === String(filterState.receipt_type));
         }
+		if (filterState.test_state) {
+			list = list.filter(r=>{
+				const ts = getTestState(r); // 前面 helper
+				return ts === filterState.test_state;
+			});
+		}
+		
 
         // 報名時間篩選（created_at）
         if (filterState.created_from || filterState.created_to) {
@@ -762,57 +981,87 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         updateFilterButtonStates();
     }
 
-    function buildHeaderFilterOptions(){
-        // 課程：依有報名資料建立（course_id + course_name）
-        const courseSelect = document.getElementById('tpma-filter-course');
-        if (courseSelect) {
-            const map = {};
-            allRegs.forEach(r=>{
-                if (!r.course_id) return;
-                const key = String(r.course_id);
-                if (!map[key]) {
-                    map[key] = r.course_name || ('課程ID ' + key);
-                }
-            });
-            courseSelect.innerHTML = '<option value="">全部課程</option>';
-            Object.keys(map).sort((a,b)=> {
-                const va = map[a] || '';
-                const vb = map[b] || '';
-                return va.localeCompare(vb, 'zh-Hant');
-            }).forEach(id=>{
-                const opt = document.createElement('option');
-                opt.value = id;
-                opt.textContent = map[id];
-                if (filterState.course_id && String(filterState.course_id) === id) {
-                    opt.selected = true;
-                }
-                courseSelect.appendChild(opt);
-            });
-        }
+	function buildHeaderFilterOptions(){
+		// 課程選單（原本的邏輯保留）
+		const courseSelect = document.getElementById('tpma-filter-course');
+		if (courseSelect) {
+			const map = {};
+			allRegs.forEach(r=>{
+				if (!r.course_id) return;
+				const key = String(r.course_id);
+				if (!map[key]) {
+					map[key] = r.course_name || ('課程ID ' + key);
+				}
+			});
+			courseSelect.innerHTML = '<option value="">全部課程</option>';
+			Object.keys(map).sort((a,b)=> {
+				const va = map[a] || '';
+				const vb = map[b] || '';
+				return va.localeCompare(vb, 'zh-Hant');
+			}).forEach(id=>{
+				const opt = document.createElement('option');
+				opt.value = id;
+				opt.textContent = map[id];
+				if (filterState.course_id && String(filterState.course_id) === id) {
+					opt.selected = true;
+				}
+				courseSelect.appendChild(opt);
+			});
+		}
 
-        // 授課日期：依有報名資料建立，如果有選課程就只抓該課程的日期
-        const classDateSelect = document.getElementById('tpma-filter-class-date');
-        if (classDateSelect) {
-            const dateSet = new Set();
-            allRegs.forEach(r=>{
-                if (!r.class_date) return;
-                if (filterState.course_id && String(r.course_id) !== String(filterState.course_id)) return;
-                dateSet.add(String(r.class_date));
-            });
-            const dates = Array.from(dateSet);
-            dates.sort();
-            classDateSelect.innerHTML = '<option value="">全部日期</option>';
-            dates.forEach(d=>{
-                const opt = document.createElement('option');
-                opt.value = d;
-                opt.textContent = d;
-                if (filterState.class_date && String(filterState.class_date) === d) {
-                    opt.selected = true;
-                }
-                classDateSelect.appendChild(opt);
-            });
-        }
-    }
+		// 授課日期 datalist（依有報名資料建立，且受課程篩選影響）
+		const classDateList = document.getElementById('tpma-class-date-list');
+		if (classDateList) {
+			const dateSet = new Set();
+			allRegs.forEach(r=>{
+				if (!r.class_date) return;
+				if (filterState.course_id && String(r.course_id) !== String(filterState.course_id)) return;
+				const d = String(r.class_date).substring(0,10);
+				dateSet.add(d);
+			});
+			classDateList.innerHTML = '';
+			Array.from(dateSet).sort().forEach(d=>{
+				const opt = document.createElement('option');
+				opt.value = d;
+				classDateList.appendChild(opt);
+			});
+		}
+
+		// 下面順便把報名時間 / 匯款日期 datalist 也一起建好（下一段會用到）
+		const createdList = document.getElementById('tpma-created-date-list');
+		if (createdList) {
+			const set = new Set();
+			allRegs.forEach(r=>{
+				if (!r.created_at) return;
+				const d = String(r.created_at).substring(0,10);
+				set.add(d);
+			});
+			createdList.innerHTML = '';
+			Array.from(set).sort().forEach(d=>{
+				const opt = document.createElement('option');
+				opt.value = d;
+				createdList.appendChild(opt);
+			});
+		}
+
+		const remitList = document.getElementById('tpma-remit-date-list');
+		if (remitList) {
+			const set = new Set();
+			allRegs.forEach(r=>{
+				if (!r.remit_paid_at) return;
+				const d = String(r.remit_paid_at).substring(0,10);
+				set.add(d);
+			});
+			remitList.innerHTML = '';
+			Array.from(set).sort().forEach(d=>{
+				const opt = document.createElement('option');
+				opt.value = d;
+				remitList.appendChild(opt);
+			});
+		}
+
+		updateFilterButtonStates();
+	}
 
     function anyRowSelected(){
         return !!document.querySelector('.tpma-reg-select:checked');
@@ -879,8 +1128,18 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
             // 報名時間（去秒）
             const tdCreated = document.createElement('td');
-            tdCreated.innerHTML = '<div class="tpma-cell-wrap">' + esc(trimToMinute(row.created_at)) + '</div>';
-            tr.appendChild(tdCreated);
+			const createdText = trimToMinute(row.created_at); // 例如 2025-12-10 09:00
+
+			let createdHtml = '';
+			if (createdText && createdText.length >= 16) {
+				const datePart = createdText.substring(0, 10);   // YYYY-MM-DD
+				const timePart = createdText.substring(11, 16);  // HH:MM
+				createdHtml = esc(datePart) + '<br>' + esc(timePart);
+			} else {
+				createdHtml = esc(createdText);
+			}
+			tdCreated.innerHTML = '<div class="tpma-cell-wrap">' + createdHtml + '</div>';
+			tr.appendChild(tdCreated);
 
             // 課程名稱（hover 顯示講師）
             const tdCourse = document.createElement('td');
@@ -892,8 +1151,22 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
             // 授課日期 + 時間（兩行，含結束時間）
             const tdDate = document.createElement('td');
-            tdDate.innerHTML = '<div class="tpma-cell-wrap">' + buildClassDateRangeHtml(row) + '</div>';
-            tr.appendChild(tdDate);
+			const classText = buildClassDateRangeHtml(row); // 例如 2025-12-10（三） 09:00~12:00
+
+			let classHtml = '';
+			if (classText) {
+				// 找第一個空白，假設格式固定為「日期（週） 空白 時間範圍」
+				const idx = classText.indexOf(' ');
+				if (idx > 0) {
+					const datePart = classText.substring(0, idx);       // 2025-12-10（三）
+					const timePart = classText.substring(idx + 1).trim(); // 09:00~12:00
+					classHtml = esc(datePart) + '<br>' + esc(timePart);
+				} else {
+					classHtml = esc(classText);
+				}
+			}
+			tdDate.innerHTML = '<div class="tpma-cell-wrap">' + classHtml + '</div>';
+			tr.appendChild(tdDate);
 
             // 匯款日期（只顯示日期）
             const tdRemit = document.createElement('td');
@@ -910,17 +1183,10 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             tdComp.innerHTML = '<div class="tpma-cell-wrap">' + esc(display(row.company_name)) + '</div>';
             tr.appendChild(tdComp);
 
-            // 報名狀態
-            const tdStatus = document.createElement('td');
-            const sCode = row.status || 'pending';
-            tdStatus.innerHTML = '<span class="tpma-chip ' + statusChipClass(sCode) + '">' + esc(statusLabel(sCode)) + '</span>';
-            tr.appendChild(tdStatus);
-
-            // 收據狀態
-            const tdRStatus = document.createElement('td');
-            const rLabel = receiptStatusLabel(row.receipt_status);
-            tdRStatus.innerHTML = '<div class="tpma-cell-wrap">' + esc(rLabel) + '</div>';
-            tr.appendChild(tdRStatus);
+			// 合併狀態欄（圖標組一 + 組二 + 組三）
+			const tdStatus = document.createElement('td');
+			tdStatus.innerHTML = buildStatusIconsHtml(row);
+			tr.appendChild(tdStatus);
 
             // 操作
             const tdAct = document.createElement('td');
@@ -936,7 +1202,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             trDetail.dataset.id = row.id || '';
             const tdDetail = document.createElement('td');
             tdDetail.className = 'tpma-reg-detail-cell';
-            tdDetail.colSpan = 11;
+            tdDetail.colSpan = 10;
             trDetail.appendChild(tdDetail);
             tbody.appendChild(trDetail);
 
@@ -1051,58 +1317,102 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         });
     }
 
-    function populateEditCourseAndDate(row){
-        const cid = 'tpma-edit-course-' + row.id;
-        const did = 'tpma-edit-class-date-' + row.id;
-        const courseSel = document.getElementById(cid);
-        const dateSel   = document.getElementById(did);
-        if (!courseSel || !dateSel) return;
+	function populateEditCourseAndDate(row){
+		const cid = 'tpma-edit-course-' + row.id;
+		const did = 'tpma-edit-class-date-' + row.id;
+		const courseSel = document.getElementById(cid);
+		const dateSel   = document.getElementById(did);
+		if (!courseSel || !dateSel) return;
 
-        courseSel.innerHTML = '<option value="">請選擇課程</option>';
-        allCourses.forEach(c=>{
-            const opt = document.createElement('option');
-            opt.value = c.id || '';
-            opt.textContent = c.course_name || '';
-            if (String(c.id) === String(row.course_id || '')) {
-                opt.selected = true;
-            }
-            courseSel.appendChild(opt);
-        });
+		// 課程下拉
+		courseSel.innerHTML = '<option value="">請選擇課程</option>';
+		allCourses.forEach(c=>{
+			const opt = document.createElement('option');
+			opt.value = c.id || '';
+			opt.textContent = c.course_name || '';
+			if (String(c.id) === String(row.course_id || '')) {
+				opt.selected = true;
+			}
+			courseSel.appendChild(opt);
+		});
 
-        function rebuildDates(selectedCourseId){
-            dateSel.innerHTML = '<option value="">請選擇授課日期時間</option>';
-            const course = allCourses.find(c=> String(c.id) === String(selectedCourseId));
-            let has = false;
-            if (course && Array.isArray(course.sessions)) {
-                course.sessions.forEach(s=>{
-                    if (!s.session_datetime) return;
-                    const opt = document.createElement('option');
-                    opt.value = s.session_datetime;
-                    opt.textContent = s.session_datetime;
-                    if (String(s.session_datetime) === String(row.class_date || '')) {
-                        opt.selected = true;
-                    }
-                    dateSel.appendChild(opt);
-                    has = true;
-                });
-            }
-            // 若課程沒 session，但原本 class_date 有值，就保留原資料
-            if (!has && row.class_date) {
-                const opt = document.createElement('option');
-                opt.value = row.class_date;
-                opt.textContent = row.class_date + '（原資料）';
-                opt.selected = true;
-                dateSel.appendChild(opt);
-            }
-        }
+		// 授課日期時間下拉
+		function rebuildDates(selectedCourseId){
+			dateSel.innerHTML = '<option value="">請選擇授課日期時間</option>';
 
-        const initCourseId = courseSel.value || row.course_id || '';
-        rebuildDates(initCourseId);
+			const course = allCourses.find(c => String(c.id) === String(selectedCourseId));
+			let has = false;
 
-        courseSel.addEventListener('change', function(){
-            rebuildDates(this.value);
-        });
-    }
+			// 先決定這筆資料「應該對照的真正 datetime」
+			// - 如果 class_date 只有日期或沒有時間，就用 findSessionDatetimeForRow 幫它找 session_datetime
+			// - 另外多一層 substring(0,16) 比對，避免秒數差異（HH:MM vs HH:MM:SS）比不到
+			let compareValue = String(row.class_date || '');
+			if (compareValue && (compareValue.length <= 10 || compareValue.indexOf(' ') === -1)) {
+				const resolved = findSessionDatetimeForRow(Object.assign({}, row, { course_id: selectedCourseId || row.course_id }));
+				if (resolved) {
+					compareValue = String(resolved);
+				}
+			}
+
+			if (course && Array.isArray(course.sessions)) {
+				// 算出這堂課的時數（小時），轉成分鐘給 formatSessionDisplay 用
+				const hours = getCourseHoursForRow(Object.assign({}, row, { course_id: selectedCourseId || row.course_id }));
+				const durationMinutes = hours > 0 ? hours * 60 : 0;
+
+				course.sessions.forEach(s=>{
+					if (!s.session_datetime) return;
+
+					const sessionValue = String(s.session_datetime);
+
+					const opt = document.createElement('option');
+					opt.value = sessionValue;   // 實際寫回資料庫的值：保持原本 session_datetime
+
+					// 顯示用格式：YYYY-MM-DD（週）HH:MM~HH:MM
+					const label = durationMinutes
+						? formatSessionDisplay(sessionValue, durationMinutes)
+						: sessionValue;
+					opt.textContent = label;
+
+					// 比對目前這筆報名原本的 class_date
+					if (
+						sessionValue === compareValue ||
+						sessionValue.substring(0,16) === compareValue.substring(0,16)
+					) {
+						opt.selected = true;
+					}
+
+					dateSel.appendChild(opt);
+					has = true;
+				});
+			}
+
+			// 若課程沒 session，但原本 class_date 有值，就保留原資料
+			if (!has && row.class_date) {
+				const baseRow = Object.assign({}, row, { course_id: selectedCourseId || row.course_id });
+				const hours = getCourseHoursForRow(baseRow);
+				const durationMinutes = hours > 0 ? hours * 60 : 0;
+
+				const opt = document.createElement('option');
+				opt.value = row.class_date;
+
+				const label = durationMinutes
+					? formatSessionDisplay(row.class_date, durationMinutes)
+					: row.class_date;
+
+				opt.textContent = label + '（原資料）';
+				opt.selected = true;
+				dateSel.appendChild(opt);
+			}
+		}
+
+		const initCourseId = courseSel.value || row.course_id || '';
+		rebuildDates(initCourseId);
+
+		courseSel.addEventListener('change', function(){
+			rebuildDates(this.value);
+		});
+	}
+
 
     function renderDetailEdit(container, row){
         container.innerHTML = '';
@@ -1171,14 +1481,14 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             + '  <option value="electronic"'+(row.receipt_type==='electronic'?' selected':'')+'>電子</option>'
             + '  <option value="paper"'+(row.receipt_type==='paper'?' selected':'')+'>紙本</option>'
             + '</select>'
-            + '<label>收據狀態</label>'
-            + '<select data-field="receipt_status">'
-            + '  <option value="">請選擇</option>'
-            + '  <option value="pending"'+(row.receipt_status==='pending'?' selected':'')+'>待開立</option>'
-            + '  <option value="auto"'+(row.receipt_status==='auto'?' selected':'')+'>已自動開立</option>'
-            + '  <option value="manual"'+(row.receipt_status==='manual'?' selected':'')+'>已手動開立</option>'
-            + '  <option value="sent"'+(row.receipt_status==='sent'?' selected':'')+'>已寄出</option>'
-            + '</select>'
+			+ '<label>收據狀態</label>'
+			+ '<select data-field="receipt_status">'
+			+ '  <option value="">請選擇</option>'
+			+ '  <option value="pending"'+(row.receipt_status==='pending'?' selected':'')+'>待開立</option>'
+			+ '  <option value="auto"'+(row.receipt_status==='auto'?' selected':'')+'>已開立待寄（自動）</option>'
+			+ '  <option value="manual"'+(row.receipt_status==='manual'?' selected':'')+'>已開立待寄（手動）</option>'
+			+ '  <option value="sent"'+(row.receipt_status==='sent'?' selected':'')+'>已寄出</option>'
+			+ '</select>'
             + '<label>匯款金額（元）</label>'
             + '<input type="text" data-field="remit_amount" value="'+esc(formatAmount(row.remit_amount))+'">'
             + '<label>匯款日期</label>'
@@ -1189,14 +1499,15 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         const other = document.createElement('div');
         other.className = 'tpma-reg-detail-section';
         other.innerHTML = '<div class="tpma-reg-detail-section-title">其他資訊</div>'
-            + '<label>報名狀態</label>'
-            + '<select data-field="status">'
-            + '  <option value="pending"'+(row.status==='pending'?' selected':'')+'>未付款</option>'
-            + '  <option value="paid"'+(row.status==='paid'?' selected':'')+'>已付款</option>'
-            + '  <option value="test_pending"'+(row.status==='test_pending'?' selected':'')+'>待測驗</option>'
-            + '  <option value="cert_pending"'+(row.status==='cert_pending'?' selected':'')+'>待發證</option>'
-            + '  <option value="completed"'+(row.status==='completed'?' selected':'')+'>已結訓</option>'
-            + '  <option value="cancelled"'+(row.status==='cancelled'?' selected':'')+'>已取消</option>'
+			+ '<label>報名狀態</label>'
+			+ '<select data-field="status">'
+			+ '  <option value="pending"'+(row.status==='pending'?' selected':'')+'>待付款</option>'
+			+ '  <option value="verifying"'+(row.status==='verifying'?' selected':'')+'>待核帳</option>'
+			+ '  <option value="paid"'+(row.status==='paid'?' selected':'')+'>已付款</option>'
+			+ '  <option value="cert_pending"'+(row.status==='cert_pending'?' selected':'')+'>待發證</option>'
+			+ '  <option value="completed"'+(row.status==='completed'?' selected':'')+'>已結訓</option>'
+			+ '  <option value="cancelled"'+(row.status==='cancelled'?' selected':'')+'>已取消</option>'
+			+ '</select>'
             + '</select>'
             + '<label>測驗成績</label>'
             + '<input type="text" data-field="test_score" value="'+esc(display(row.test_score))+'">'
@@ -1329,42 +1640,46 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         });
     });
 
-    // 報名時間篩選
-	const $createdFrom = document.getElementById('tpma-filter-created-from');
-	const $createdTo   = document.getElementById('tpma-filter-created-to');
-	const $createdSame = document.getElementById('tpma-filter-created-same');
-	const $createdLabelTo = document.getElementById('tpma-label-created-to');
+	// 報名時間（created_at）篩選：單日 / 範圍
+	const $createdSingle     = document.getElementById('tpma-filter-created-single');
+	const $createdFrom       = document.getElementById('tpma-filter-created-from');
+	const $createdTo         = document.getElementById('tpma-filter-created-to');
+	const $createdRangeCheck = document.getElementById('tpma-filter-created-range');
+	const $createdSingleWrap = document.getElementById('tpma-created-single');
+	const $createdRangeWrap  = document.getElementById('tpma-created-range');
 
-	function updateCreatedFilter(){
-		if (!$createdFrom) return;
-		const same = $createdSame && $createdSame.checked;
-		const fromVal = $createdFrom.value || '';
-		const toVal   = $createdTo ? ($createdTo.value || '') : '';
+	function updateCreatedFilter() {
+		const range = $createdRangeCheck && $createdRangeCheck.checked;
 
-		if (same) {
-			// 起訖日相同：起訖都用起始日期
-			filterState.created_from = fromVal;
-			filterState.created_to   = fromVal;
-		} else {
+		if (range) {
+			const fromVal = $createdFrom ? ($createdFrom.value || '') : '';
+			const toVal   = $createdTo   ? ($createdTo.value   || '') : '';
+			// 範圍模式：from / to 正常使用
 			filterState.created_from = fromVal;
 			filterState.created_to   = toVal;
+		} else {
+			const v = $createdSingle ? ($createdSingle.value || '') : '';
+			// 單日模式：from / to 同一天
+			filterState.created_from = v;
+			filterState.created_to   = v;
 		}
 		applyFiltersAndRender();
 	}
 
+	if ($createdSingle) {
+		$createdSingle.addEventListener('change', updateCreatedFilter);
+	}
 	if ($createdFrom) {
 		$createdFrom.addEventListener('change', updateCreatedFilter);
 	}
 	if ($createdTo) {
 		$createdTo.addEventListener('change', updateCreatedFilter);
 	}
-	if ($createdSame) {
-		$createdSame.addEventListener('change', function(){
-			if ($createdLabelTo && $createdTo) {
-				const show = !this.checked;
-				$createdLabelTo.style.display = show ? '' : 'none';
-				$createdTo.style.display      = show ? '' : 'none';
-			}
+	if ($createdRangeCheck) {
+		$createdRangeCheck.addEventListener('change', function(){
+			const range = this.checked;
+			if ($createdSingleWrap) $createdSingleWrap.style.display = range ? 'none' : '';
+			if ($createdRangeWrap)  $createdRangeWrap.style.display  = range ? '' : 'none';
 			updateCreatedFilter();
 		});
 	}
@@ -1372,50 +1687,53 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 	document.getElementById('tpma-btn-clear-created').addEventListener('click', function(){
 		filterState.created_from = '';
 		filterState.created_to   = '';
-		if ($createdFrom) $createdFrom.value = '';
-		if ($createdTo)   $createdTo.value   = '';
-		if ($createdSame) $createdSame.checked = false;
-		if ($createdLabelTo && $createdTo) {
-			$createdLabelTo.style.display = '';
-			$createdTo.style.display      = '';
-		}
+		if ($createdSingle)     $createdSingle.value = '';
+		if ($createdFrom)       $createdFrom.value   = '';
+		if ($createdTo)         $createdTo.value     = '';
+		if ($createdRangeCheck) $createdRangeCheck.checked = false;
+		if ($createdSingleWrap) $createdSingleWrap.style.display = '';
+		if ($createdRangeWrap)  $createdRangeWrap.style.display  = 'none';
 		applyFiltersAndRender();
 	});
 
-    // 匯款日期篩選
-	const $remitFrom = document.getElementById('tpma-filter-remit-from');
-	const $remitTo   = document.getElementById('tpma-filter-remit-to');
-	const $remitSame = document.getElementById('tpma-filter-remit-same');
-	const $remitLabelTo = document.getElementById('tpma-label-remit-to');
+	// 匯款日期（remit_paid_at）篩選：單日 / 範圍
+	const $remitSingle     = document.getElementById('tpma-filter-remit-single');
+	const $remitFrom       = document.getElementById('tpma-filter-remit-from');
+	const $remitTo         = document.getElementById('tpma-filter-remit-to');
+	const $remitRangeCheck = document.getElementById('tpma-filter-remit-range');
+	const $remitSingleWrap = document.getElementById('tpma-remit-single');
+	const $remitRangeWrap  = document.getElementById('tpma-remit-range');
 
 	function updateRemitFilter(){
-		const fromVal = $remitFrom ? ($remitFrom.value || '') : '';
-		const toVal   = $remitTo   ? ($remitTo.value   || '') : '';
-		const same    = $remitSame && $remitSame.checked;
+		const range = $remitRangeCheck && $remitRangeCheck.checked;
 
-		if (same) {
-			filterState.remit_from = fromVal;
-			filterState.remit_to   = fromVal;
-		} else {
+		if (range) {
+			const fromVal = $remitFrom ? ($remitFrom.value || '') : '';
+			const toVal   = $remitTo   ? ($remitTo.value   || '') : '';
 			filterState.remit_from = fromVal;
 			filterState.remit_to   = toVal;
+		} else {
+			const v = $remitSingle ? ($remitSingle.value || '') : '';
+			filterState.remit_from = v;
+			filterState.remit_to   = v;
 		}
 		applyFiltersAndRender();
 	}
 
+	if ($remitSingle) {
+		$remitSingle.addEventListener('change', updateRemitFilter);
+	}
 	if ($remitFrom) {
 		$remitFrom.addEventListener('change', updateRemitFilter);
 	}
 	if ($remitTo) {
 		$remitTo.addEventListener('change', updateRemitFilter);
 	}
-	if ($remitSame) {
-		$remitSame.addEventListener('change', function(){
-			if ($remitLabelTo && $remitTo) {
-				const show = !this.checked;
-				$remitLabelTo.style.display = show ? '' : 'none';
-				$remitTo.style.display      = show ? '' : 'none';
-			}
+	if ($remitRangeCheck) {
+		$remitRangeCheck.addEventListener('change', function(){
+			const range = this.checked;
+			if ($remitSingleWrap) $remitSingleWrap.style.display = range ? 'none' : '';
+			if ($remitRangeWrap)  $remitRangeWrap.style.display  = range ? '' : 'none';
 			updateRemitFilter();
 		});
 	}
@@ -1423,15 +1741,15 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 	document.getElementById('tpma-btn-clear-remit').addEventListener('click', function(){
 		filterState.remit_from = '';
 		filterState.remit_to   = '';
-		if ($remitFrom) $remitFrom.value = '';
-		if ($remitTo)   $remitTo.value   = '';
-		if ($remitSame) $remitSame.checked = false;
-		if ($remitLabelTo && $remitTo) {
-			$remitLabelTo.style.display = '';
-			$remitTo.style.display      = '';
-		}
+		if ($remitSingle)     $remitSingle.value = '';
+		if ($remitFrom)       $remitFrom.value   = '';
+		if ($remitTo)         $remitTo.value     = '';
+		if ($remitRangeCheck) $remitRangeCheck.checked = false;
+		if ($remitSingleWrap) $remitSingleWrap.style.display = '';
+		if ($remitRangeWrap)  $remitRangeWrap.style.display  = 'none';
 		applyFiltersAndRender();
 	});
+
 
 
     // 課程篩選
@@ -1448,20 +1766,62 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 		applyFiltersAndRender();
 	});
 
-    // 授課日期篩選
-	const $classDate = document.getElementById('tpma-filter-class-date');
-	if ($classDate) {
-		$classDate.addEventListener('change', function(){
-			filterState.class_date = $classDate.value || '';
-			applyFiltersAndRender();
+	// 授課日期（class_date）篩選：單日 / 範圍
+	const $classSingle     = document.getElementById('tpma-filter-class-single');
+	const $classFrom       = document.getElementById('tpma-filter-class-from');
+	const $classTo         = document.getElementById('tpma-filter-class-to');
+	const $classRangeCheck = document.getElementById('tpma-filter-class-range');
+	const $classSingleWrap = document.getElementById('tpma-class-single');
+	const $classRangeWrap  = document.getElementById('tpma-class-range');
+
+	function updateClassDateFilter() {
+		const range = $classRangeCheck && $classRangeCheck.checked;
+
+		if (range) {
+			const fromVal = $classFrom ? ($classFrom.value || '') : '';
+			const toVal   = $classTo   ? ($classTo.value   || '') : '';
+			filterState.class_date      = '';
+			filterState.class_date_from = fromVal;
+			filterState.class_date_to   = toVal;
+		} else {
+			const v = $classSingle ? ($classSingle.value || '') : '';
+			filterState.class_date      = v;
+			filterState.class_date_from = '';
+			filterState.class_date_to   = '';
+		}
+		applyFiltersAndRender();
+	}
+
+	if ($classSingle) {
+		$classSingle.addEventListener('change', updateClassDateFilter);
+	}
+	if ($classFrom) {
+		$classFrom.addEventListener('change', updateClassDateFilter);
+	}
+	if ($classTo) {
+		$classTo.addEventListener('change', updateClassDateFilter);
+	}
+	if ($classRangeCheck) {
+		$classRangeCheck.addEventListener('change', function(){
+			const range = this.checked;
+			if ($classSingleWrap) $classSingleWrap.style.display = range ? 'none' : '';
+			if ($classRangeWrap)  $classRangeWrap.style.display  = range ? '' : 'none';
+			updateClassDateFilter();
 		});
 	}
+
 	document.getElementById('tpma-btn-clear-class-date').addEventListener('click', function(){
-		filterState.class_date = '';
-		if ($classDate) $classDate.value = '';
+		filterState.class_date      = '';
+		filterState.class_date_from = '';
+		filterState.class_date_to   = '';
+		if ($classSingle)     $classSingle.value = '';
+		if ($classFrom)       $classFrom.value   = '';
+		if ($classTo)         $classTo.value     = '';
+		if ($classRangeCheck) $classRangeCheck.checked = false;
+		if ($classSingleWrap) $classSingleWrap.style.display = '';
+		if ($classRangeWrap)  $classRangeWrap.style.display  = 'none';
 		applyFiltersAndRender();
 	});
-
     // 關鍵字篩選（上方列）
     const $q = document.getElementById('tpma-filter-q');
     document.getElementById('tpma-btn-apply-q').addEventListener('click', function(){
@@ -1482,6 +1842,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         filterState.created_to    = '';
         filterState.remit_from    = '';
         filterState.remit_to      = '';
+		
 
         // reset UI
         $q.value = '';
@@ -1492,15 +1853,35 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         const $createdToEl   = document.getElementById('tpma-filter-created-to');
         const $remitFromEl   = document.getElementById('tpma-filter-remit-from');
         const $remitToEl     = document.getElementById('tpma-filter-remit-to');
-        if ($status)      $status.value = '';
-        if ($receiptStat) $receiptStat.value = '';
-        if ($receiptType) $receiptType.value = '';
-        if ($course)      $course.value = '';
-        if ($classDate)   $classDate.value = '';
-        if ($createdFromEl) $createdFromEl.value = '';
-        if ($createdToEl)   $createdToEl.value = '';
-        if ($remitFromEl)   $remitFromEl.value = '';
-        if ($remitToEl)     $remitToEl.value = '';
+		const $testFilter  = document.getElementById('tpma-filter-test');
+			if ($status) {
+				$status.addEventListener('change', function(){
+					filterState.status = $status.value || '';
+					applyFiltersAndRender();
+				});
+			}
+			if ($receiptStat) {
+				$receiptStat.addEventListener('change', function(){
+					filterState.receipt_status = $receiptStat.value || '';
+					applyFiltersAndRender();
+				});
+			}
+			if ($testFilter) {
+				$testFilter.addEventListener('change', function(){
+					filterState.test_state = $testFilter.value || ''; // 需在 filterState 補一個 test_state 欄位
+					applyFiltersAndRender();
+				});
+			}
+
+			document.getElementById('tpma-btn-clear-status-all').addEventListener('click', function(){
+				filterState.status        = '';
+				filterState.receipt_status= '';
+				filterState.test_state    = '';
+				if ($status)      $status.value = '';
+				if ($receiptStat) $receiptStat.value = '';
+				if ($testFilter)  $testFilter.value = '';
+				applyFiltersAndRender();
+			});
 
         // 排序回預設（報名時間新到舊）
         sortState.field = 'created_at';
@@ -1520,11 +1901,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 			applyFiltersAndRender();
 		});
 	}
-	document.getElementById('tpma-btn-clear-status').addEventListener('click', function(){
-		filterState.status = '';
-		if ($status) $status.value = '';
-		applyFiltersAndRender();
-	});
+
 
 	if ($receiptStat) {
 		$receiptStat.addEventListener('change', function(){
@@ -1532,11 +1909,6 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 			applyFiltersAndRender();
 		});
 	}
-	document.getElementById('tpma-btn-clear-receipt-status').addEventListener('click', function(){
-		filterState.receipt_status = '';
-		if ($receiptStat) $receiptStat.value = '';
-		applyFiltersAndRender();
-	});
 
 	if ($receiptType) {
 		$receiptType.addEventListener('change', function(){
@@ -1544,11 +1916,6 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 			applyFiltersAndRender();
 		});
 	}
-	document.getElementById('tpma-btn-clear-receipt-type').addEventListener('click', function(){
-		filterState.receipt_type = '';
-		if ($receiptType) $receiptType.value = '';
-		applyFiltersAndRender();
-	});
 
     // 全選
     $selectAllHead.addEventListener('change', function(){
