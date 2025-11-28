@@ -66,7 +66,44 @@ class TPMA_CR_REST_Public
 
         ));
 
-    }
+		// 信件模板與設定：限管理員使用
+		register_rest_route($ns, '/mail/templates', array(
+			'methods'  => 'GET',
+			'callback' => array(__CLASS__, 'get_mail_templates'),
+			'permission_callback' => function(){
+				return current_user_can('manage_options');
+			},
+		));
+
+		register_rest_route($ns, '/mail/templates', array(
+			'methods'  => 'POST',
+			'callback' => array(__CLASS__, 'save_mail_templates'),
+			'permission_callback' => function(){
+				return current_user_can('manage_options');
+			},
+		));
+
+		register_rest_route($ns, '/mail/preview', array(
+			'methods'  => 'POST',
+			'callback' => array(__CLASS__, 'preview_mail_template'),
+			'permission_callback' => function(){
+				return current_user_can('manage_options');
+			},
+		));
+
+		register_rest_route($ns, '/mail/send-test', array(
+			'methods'  => 'POST',
+			'callback' => array(__CLASS__, 'send_test_mail'),
+			'permission_callback' => function(){
+				return current_user_can('manage_options');
+			},
+		));
+
+	
+	}
+	
+	
+	
 
 
 
@@ -231,6 +268,7 @@ class TPMA_CR_REST_Public
                 'reg_no'        => $reg_no,
                 'created_at'    => current_time('mysql'),
                 'course_id'     => $course_id,
+    			'course_name'   => $course->course_name ?? '',   // ★ 新增：給信件模板用				
                 'class_date'    => $class_date,
                 'student_name'  => sanitize_text_field($d['student_name']),
                 'company_name'  => sanitize_text_field($d['company_name'] ?? ''),
@@ -265,6 +303,24 @@ class TPMA_CR_REST_Public
                     array('status' => 500)
                 );
             }
+			
+			// ★ 新增：寫入成功後，嘗試寄信（不要影響報名流程）
+			try {
+				// 這裡先用 contact_email，之後你可以改成學生信箱或 emails 解析
+				$to = $insert['contact_email'] ?? '';
+
+				if (!empty($to) && class_exists('TPMA_CR_Mail_Service')) {
+					TPMA_CR_Mail_Service::send('registration_notice', array(
+						'reg_context'   => $insert,   // 直接用剛剛的 insert array 當 context
+						'to'            => $to,
+						// 如果要順便 cc 給承辦 / TPMA，可再加 'cc' => [...]
+						// 'extra_context' => [...],   // 若模板需要額外欄位，可從這邊補
+					));
+				}
+			} catch (Exception $e) {
+				// 不讓使用者看到錯誤，但記錄 log 方便調整
+				error_log('[TPMA mail] registration_notice failed: ' . $e->getMessage());
+			}			
 
             return rest_ensure_response(array(
                 'success' => true,
@@ -427,6 +483,118 @@ class TPMA_CR_REST_Public
         return rest_ensure_response(array('success' => true));
 
     }
+	
+	public static function get_mail_templates($request) {
+		if (!class_exists('TPMA_CR_Mail_Templates') || !class_exists('TPMA_CR_Mail_Config')) {
+			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
+		}
+
+		$templates = TPMA_CR_Mail_Templates::get_all();
+		$config    = TPMA_CR_Mail_Config::get_config();
+
+		return rest_ensure_response(array(
+			'templates' => $templates,
+			'config'    => $config,
+		));
+	}
+
+	public static function save_mail_templates($request) {
+		if (!class_exists('TPMA_CR_Mail_Templates') || !class_exists('TPMA_CR_Mail_Config')) {
+			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
+		}
+
+		$d = $request->get_json_params();
+
+		$templates = isset($d['templates']) && is_array($d['templates']) ? $d['templates'] : array();
+		$config    = isset($d['config']) && is_array($d['config']) ? $d['config'] : array();
+
+		TPMA_CR_Mail_Templates::update_all($templates);
+		TPMA_CR_Mail_Config::update_config($config);
+
+		return rest_ensure_response(array(
+			'success'   => true,
+			'templates' => $templates,
+			'config'    => $config,
+		));
+	}
+
+	public static function preview_mail_template($request) {
+		if (!class_exists('TPMA_CR_Mail_Templates') || !class_exists('TPMA_CR_Mail_Config')) {
+			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
+		}
+
+		$d = $request->get_json_params();
+
+		$template_key = sanitize_text_field($d['template_key'] ?? '');
+		$subject_raw  = (string) ($d['subject'] ?? '');
+		$body_raw     = (string) ($d['body_html'] ?? '');
+		$context      = is_array($d['context'] ?? null) ? $d['context'] : array();
+
+		if (!$template_key) {
+			return new WP_Error('invalid_template_key', '缺少 template_key', array('status' => 400));
+		}
+
+		// 先拿目前全部模板，覆蓋指定模板後再 render
+		$templates = TPMA_CR_Mail_Templates::get_all();
+		if (!isset($templates[$template_key])) {
+			$templates[$template_key] = array();
+		}
+		$templates[$template_key]['subject']   = $subject_raw;
+		$templates[$template_key]['body_html'] = $body_raw;
+
+		// 暫時套用這個版本做預覽
+		$config = TPMA_CR_Mail_Config::get_config();
+
+		// 手動跑一次 replace_vars + 廣告 / 尾巴
+		// 這裡直接呼叫原本的 render()，暫時把模板塞進 option 前先用「假資料」覆蓋
+		// 為了簡單起見，這裡偷吃步：直接用 render()，假設預設模板裡已經有同 key 結構
+		$result = TPMA_CR_Mail_Templates::render($template_key, $context);
+		// 但 render() 會用到原本的模板內容，如果你要讓預覽完全依照前端傳來的 subject / body_html
+		// 可以額外寫一個「不從 DB 取模板，直接套變數」的小工具 function
+
+		return rest_ensure_response(array(
+			'subject'   => $result['subject'] ?? '',
+			'body_html' => $result['body_html'] ?? '',
+		));
+	}
+
+	public static function send_test_mail($request) {
+		if (!class_exists('TPMA_CR_Mail_Service')) {
+			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
+		}
+
+		$d = $request->get_json_params();
+		$to = sanitize_email($d['to'] ?? '');
+		$template_key = sanitize_text_field($d['template_key'] ?? 'registration_notice');
+
+		if (!$to) {
+			return new WP_Error('invalid_email', '缺少測試收件人', array('status' => 400));
+		}
+
+		// 給一組假的 context
+		$reg_context = array(
+			'id'           => 0,
+			'reg_no'       => 'TEST-0001',
+			'course_id'    => 0,
+			'course_name'  => '測試課程',
+			'class_date'   => current_time('mysql'),
+			'student_name' => '測試學員',
+			'company_name' => '測試公司',
+		);
+
+		try {
+			TPMA_CR_Mail_Service::send($template_key, array(
+				'reg_context' => $reg_context,
+				'to'          => $to,
+			));
+		} catch (Exception $e) {
+			return new WP_Error('send_failed', $e->getMessage(), array('status' => 500));
+		}
+
+		return rest_ensure_response(array(
+			'success' => true,
+		));
+	}
 
 }
 

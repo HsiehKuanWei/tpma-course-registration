@@ -4,6 +4,12 @@ if (!defined('ABSPATH')) { exit; }
 $apiBase   = esc_url_raw( untrailingslashit( rest_url('tpma/v1') ) );
 $restNonce = wp_create_nonce( 'wp_rest' );
 ?>
+
+<?php
+// 引入共用 mail modal（路徑依你實際放的位置調整）
+// 假設 mail-modal.php 跟 reg-admin.php 一樣在 views 資料夾：
+include __DIR__ . '/mail-modal.php';
+?>
 <style>
 	.tpma-wrap { font-size:14px; }
 
@@ -280,6 +286,10 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         <button class="tpma-btn" id="tpma-btn-apply-q">搜尋</button>
         <button class="tpma-btn" id="tpma-btn-clear-all">清除全部篩選</button>
     </div>
+	
+	<button type="button" class="tpma-btn" id="tpma-btn-mail-templates">
+    信件模板設定
+</button>
 
     <table class="tpma-reg-table">
         <thead>
@@ -551,6 +561,14 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 </div>
 
 <script>
+// 信件模板設定按鈕
+const btnMailTpl = document.getElementById('tpma-btn-mail-templates');
+if (btnMailTpl && window.TPMA_MailModal) {
+    btnMailTpl.addEventListener('click', function(){
+        TPMA_MailModal.open('registration_notice'); // 預設打開報名通知模板
+    });
+}	
+	
 (function(){
     const apiBase    = '<?php echo $apiBase; ?>';
     const wpRestNonce = '<?php echo $restNonce; ?>';
