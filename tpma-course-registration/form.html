@@ -1,0 +1,1219 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>報名測試</title>
+<style>
+  .tpma-form-wrap {
+    max-width: 900px;
+    margin: 20px auto;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .tpma-field { margin-bottom: 14px; }
+  .tpma-label-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    gap: 6px;
+  }
+  .tpma-label { font-weight: 600; }
+  .tpma-required {
+    font-size: 11px;
+    color: #d00;
+    border: 1px solid #d00;
+    padding: 0 4px;
+    border-radius: 3px;
+  }
+  .tpma-input,
+  .tpma-select,
+  .tpma-textarea {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+    box-sizing: border-box;
+    font-size: 14px;
+  }
+  .tpma-input-error {
+    border-color: #d00 !important;
+    background-color: #fff6f6;
+  }
+  .tpma-error-msg {
+    margin-top: 2px;
+    font-size: 11px;
+    color: #d00;
+  }
+  .tpma-note {
+    font-size: 12px;
+    color: #666;
+  }
+  .tpma-inline-3 {
+    display: flex;
+    gap: 6px;
+  }
+  .tpma-inline-3 > div { flex: 1; }
+  .tpma-btn {
+    padding: 8px 16px;
+    background: #0073aa;
+    color: #fff;
+    border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .tpma-btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+  }
+  .tpma-btn-secondary {
+    background: #555;
+  }
+  .tpma-summary-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+  }
+  .tpma-summary-modal {
+    background: #fff;
+    max-width: 720px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 16px 18px;
+    border-radius: 4px;
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
+    font-size: 13px;
+  }
+  .tpma-summary-modal h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .tpma-summary-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+    font-size: 13px;
+  }
+  .tpma-summary-table th,
+  .tpma-summary-table td {
+    border: 1px solid #ddd;
+    padding: 4px 6px;
+    vertical-align: top;
+  }
+  .tpma-summary-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .tpma-alert {
+    margin-top: 10px;
+    padding: 8px;
+    border-radius: 3px;
+    font-size: 13px;
+  }
+  .tpma-alert-success {
+    background: #e6ffed;
+    border: 1px solid #2c974b;
+    color: #135724;
+  }
+  .tpma-alert-error {
+    background: #ffecec;
+    border: 1px solid #d00;
+    color: #a30000;
+  }
+  .tpma-loading {
+    font-size: 13px;
+    color: #555;
+    margin-bottom: 8px;
+  }
+  .tpma-learner {
+    padding: 10px;
+    margin-bottom: 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fafafa;
+  }
+  .tpma-learner-title {
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .tpma-flex-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
+</style>
+</head>
+
+<body>
+
+<div id="tpma-course-registration">
+  <div class="tpma-form-wrap">
+    <div id="tpma-loading" class="tpma-loading">載入課程資料中...</div>
+    <form id="tpma-reg-form" novalidate>
+      <!-- 課程名稱 -->
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">課程名稱</div>
+          <div class="tpma-required">* 必填</div>
+        </div>
+        <select id="course-select" class="tpma-select">
+          <option value="">請選擇課程</option>
+        </select>
+        <div class="tpma-error-msg" data-error-for="course-select"></div>
+      </div>
+
+      <!-- 授課日期 / 場次 -->
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">授課日期 / 場次</div>
+          <div class="tpma-required">* 必填</div>
+        </div>
+        <select id="session-select" class="tpma-select" disabled>
+          <option value="">請先選擇課程</option>
+        </select>
+        <div class="tpma-error-msg" data-error-for="session-select"></div>
+      </div>
+
+      <!-- 課程資訊展示 -->
+      <div class="tpma-field">
+        <div class="tpma-label">講師</div>
+        <p id="course-lecturer"></p>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label">課程名稱</div>
+        <p id="course-name-display"></p>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label">簡介</div>
+        <p id="course-intro"></p>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label">大綱</div>
+        <div id="course-outline"></div>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label">授課時數（小時）</div>
+        <p id="course-duration"></p>
+      </div>
+
+      <hr>
+
+      <!-- 學員區塊 -->
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">報名學員資料</div>
+          <div class="tpma-required">* 至少 1 位學員，姓名與 Email 必填</div>
+        </div>
+      </div>
+
+      <div id="learners-wrapper"></div>
+
+      <div class="tpma-field">
+        <button type="button" id="add-learner" class="tpma-btn tpma-btn-secondary">+ 新增一位學員</button>
+        <div class="tpma-error-msg" data-error-for="learners"></div>
+      </div>
+
+      <!-- 承辦人（共用） -->
+		
+      <!-- 勾選：承辦人與第一位學員相同 -->
+	
+      <hr>
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">承辦人姓名</div>
+          <div class="tpma-required">* 必填</div>
+			<label>
+			  <input type="checkbox" id="contact-same-first">
+			  同報名學員
+			</label>
+        </div>
+        <input type="text" id="contact-name" class="tpma-input">
+        <div class="tpma-error-msg" data-error-for="contact-name"></div>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">承辦人聯絡 Email</div>
+          <div class="tpma-required">* 必填</div>
+        </div>
+        <input type="email" id="contact-email" class="tpma-input">
+        <div class="tpma-error-msg" data-error-for="contact-email"></div>
+      </div>
+
+      <!-- 公司資訊（共用） -->
+      <hr>
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">公司抬頭</div>
+          <div class="tpma-required">* 必填</div>
+        </div>
+        <input type="text" id="company-name" class="tpma-input">
+        <div class="tpma-error-msg" data-error-for="company-name"></div>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">公司統一編號</div>
+          <div class="tpma-required">* 必填</div>
+        </div>
+        <input type="text" id="tax-id" class="tpma-input" placeholder="8位數字或輸入「無」">
+        <div class="tpma-error-msg" data-error-for="tax-id"></div>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">公司聯絡電話（記錄為 phone）</div>
+          <div class="tpma-required">* 必填</div>
+        </div>
+        <div class="tpma-inline-3">
+          <div><input type="text" id="phone-area" class="tpma-input" maxlength="3" placeholder="區碼"></div>
+          <div><input type="text" id="phone-main" class="tpma-input" maxlength="8" placeholder="電話號碼"></div>
+          <div><input type="text" id="phone-ext" class="tpma-input" maxlength="4" placeholder="分機(選填)"></div>
+        </div>
+        <div class="tpma-error-msg" data-error-for="phone"></div>
+      </div>		
+		
+		<!-- 收據方式 -->
+		<div class="tpma-field">
+		  <div class="tpma-label-row">
+		    <div class="tpma-label">收據方式</div>
+		    <div class="tpma-required">* 必填</div>
+		  </div>
+		  <select id="receipt-type" class="tpma-select">
+		    <option value="">請選擇</option>
+		    <option value="electronic">電子收據</option>
+		    <option value="paper">紙本收據</option>
+		  </select>
+		  <div class="tpma-error-msg" data-error-for="receipt-type"></div>
+		</div>
+
+      <!-- 收據寄送 -->
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">證書/收據寄送地址</div>
+          <div class="tpma-required">* 必填</div>
+        </div>
+        <input type="text" id="address" class="tpma-input">
+        <div class="tpma-error-msg" data-error-for="address"></div>
+      </div>
+
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">收件人</div>
+          <div class="tpma-required">* 必填</div>
+			<label>
+			  <input type="checkbox" id="receiver-same-contact"> 同承辦人
+			</label>
+        </div>
+		<input type="text" id="receiver" class="tpma-input">
+        <div class="tpma-error-msg" data-error-for="receiver"></div>
+      </div>
+
+      <!-- 資訊來源 -->
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">資訊來源</div>
+        </div>
+        <select id="source" class="tpma-select">
+          <option value="">請選擇</option>
+          <option value="學會官網">學會官網</option>
+          <option value="TWSE 官網">TWSE 官網</option>
+          <option value="學會 Mail">學會 Mail</option>
+          <option value="學會電訪">學會電訪</option>
+          <option value="其他">其他</option>
+        </select>
+      </div>
+
+      <!-- 備註 -->
+      <div class="tpma-field">
+        <div class="tpma-label-row">
+          <div class="tpma-label">備註</div>
+        </div>
+        <textarea id="note" class="tpma-textarea" rows="3"></textarea>
+      </div>
+
+      <button type="button" id="tpma-submit" class="tpma-btn">送出報名</button>
+      <div id="tpma-message"></div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+const TPMA_API_BASE = 'https://mazuuni.org.tw/iching/wp-json/tpma/v1';
+
+let coursesMap = {};
+let firstErrorElement = null;
+
+// ===== 工具 =====
+function pad2(n){return n.toString().padStart(2,'0');}
+
+function minutesToHoursString(mins){
+  const m = parseInt(mins,10)||0;
+  if(!m) return '';
+  const h = m/60;
+  return Number.isInteger(h) ? h + ' 小時' : (Math.round(h*10)/10) + ' 小時';
+}
+
+function formatSessionLabel(sessionDatetime, durationMinutes){
+  if(!sessionDatetime) return '課程尚在安排中...';
+  const start = new Date(sessionDatetime.replace(' ','T'));
+  if(isNaN(start.getTime())) return sessionDatetime;
+  const dur = parseInt(durationMinutes||0,10);
+  const end = new Date(start.getTime() + dur*60000);
+  const weekdayMap = ['日','一','二','三','四','五','六'];
+  const y = start.getFullYear();
+  const mo = pad2(start.getMonth()+1);
+  const d = pad2(start.getDate());
+  const w = weekdayMap[start.getDay()];
+  const sh = pad2(start.getHours());
+  const sm = pad2(start.getMinutes());
+  const eh = pad2(end.getHours());
+  const em = pad2(end.getMinutes());
+  return `${y}-${mo}-${d}（${w}） ${sh}:${sm}~${eh}:${em}`;
+}
+
+function buildPhone(area, main, ext){
+  const a = (area||'').replace(/\D/g,'');
+  const m = (main||'').replace(/\D/g,'');
+  const e = (ext||'').replace(/\D/g,'');
+  if(!a || !m) return '';
+  let fm = m;
+  if(m.length===8) fm = m.slice(0,4)+'-'+m.slice(4);
+  else if(m.length===7) fm = m.slice(0,3)+'-'+m.slice(3);
+  let out = `(${a})${fm}`;
+  if(e) out += `#${e}`;
+  return out;
+}
+
+// 單一欄位手機字串 → 格式化成 xxxx-xxx-xxx，錯誤回傳 null，空白回傳 ''
+function buildMobile(rawVal){
+  const digits = (rawVal || '').replace(/\D/g,'');
+  if(!digits) return '';            // 全空：視為沒填
+  if(digits.length !== 10) return null; // 長度錯誤：讓驗證丟錯
+  return (
+    digits.slice(0,4) + '-' +
+    digits.slice(4,7) + '-' +
+    digits.slice(7,10)
+  );
+}
+
+// ===== 手機欄位處理 =====
+function formatMobileInput(input){
+  let v = input.value.replace(/\D/g,'');
+  if(!v){
+    input.value = '';
+    return;
+  }
+  if(v.length > 10) v = v.slice(0,10);
+
+  if(v.length === 10){
+    input.value =
+      v.slice(0,4) + '-' +
+      v.slice(4,7) + '-' +
+      v.slice(7,10);
+  }else{
+    // 長度不對就維持純數字，交給驗證處理
+    input.value = v;
+  }
+}
+	
+function getQueryParams() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    cid: params.get('course_id') || '',
+    sid: params.get('session_id') || ''
+  };
+}
+
+function applyInitialSelectionFromQuery() {
+  const { cid, sid } = getQueryParams();
+  if (!cid) return;
+
+  const courseSelect  = document.getElementById('course-select');
+  const sessionSelect = document.getElementById('session-select');
+
+  // 嘗試選中對應的課程
+  const courseOption = Array.from(courseSelect.options).find(opt => opt.value == cid);
+  if (!courseOption) return;
+
+  courseSelect.value = cid;
+  onCourseChange(); // 觸發原本的課程切換邏輯，填入講師/簡介/場次
+
+  // 如果有給 session_id，再選定場次
+  if (sid && !sessionSelect.disabled) {
+    const sessionOption = Array.from(sessionSelect.options).find(opt => opt.value == sid);
+    if (sessionOption) {
+      sessionSelect.value = sid;
+      clearError('session-select');
+    }
+  }
+}
+	
+
+function setupMobileInput(input){
+  // focus 時顯示純數字方便改
+  input.addEventListener('focus', () => {
+    input.value = input.value.replace(/\D/g,'');
+  });
+  // 輸入時只允許數字（禁止 - 與空白）
+  input.addEventListener('input', () => {
+    input.value = input.value.replace(/[^0-9]/g,'');
+  });
+  // blur 時自動插入 xxxx-xxx-xxx
+  input.addEventListener('blur', () => {
+    formatMobileInput(input);
+  });
+}
+
+// ===== 公司電話主號碼處理 =====
+function formatPhoneMain(input){
+  let v = input.value.replace(/\D/g,'');
+  if(!v){
+    input.value = '';
+    return;
+  }
+  if(v.length > 8) v = v.slice(0,8);
+
+  if(v.length <= 4){
+    input.value = v;
+    return;
+  }
+  const head = v.slice(0, v.length - 4);
+  const tail = v.slice(v.length - 4);
+  input.value = head + '-' + tail;   // 1234567 → 123-4567；12345678 → 1234-5678
+}
+
+function setupPhoneMainInput(input){
+  input.addEventListener('focus', () => {
+    input.value = input.value.replace(/\D/g,'');
+  });
+  input.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/[^0-9]/g,'');
+  });
+  input.addEventListener('blur', (e) => {
+    formatPhoneMain(e.target);
+  });
+}
+
+// ===== CORS / API: 載入課程 =====
+async function loadCourses(){
+  const loadingEl = document.getElementById('tpma-loading');
+  try{
+    const res = await fetch(`${TPMA_API_BASE}/courses`);
+    if(!res.ok) throw new Error();
+    const data = await res.json();
+    coursesMap = {};
+    (data||[]).forEach(row=>{
+      const cid = row.course_id;
+      if(!cid) return;
+      if(!coursesMap[cid]){
+        coursesMap[cid] = {
+          course_id: cid,
+          course_name: row.course_name || '',
+          lecturer: row.lecturer || '',
+          intro: row.intro || '',
+          outline: row.outline || '',
+          duration_minutes: row.duration_minutes || '',
+          sessions: [],
+          woocommerce_product_id: row.woocommerce_product_id || '' // Placeholder for future use
+        };
+      }
+      if(row.session_id){
+        coursesMap[cid].sessions.push({
+          session_id: row.session_id,
+          session_datetime: row.session_datetime || ''
+        });
+      }
+    });
+    const courseSelect = document.getElementById('course-select');
+    courseSelect.innerHTML = `<option value="">請選擇課程</option>`;
+    Object.values(coursesMap).forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c.course_id;
+      opt.textContent = c.course_name;
+      courseSelect.appendChild(opt);
+    });
+
+    loadingEl.textContent = '';
+
+    // ★ 課程列表載入完成後，依網址參數自動選定課程與場次
+    applyInitialSelectionFromQuery();
+
+  }catch(e){
+    console.error(e);
+    loadingEl.textContent = '課程資料載入失敗，請稍後再試。';
+  }
+}
+
+// ===== 課程切換 =====
+function onCourseChange(){
+  const cid = document.getElementById('course-select').value;
+  const sessionSelect = document.getElementById('session-select');
+  const lecturerEl = document.getElementById('course-lecturer');
+  const nameEl = document.getElementById('course-name-display');
+  const introEl = document.getElementById('course-intro');
+  const outlineEl = document.getElementById('course-outline');
+  const durationEl = document.getElementById('course-duration');
+  clearError('course-select');
+
+  if(!cid || !coursesMap[cid]){
+    sessionSelect.innerHTML = `<option value="">請先選擇課程</option>`;
+    sessionSelect.disabled = true;
+    lecturerEl.textContent = '';
+    nameEl.textContent = '';
+    introEl.textContent = '';
+    outlineEl.innerHTML = '';
+    durationEl.textContent = '';
+    return;
+  }
+
+  const c = coursesMap[cid];
+  lecturerEl.textContent = c.lecturer || '';
+  nameEl.textContent = c.course_name || '';
+  introEl.textContent = c.intro || '';
+  durationEl.textContent = minutesToHoursString(c.duration_minutes);
+
+  if(c.outline){
+    try{ outlineEl.innerHTML = marked.parse(c.outline); }
+    catch(e){ outlineEl.textContent = c.outline; }
+  }else{
+    outlineEl.innerHTML = '';
+  }
+
+  sessionSelect.disabled = false;
+  sessionSelect.innerHTML = '';
+  if(c.sessions && c.sessions.length){
+    sessionSelect.appendChild(new Option('請選擇授課日期 / 場次',''));
+    c.sessions.forEach(s=>{
+      const label = s.session_datetime
+        ? formatSessionLabel(s.session_datetime, c.duration_minutes)
+        : '課程尚在安排中...';
+      const value = s.session_id || s.session_datetime || '';
+      sessionSelect.appendChild(new Option(label, value));
+    });
+  }else{
+    sessionSelect.appendChild(new Option('課程尚在安排中...',''));
+  }
+}
+
+// ===== 學員區：建立一筆學員區塊 =====
+function createLearnerBlock(index){
+  const div = document.createElement('div');
+  div.className = 'tpma-learner';
+  div.dataset.index = index;
+  div.innerHTML = `
+    <div class="tpma-learner-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>學員 ${index+1}</span>
+      ${index === 0 ? '' : '<button type="button" class="tpma-del-learner" style="color:#d00;font-size:16px;background:none;border:none;cursor:pointer;">✕</button>'}
+    </div>
+
+    <div class="tpma-field">
+      <div class="tpma-label-row">
+        <div class="tpma-label">學員姓名</div>
+        <div class="tpma-required">* 必填</div>
+      </div>
+      <input type="text" class="tpma-input learner-name">
+      <div class="tpma-error-msg learner-error-name"></div>
+    </div>
+
+    <div class="tpma-field">
+      <div class="tpma-label-row">
+        <div class="tpma-label">部門</div>
+      </div>
+      <input type="text" class="tpma-input learner-dept">
+      <div class="tpma-error-msg learner-error-dept"></div>
+    </div>
+
+    <div class="tpma-field">
+      <div class="tpma-label-row">
+        <div class="tpma-label">職稱</div>
+      </div>
+      <input type="text" class="tpma-input learner-title">
+      <div class="tpma-error-msg learner-error-title"></div>
+    </div>
+
+    <div class="tpma-field">
+      <div class="tpma-label-row">
+        <div class="tpma-label">學員 Email</div>
+        <div class="tpma-required">* 必填</div>
+      </div>
+      <input type="email" class="tpma-input learner-email" placeholder="請輸入 Email">
+      <div class="tpma-error-msg learner-error-email"></div>
+    </div>
+
+    <div class="tpma-field">
+      <div class="tpma-label-row">
+        <div class="tpma-label">學員行動電話</div>
+        <div class="tpma-note">請輸入 10 碼數字，離開欄位後會自動變成 09xx-xxx-xxx</div>
+      </div>
+      <input type="text" class="tpma-input learner-mobile" maxlength="12" placeholder="0912345678">
+      <div class="tpma-error-msg learner-error-mobile"></div>
+    </div>
+  `;
+
+  // 手機欄位事件綁定
+  const mobileInput = div.querySelector('.learner-mobile');
+  setupMobileInput(mobileInput);
+
+  // 刪除按鈕（第一位沒有）
+  const delBtn = div.querySelector('.tpma-del-learner');
+  if (delBtn) {
+    delBtn.addEventListener('click', () => {
+      div.remove();
+      renumberLearners();
+      updateContactSameCheckboxState();
+    });
+  }
+
+  return div;
+}
+
+function addLearner(){
+  const wrapper = document.getElementById('learners-wrapper');
+  const currentCount = wrapper.querySelectorAll('.tpma-learner').length;
+  const block = createLearnerBlock(currentCount);
+  wrapper.appendChild(block);
+  updateContactSameCheckboxState();
+}
+
+function renumberLearners(){
+  const blocks = document.querySelectorAll('.tpma-learner');
+  blocks.forEach((blk, idx) => {
+    blk.dataset.index = idx;
+    const titleSpan = blk.querySelector('.tpma-learner-title span');
+    titleSpan.textContent = `學員 ${idx+1}`;
+
+    // 第一筆不能刪除，其他筆要顯示 ❌
+    const delBtn = blk.querySelector('.tpma-del-learner');
+    if (idx === 0) {
+      if (delBtn) delBtn.remove();
+    } else {
+      if (!delBtn) {
+        const btn = document.createElement('button');
+        btn.type = "button";
+        btn.className = "tpma-del-learner";
+        btn.style = "color:#d00;font-size:16px;background:none;border:none;cursor:pointer;";
+        btn.textContent = "✕";
+        blk.querySelector('.tpma-learner-title').appendChild(btn);
+
+        btn.addEventListener('click', () => {
+          blk.remove();
+          renumberLearners();
+          updateContactSameCheckboxState();
+        });
+      }
+    }
+  });
+}
+
+function updateContactFieldsDisabledState(){
+  const contactName = document.getElementById('contact-name');
+  const contactEmail = document.getElementById('contact-email');
+  const contactSameFirst = document.getElementById('contact-same-first').checked;
+  const shouldDisable = contactSameFirst;  // ✅ 只看「承辦人同第一位學員」
+  contactName.disabled = shouldDisable;
+  contactEmail.disabled = shouldDisable;
+}
+
+function updateContactSameCheckboxState(){
+  const wrapper = document.getElementById('learners-wrapper');
+  const count = wrapper.querySelectorAll('.tpma-learner').length;
+  const cb = document.getElementById('contact-same-first');
+  if(count > 1){
+    cb.checked = false;
+    cb.disabled = true;
+  }else{
+    cb.disabled = false;
+  }
+  updateContactFieldsDisabledState();
+}
+
+// ===== 驗證輔助 =====
+function setError(id, msg){
+  const input = document.getElementById(id);
+  if(input) input.classList.add('tpma-input-error');
+  const err = document.querySelector(`.tpma-error-msg[data-error-for="${id}"]`);
+  if(err) err.textContent = msg || '';
+  if(!firstErrorElement) firstErrorElement = input || err;
+}
+function clearError(id){
+  const input = document.getElementById(id);
+  if(input) input.classList.remove('tpma-input-error');
+  const err = document.querySelector(`.tpma-error-msg[data-error-for="${id}"]`);
+  if(err) err.textContent = '';
+}
+function clearAllErrors(){
+  firstErrorElement = null;
+  document.querySelectorAll('.tpma-input-error').forEach(el=>el.classList.remove('tpma-input-error'));
+  document.querySelectorAll('.tpma-error-msg').forEach(el=>el.textContent='');
+}
+
+// ===== 驗證整張表，產出 learnersPayload 資料結構 =====
+function validateForm(){
+  clearAllErrors();
+  let ok = true;
+
+  // --- 課程欄位 ---
+  const cid = document.getElementById('course-select').value.trim();
+  if(!cid){ setError('course-select','請選擇課程'); ok = false; }
+
+  const sessionSelect = document.getElementById('session-select');
+  const sessionValue = sessionSelect.value.trim();
+  const sessionText = sessionSelect.options[sessionSelect.selectedIndex]?.text || '';
+  if(!sessionSelect.disabled && sessionSelect.options.length>1 && !sessionValue){
+    setError('session-select','請選擇授課日期 / 場次');
+    ok = false;
+  }
+
+  // --- 各種 checkbox 狀態 ---
+  const contactSameFirst = document.getElementById('contact-same-first').checked;
+  const receiverSameContact = document.getElementById('receiver-same-contact').checked;
+
+  // --- 承辦人 & 電話（先抓值，後面學員驗證會用到） ---
+  const contactNameInput = document.getElementById('contact-name');
+  const contactEmailInput = document.getElementById('contact-email');
+  let contactName = contactNameInput.value.trim();
+  let contactEmail = contactEmailInput.value.trim();
+
+  const phoneArea = document.getElementById('phone-area').value.trim();
+  const phoneMainRaw = document.getElementById('phone-main').value.trim();
+  const phoneExt  = document.getElementById('phone-ext').value.trim();
+  const phoneMainDigits = phoneMainRaw.replace(/\D/g,'');
+
+  // 規則 3：只要承辦人有填 Email（且非同第一位學員），學員 Email 就不必填
+  const skipLearnerEmailRequired = !!contactEmail && !contactSameFirst;
+
+  // --- 學員驗證 ---
+  const wrapper = document.getElementById('learners-wrapper');
+  const learnerBlocks = wrapper.querySelectorAll('.tpma-learner');
+  const learners = [];
+
+  learnerBlocks.forEach((blk, idx)=>{
+    const nameInput = blk.querySelector('.learner-name');
+    const deptInput = blk.querySelector('.learner-dept');
+    const titleInput= blk.querySelector('.learner-title');
+    const emailInput= blk.querySelector('.learner-email');
+    const mobileInput = blk.querySelector('.learner-mobile');
+
+    const eName = blk.querySelector('.learner-error-name');
+    const eEmail= blk.querySelector('.learner-error-email');
+    const eMobile= blk.querySelector('.learner-error-mobile');
+
+    const name = nameInput.value.trim();
+    const dept = deptInput.value.trim();
+    const title= titleInput.value.trim();
+    const email= emailInput.value.trim();
+    const mobileRaw = mobileInput.value;
+
+    eName.textContent = '';
+    eEmail.textContent = '';
+    eMobile.textContent = '';
+    [nameInput, emailInput, mobileInput].forEach(i=>i && i.classList.remove('tpma-input-error'));
+
+    const mobileStr = buildMobile(mobileRaw); // '' / null / '09xx-xxx-xxx'
+
+    // 若整筆都是空的（沒填姓名、Email、手機、部門、職稱），視為無效學員，直接略過
+    if(!name && !email && !mobileRaw.replace(/\D/g,'') && !dept && !title){
+      return;
+    }
+
+    // 姓名永遠必填
+    if(!name){
+      eName.textContent = '請填寫學員姓名';
+      nameInput.classList.add('tpma-input-error');
+      if(!firstErrorElement) firstErrorElement = nameInput;
+      ok = false;
+    }
+
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // 規則 3 + 規則 4（舊）：是否跳過學員 Email 必填
+    if(!email){
+      if(!skipLearnerEmailRequired){   // 不跳過時才檢查必填
+        eEmail.textContent = '請填寫學員 Email';
+        emailInput.classList.add('tpma-input-error');
+        if(!firstErrorElement) firstErrorElement = emailInput;
+        ok = false;
+      }
+    }else if(!emailRe.test(email)){
+      eEmail.textContent = '學員 Email 格式不正確';
+      emailInput.classList.add('tpma-input-error');
+      if(!firstErrorElement) firstErrorElement = emailInput;
+      ok = false;
+    }
+
+    // 手機：仍然是「有填就要 10 碼」，可以全部留空
+    if(mobileStr === null){
+      eMobile.textContent = '行動電話必須是 10 碼數字，或全部留空';
+      mobileInput.classList.add('tpma-input-error');
+      if(!firstErrorElement) firstErrorElement = mobileInput;
+      ok = false;
+    }
+
+    learners.push({
+      name, dept, title, email,
+      mobile: mobileStr || ''
+    });
+  });
+
+  if(learners.length === 0){
+    const err = document.querySelector('.tpma-error-msg[data-error-for="learners"]');
+    if(err) err.textContent = '請至少填寫一位學員資料';
+    if(!firstErrorElement){
+      const addBtn = document.getElementById('add-learner');
+      firstErrorElement = addBtn;
+    }
+    ok = false;
+  }
+
+  // --- 承辦人欄位驗證（姓名 / Email） ---
+  const emailReGlobal = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if(!contactSameFirst){
+    // 未勾選「承辦人同第一位學員」 → 承辦人姓名 / Email 必填
+    if(!contactName){
+      setError('contact-name','請填寫承辦人姓名');
+      ok = false;
+    }
+    if(!contactEmail){
+      setError('contact-email','請填寫承辦人 Email');
+      ok = false;
+    }else if(!emailReGlobal.test(contactEmail)){
+      setError('contact-email','承辦人 Email 格式不正確');
+      ok = false;
+    }
+  }else{
+    // 勾選「承辦人同第一位學員」 → 承辦人姓名、mail 不必填（但學員那邊已經檢查）
+  }
+
+  // --- 學員手機 vs 公司電話互鎖 ---
+  const hasCompanyPhone = !!(phoneArea && phoneMainDigits);
+  const hasAnyValidMobile = learners.some(l => l.mobile); // 有任何一位學員手機通過格式
+
+  if(!hasCompanyPhone && !hasAnyValidMobile){
+    setError('phone','請至少填寫公司聯絡電話或任一學員行動電話');
+    ok = false;
+  }else if(hasCompanyPhone){
+    // 有填公司電話才做格式檢查
+    if(
+      !/^[0-9]{1,3}$/.test(phoneArea) ||
+      !/^[0-9]{5,8}$/.test(phoneMainDigits) ||
+      (phoneExt && !/^[0-9]{1,4}$/.test(phoneExt))
+    ){
+      setError('phone','公司電話格式有誤，僅允許數字');
+      ok = false;
+    }
+  }
+
+  // --- 公司抬頭 / 統編 / 收據 / 地址 ---
+  const companyName = document.getElementById('company-name').value.trim();
+  if(!companyName){ setError('company-name','請填寫公司抬頭'); ok = false; }
+
+  const taxId = document.getElementById('tax-id').value.trim();
+  if(!taxId || !(/^[0-9]{8}$/.test(taxId) || taxId === '無')){
+    setError('tax-id','請輸入 8 位數字或「無」');
+    ok = false;
+  }
+  
+  const receiptType = document.getElementById('receipt-type').value;
+  if (!receiptType) { setError('receipt-type', '請選擇收據方式'); ok = false; }  
+
+  const address = document.getElementById('address').value.trim();
+  if(!address){ setError('address','請填寫證書/收據寄送地址'); ok = false; }
+
+  // --- 收件人驗證（同承辦人規則） ---
+  const receiverInput = document.getElementById('receiver');
+  const receiver = receiverInput.value.trim();
+
+  if(receiverSameContact){
+    // 勾選「同承辦人」：
+    // 若「沒勾承辦人同第一位學員」且承辦人姓名+Email 皆空 → 不可以
+    if(!contactSameFirst && !contactName && !contactEmail){
+      setError('receiver','已勾選「同承辦人」，但承辦人姓名與 Email 皆為空，請先填寫承辦人或取消勾選');
+      ok = false;
+    }
+  }else{
+    // 沒勾「同承辦人」 → 收件人必填
+    if(!receiver){
+      setError('receiver','請填寫收件人');
+      ok = false;
+    }
+  }
+
+  // 若有錯誤，捲到第一個錯誤
+  if(!ok && firstErrorElement){
+    const rect = firstErrorElement.getBoundingClientRect();
+    const top = window.pageYOffset + rect.top - 80;
+    window.scrollTo({ top, behavior:'smooth' });
+  }
+
+  // --- 送出欄位調整：承辦/收件人可能留空 ---
+  let sharedContactName = contactName;
+  let sharedContactEmail = contactEmail;
+  let sharedReceiver = receiver;
+
+  if(contactSameFirst){
+    // 承辦人同第一位學員 → 實際送出留空
+    sharedContactName = '';
+    sharedContactEmail = '';
+  }
+
+  if(receiverSameContact){
+    // 收件人同承辦人 → 實際送出留空
+    sharedReceiver = '';
+  }
+
+  return {
+    ok,
+    cid,
+    sessionValue,
+    sessionText,
+    learners,
+    shared: {
+      contactName: sharedContactName,
+      contactEmail: sharedContactEmail,
+      contactSameFirst,
+      receiverSameContact,
+      receipt_type: receiptType,
+      phone: hasCompanyPhone ? buildPhone(phoneArea, phoneMainDigits, phoneExt) : '',
+      companyName,
+      taxId,
+      address,
+      receiver: sharedReceiver,
+      source: document.getElementById('source').value,
+      note: document.getElementById('note').value.trim()
+    }
+  };
+}
+
+// ===== Summary Modal：顯示多學員確認 =====
+function showSummaryModal(courseInfo, form){
+  const backdrop = document.createElement('div');
+  backdrop.className = 'tpma-summary-modal-backdrop';
+  const m = document.createElement('div');
+  m.className = 'tpma-summary-modal';
+
+  const contactNameDisplay = form.shared.contactSameFirst
+    ? '同學員'
+    : (form.shared.contactName || '');
+
+  const contactEmailDisplay = form.shared.contactSameFirst
+    ? '同學員'
+    : (form.shared.contactEmail || '');
+
+  const receiverDisplay = form.shared.receiverSameContact
+    ? '同承辦人'
+    : (form.shared.receiver || '');
+
+  const sharedRows = `
+    <tr><th>課程名稱</th><td>${courseInfo.course_name}</td></tr>
+    <tr><th>授課日期 / 場次</th><td>${courseInfo.class_date || '課程尚在安排中'}</td></tr>
+    <tr><th>講師</th><td>${courseInfo.lecturer || ''}</td></tr>
+    <tr><th>公司抬頭</th><td>${form.shared.companyName}</td></tr>
+    <tr><th>統一編號</th><td>${form.shared.taxId}</td></tr>
+    <tr><th>承辦人</th><td>${contactNameDisplay}</td></tr>
+    <tr><th>承辦人 Email</th><td>${contactEmailDisplay}</td></tr>
+    <tr><th>公司聯絡電話</th><td>${form.shared.phone}</td></tr>
+    <tr><th>收據方式</th><td>${form.shared.receipt_type === 'paper' ? '紙本收據' : '電子收據'}</td></tr>
+    <tr><th>收據/證書寄送地址</th><td>${form.shared.address}</td></tr>
+    <tr><th>收件人</th><td>${receiverDisplay}</td></tr>
+    <tr><th>資訊來源</th><td>${form.shared.source || ''}</td></tr>
+    <tr><th>備註</th><td>${(form.shared.note || '').replace(/\n/g,'<br>')}</td></tr>
+  `;
+
+  const learnersRows = form.learners.map((l,idx)=>`
+    <tr>
+      <th>學員 ${idx+1}</th>
+      <td>
+        姓名：${l.name}<br>
+        部門／職稱：${l.dept || ''}／${l.title || ''}<br>
+        Email：${l.email}<br>
+        行動電話：${l.mobile || ''}<br>
+      </td>
+    </tr>
+  `).join('');
+
+  m.innerHTML = `
+    <h3>請確認以下報名資訊（共 ${form.learners.length} 位學員）</h3>
+    <table class="tpma-summary-table">
+      <tbody>
+        ${sharedRows}
+        ${learnersRows}
+      </tbody>
+    </table>
+    <div class="tpma-summary-actions">
+      <button type="button" class="tpma-btn tpma-cancel">返回修改</button>
+      <button type="button" class="tpma-btn tpma-confirm">確認送出</button>
+    </div>
+  `;
+  backdrop.appendChild(m);
+  document.body.appendChild(backdrop);
+
+  return new Promise(resolve=>{
+    m.querySelector('.tpma-cancel').onclick = ()=>{document.body.removeChild(backdrop);resolve(false);};
+    m.querySelector('.tpma-confirm').onclick = ()=>{document.body.removeChild(backdrop);resolve(true);};
+  });
+}
+
+// ===== 多筆送出：每位學員一筆 /register =====
+async function submitMultipleRegistrations(courseInfo, form){
+  const msgBox = document.getElementById('tpma-message');
+  const btn = document.getElementById('tpma-submit');
+  msgBox.innerHTML = '';
+  btn.disabled = true;
+
+  // Construct a single comprehensive payload
+  const comprehensivePayload = {
+    course_id: parseInt(form.cid, 10),
+    session_id: form.sessionValue || '',
+    course_name: courseInfo.course_name,
+    lecturer: courseInfo.lecturer || '',
+    class_date: courseInfo.class_date || form.sessionText || '',
+    
+    learners: form.learners.map(l => {
+      let studentEmailForRecord = '';
+      if (l.email && l.email !== form.shared.contactEmail) {
+        studentEmailForRecord = l.email;
+      }
+      return {
+        student_name: l.name,
+        department: l.dept,
+        job_title: l.title,
+        mobile: l.mobile,
+        emails: studentEmailForRecord,
+      };
+    }),
+    
+    shared: {
+      contact_name: form.shared.contactName,
+      contact_email: form.shared.contactEmail,
+      company_name: form.shared.companyName,
+      tax_id: form.shared.taxId,
+      phone: form.shared.phone,
+      receipt_type: form.shared.receipt_type,
+      receiver: form.shared.receiver,
+      address: form.shared.address,
+      source: form.shared.source,
+      note: form.shared.note,
+      contact_same_first: form.shared.contactSameFirst,
+      receiver_same_contact: form.shared.receiverSameContact,
+    }
+  };
+
+  try {
+    const res = await fetch(`${TPMA_API_BASE}/register`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(comprehensivePayload)
+    });
+    const data = await res.json().catch(()=>({}));
+
+    if (!res.ok || !data.success) {
+      throw new Error(data.message || data.code || '送出失敗，請稍後再試。');
+    }
+
+    // ✅ 全部成功
+    const root = document.getElementById('tpma-course-registration');
+    const woocommerceOrderId = data.woocommerce_order_id;
+    const regNo = data.reg_no;
+
+    let successMessage = `所有學員已成功完成報名！同批報名編號：<strong>${esc(regNo)}</strong><br>`;
+    if (woocommerceOrderId) {
+        successMessage += `對應的 WooCommerce 訂單號碼：<strong>${esc(woocommerceOrderId)}</strong><br>`;
+        successMessage += `請妥善保存以上資訊以便後續查詢與匯款對帳。`;
+    } else {
+        successMessage += `請妥善保存以上資訊以便後續查詢與匯款對帳。`;
+    }
+
+    root.innerHTML = `
+      <div class="tpma-form-wrap">
+        <div class="tpma-alert tpma-alert-success">
+          ${successMessage}
+        </div>
+      </div>
+    `;
+
+  } catch (e) {
+    console.error(e);
+    msgBox.innerHTML = `<div class="tpma-alert tpma-alert-error">${e.message}</div>`;
+    btn.disabled = false;
+    return;
+  }
+}
+
+// ===== 綁定事件 =====
+document.getElementById('course-select').addEventListener('change', onCourseChange);
+
+document.getElementById('add-learner').addEventListener('click', () => {
+  addLearner();
+});
+
+document.getElementById('contact-same-first').addEventListener('change', (e)=>{
+  const contactName = document.getElementById('contact-name');
+  const contactEmail = document.getElementById('contact-email');
+  if(e.target.checked){
+    // 不帶入學員資料，清空即可
+    contactName.value = '';
+    contactEmail.value = '';
+  }
+  updateContactFieldsDisabledState();
+});
+
+document.getElementById('receiver-same-contact').addEventListener('change', (e)=>{
+  const receiver = document.getElementById('receiver');
+  if(e.target.checked){
+    // ✅ 勾「收件人同承辦人」：收件人欄位留空＋disabled
+    receiver.value = '';
+    receiver.disabled = true;
+  }else{
+    // 取消勾選：恢復可輸入
+    receiver.disabled = false;
+  }
+});
+
+document.getElementById('tpma-submit').addEventListener('click', async () => {
+  const v = validateForm();
+  if(!v.ok) return;
+
+  const c = coursesMap[v.cid];
+  const courseInfo = {
+    course_name: c?.course_name || '',
+    lecturer: c?.lecturer || '',
+    class_date: v.sessionText || ''
+  };
+
+  const confirmed = await showSummaryModal(courseInfo, v);
+  if(!confirmed) return;
+
+  await submitMultipleRegistrations(courseInfo, v);
+});
+
+// 初始化：建立第一位學員區塊 & 載入課程 & 綁定電話主號
+addLearner();
+loadCourses();
+
+const phoneMainInput = document.getElementById('phone-main');
+if (phoneMainInput) {
+  setupPhoneMainInput(phoneMainInput);
+}
+</script>
+
+
+
+</body>
+</html>
