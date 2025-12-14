@@ -160,6 +160,12 @@ class TPMA_CR_REST_Public
 
         $rows = $wpdb->get_results($sql);
 
+        if ($wpdb->last_error) {
+            error_log("TPMA REST Public: get_courses SQL Error: " . $wpdb->last_error);
+            return new WP_Error('db_error', '課程資料庫查詢失敗', array('status' => 500));
+        }
+        error_log("TPMA REST Public: get_courses returned " . count($rows) . " rows.");
+
         return rest_ensure_response($rows);
     }
 
@@ -289,19 +295,28 @@ class TPMA_CR_REST_Public
 
             $order = wc_create_order();
             $order->add_product($product, $total_learners); // Add the single WC product with quantity = total learners
+            // Determine billing name and email based on contact_same_first
+            $billing_first_name = sanitize_text_field($shared['contact_name'] ?? '');
+            $billing_email      = sanitize_email($shared['contact_email'] ?? '');
+
+            if (!empty($shared['contact_same_first']) && !empty($learners[0])) {
+                $billing_first_name = sanitize_text_field($learners[0]['student_name'] ?? '');
+                $billing_email      = sanitize_email($learners[0]['emails'] ?? '');
+            }
+
             $order->set_address([
-                'first_name' => sanitize_text_field($shared['contact_name'] ?? ''),
-                'email'      => sanitize_email($shared['contact_email'] ?? ''),
+                'first_name' => $billing_first_name,
+                'email'      => $billing_email,
                 'company'    => sanitize_text_field($shared['company_name'] ?? ''),
                 'phone'      => sanitize_text_field($shared['phone'] ?? ''),
                 'address_1'  => sanitize_text_field($shared['address'] ?? ''),
-                'city'       => '', // You might need to parse city from address
-                'state'      => '', // You might need to parse state from address
-                'postcode'   => '', // You might need to parse postcode from address
-                'country'    => 'TW', // Assuming Taiwan
+                'city'       => '',
+                'state'      => '',
+                'postcode'   => '',
+                'country'    => 'TW',
             ], 'billing');
             $order->set_address([
-                'first_name' => sanitize_text_field($shared['receiver'] ?? $shared['contact_name'] ?? ''),
+                'first_name' => sanitize_text_field($shared['receiver'] ?? $billing_first_name), // Receiver or billing name
                 'address_1'  => sanitize_text_field($shared['address'] ?? ''),
                 'city'       => '',
                 'state'      => '',
@@ -311,7 +326,14 @@ class TPMA_CR_REST_Public
 
             $order->set_total($total_order_amount);
             $order->set_currency('TWD'); // Assuming New Taiwan Dollar
-            $order->set_status('on-hold'); // Set initial status to on-hold (待核帳)
+            $order->set_status('pending'); // Set initial status to pending (等待付款)
+            $order->set_payment_method('bacs'); // Set payment method to Bank Transfer (銀行轉帳)
+            $order->set_payment_method_title('銀行轉帳'); // Set payment method title
+
+            // Add notes to WooCommerce order
+            if (!empty($shared['note'])) {
+                $order->add_order_note(sanitize_textarea_field($shared['note']));
+            }
 
             // Store TPMA reg_no as order meta
             $order->update_meta_data('_tpma_reg_no', $reg_no);

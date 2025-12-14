@@ -354,10 +354,17 @@
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script>
-const TPMA_API_BASE = 'https://mazuuni.org.tw/iching/wp-json/tpma/v1';
+const TPMA_API_BASE = 'https://mazuuni.org.tw/tw-pma/wp-json/tpma/v1';
 
 let coursesMap = {};
 let firstErrorElement = null;
+
+// Helper function for HTML escaping
+function esc(s) {
+    return (s == null ? '' : String(s)).replace(/[&<>"']/g, function(m){
+        return {'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'}[m];
+    });
+}
 
 // ===== 工具 =====
 function pad2(n){return n.toString().padStart(2,'0');}
@@ -515,7 +522,20 @@ async function loadCourses(){
   const loadingEl = document.getElementById('tpma-loading');
   try{
     const res = await fetch(`${TPMA_API_BASE}/courses`);
-    if(!res.ok) throw new Error();
+    if(!res.ok) {
+        let errorMsg = `HTTP Error: ${res.status} ${res.statusText}`;
+        try {
+            const errorData = await res.json();
+            if (errorData.message) {
+                errorMsg = errorData.message;
+            } else if (errorData.code) {
+                errorMsg = `${errorData.code}: ${errorData.message}`;
+            }
+        } catch (jsonError) {
+            // If JSON parsing fails, use the default HTTP error message
+        }
+        throw new Error(errorMsg);
+    }
     const data = await res.json();
     coursesMap = {};
     (data||[]).forEach(row=>{
@@ -556,7 +576,7 @@ async function loadCourses(){
 
   }catch(e){
     console.error(e);
-    loadingEl.textContent = '課程資料載入失敗，請稍後再試。';
+    loadingEl.textContent = `課程資料載入失敗：${e.message}。請稍後再試。`;
   }
 }
 
