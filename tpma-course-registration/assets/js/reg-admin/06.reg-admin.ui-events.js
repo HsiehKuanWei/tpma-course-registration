@@ -1,3 +1,5 @@
+//專門負責「所有事件綁定 + UI 控制」
+
 (function(global){
 'use strict';
 

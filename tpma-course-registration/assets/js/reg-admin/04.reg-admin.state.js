@@ -1,3 +1,5 @@
+//資料狀態 + 篩選排序 + 分頁狀態
+
 (function(global){
 'use strict';
 

@@ -1,3 +1,5 @@
+//專門負責「跟 WP REST API 溝通」
+
 (function(global){
 'use strict';
 

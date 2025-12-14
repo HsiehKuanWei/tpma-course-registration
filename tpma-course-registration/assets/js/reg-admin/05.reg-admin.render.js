@@ -1,3 +1,5 @@
+//專門負責「把 state 渲染成 DOM」
+
 (function(global){
 'use strict';
 

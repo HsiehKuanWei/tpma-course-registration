@@ -1,3 +1,5 @@
+//「代碼 → 顯示文字」的對照表
+
 (function(global){
 'use strict';
 

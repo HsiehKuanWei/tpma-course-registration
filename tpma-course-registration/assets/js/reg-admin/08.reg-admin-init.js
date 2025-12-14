@@ -1,3 +1,5 @@
+//只負責「啟動」，不放業務邏輯
+
 (function(global){
     'use strict';
 

@@ -1,3 +1,5 @@
+//把所有模塊「串起來」並提供對外入口
+
 (function(global){
 'use strict';
 
