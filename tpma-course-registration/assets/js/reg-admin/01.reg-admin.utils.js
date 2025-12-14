@@ -20,7 +20,7 @@ U.safeDate = PublicUtil.safeDate;
 U.formatSessionDisplay = function formatSessionDisplay(sessionDatetime, durationMinutes){
   const info = PublicUtil.buildSessionRange(sessionDatetime, durationMinutes);
   if (!info) return '';
-  const prefix = info.weekday ? `${info.date}‹¬^${info.weekday}‹¬%` : info.date;
+  const prefix = info.weekday ? `${info.date}（${info.weekday}）` : info.date;
   const range = info.end ? `${info.start}~${info.end}` : info.start;
   return range ? `${prefix} ${range}` : prefix;
 };
