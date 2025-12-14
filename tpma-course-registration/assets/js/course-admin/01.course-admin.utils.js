@@ -1,13 +1,13 @@
 // course-admin.utils.js
 // ======================================================================
-// 【功能】放「不碰 DOM、不碰 API、純函式」的工具與格式化
-// - HTML 跳脫、日期解析、講師顯示文字、場次日期時間顯示（含結束時間/星期）
-// - 注意：此檔不應直接操作畫面、不應直接呼叫 REST API
+// 課程管理頁面的共享輔助函數。依賴 TPMAPublic（如果存在）。
+// 用於轉義和日期/時間格式化。
 // ======================================================================
 
 (function (w) {
   'use strict';
 
+  const PublicUtil = (w.TPMAPublic = w.TPMAPublic || {}).util || {};
   const ns = w.TPMACourseAdmin = w.TPMACourseAdmin || {};
   const util = ns.util = ns.util || {};
 
@@ -16,22 +16,14 @@
    * @param {string} s
    * @returns {string}
    */
-  util.esc = function esc(s) {
-    return (s || '').replace(/[&<>\"']/g, function (m) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
-    });
-  };
+  util.esc = PublicUtil.esc;
 
   /**
    * 日期解析：輸入字串無法轉成有效日期時回傳 null
    * @param {string} str
    * @returns {Date|null}
    */
-  util.parseDate = function parseDate(str) {
-    if (!str) return null;
-    const d = new Date(str);
-    return isNaN(d.getTime()) ? null : d;
-  };
+  util.parseDate = PublicUtil.safeDate;
 
   /**
    * 講師顯示文字：name + title（若有）
@@ -40,7 +32,7 @@
    */
   util.lecturerLabel = function lecturerLabel(lecturer) {
     if (!lecturer) return '';
-    return lecturer.name + (lecturer.title ? ' ' + lecturer.title : '');
+    return PublicUtil.display(lecturer.name) + (lecturer.title ? ' ' + PublicUtil.display(lecturer.title) : '');
   };
 
   /**
@@ -53,24 +45,12 @@
    */
   util.formatSessionLabel = function formatSessionLabel(dtStr, durationMinutes) {
     if (!dtStr) return '';
-    const d = util.parseDate(dtStr.replace(' ', 'T'));
-    if (!d) return util.esc(dtStr);
 
-    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-    const y = d.getFullYear();
-    const m = ('0' + (d.getMonth() + 1)).slice(-2);
-    const day = ('0' + d.getDate()).slice(-2);
-    const wd = weekdays[d.getDay()];
-    const hh = ('0' + d.getHours()).slice(-2);
-    const mm = ('0' + d.getMinutes()).slice(-2);
-
-    const dur = durationMinutes && durationMinutes > 0 ? durationMinutes : 180;
-    const end = new Date(d.getTime() + dur * 60000);
-    const eh = ('0' + end.getHours()).slice(-2);
-    const em = ('0' + end.getMinutes()).slice(-2);
-
-    // 使用 ASCII 括號避免某些環境的編碼問題
-    return `${y}-${m}-${day} (${wd}) ${hh}:${mm}~${eh}:${em}`;
+    const info = PublicUtil.buildSessionRange(dtStr, durationMinutes || 180);
+    if (!info) return util.esc(dtStr);
+    const range = info.end ? `${info.start}~${info.end}` : info.start;
+    const wd = info.weekday ? ` (${info.weekday})` : '';
+    return `${info.date}${wd} ${range}`;
   };
 
 })(window);

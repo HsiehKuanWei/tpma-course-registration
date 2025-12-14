@@ -5,20 +5,11 @@
 
 global.TPMARegAdmin = global.TPMARegAdmin || {};
 const API = global.TPMARegAdmin.api = global.TPMARegAdmin.api || {};
-
-API.fetchJson = async function fetchJson(url, options){
-  const res = await fetch(url, options || {});
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return await res.json();
-};
+const PublicAPI = global.TPMAPublic.api; // 引入共用 API
 
 API.loadCourses = async function loadCourses(ctx){
   try{
-    const list = await API.fetchJson(ctx.apiBase + '/admin/courses', {
-      credentials: 'include',
-      headers: { 'X-WP-Nonce': ctx.nonce }
-    });
-    ctx.data.allCourses = Array.isArray(list) ? list : [];
+    ctx.data.allCourses = await PublicAPI.getCourses(ctx.apiBase, ctx.nonce);
   }catch(e){
     console.error(e);
     ctx.data.allCourses = [];
@@ -26,25 +17,17 @@ API.loadCourses = async function loadCourses(ctx){
 };
 
 API.loadRegistrations = async function loadRegistrations(ctx){
-  const list = await API.fetchJson(ctx.apiBase + '/admin/registrations', {
-    credentials: 'include',
-    headers: { 'X-WP-Nonce': ctx.nonce }
-  });
+  const list = await PublicAPI.fetchJson(ctx.apiBase + '/admin/registrations', { method: 'GET' }, ctx.nonce);
   return Array.isArray(list) ? list : [];
 };
 
 API.updateRegistration = async function updateRegistration(ctx, payload){
-  const res = await fetch(ctx.apiBase + '/admin/registration/update', {
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/registration/update', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-WP-Nonce': ctx.nonce
-    },
-    credentials: 'include',
     body: JSON.stringify(payload)
-  });
-  const data = await res.json().catch(()=>null);
-  if (!res.ok || !data || !data.success) {
+  }, ctx.nonce);
+
+  if (!data || !data.success) {
     const msg = (data && data.message) ? data.message : '更新失敗';
     throw new Error(msg);
   }

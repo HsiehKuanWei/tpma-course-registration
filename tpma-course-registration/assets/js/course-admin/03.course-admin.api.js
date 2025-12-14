@@ -12,17 +12,14 @@
 
   const ns = w.TPMACourseAdmin = w.TPMACourseAdmin || {};
   const state = ns.state;
+  const PublicAPI = w.TPMAPublic.api; // 引入共用 API
 
   /**
    * 取得講師清單
    * @returns {Promise<any>}
    */
   ns.apiGetLecturers = async function apiGetLecturers() {
-    const res = await fetch(state.apiBase + '/admin/lecturers', {
-      credentials: 'include',
-      headers: { 'X-WP-Nonce': state.nonce }
-    });
-    return res.json();
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/lecturers', { method: 'GET' }, state.nonce);
   };
 
   /**
@@ -30,11 +27,7 @@
    * @returns {Promise<any>}
    */
   ns.apiGetCourses = async function apiGetCourses() {
-    const res = await fetch(state.apiBase + '/admin/courses', {
-      credentials: 'include',
-      headers: { 'X-WP-Nonce': state.nonce }
-    });
-    return res.json();
+    return await PublicAPI.getCourses(state.apiBase, state.nonce);
   };
 
   /**
@@ -43,17 +36,11 @@
    * @returns {Promise<any>} 回傳 API json
    */
   ns.apiSaveLecturer = async function apiSaveLecturer(payload) {
-    const res = await fetch(state.apiBase + '/admin/lecturer/save', {
+    const json = await PublicAPI.fetchJson(state.apiBase + '/admin/lecturer/save', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-WP-Nonce': state.nonce
-      },
-      credentials: 'include',
       body: JSON.stringify(payload)
-    });
-    const json = await res.json();
-    return { res, json };
+    }, state.nonce);
+    return { res: { ok: true }, json }; // 模擬 res.ok 以符合原有的 { res, json } 回傳格式
   };
 
   /**
@@ -62,17 +49,11 @@
    * @returns {Promise<any>} 回傳 API json
    */
   ns.apiSaveCourse = async function apiSaveCourse(payload) {
-    const res = await fetch(state.apiBase + '/admin/course/save', {
+    const json = await PublicAPI.fetchJson(state.apiBase + '/admin/course/save', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-WP-Nonce': state.nonce
-      },
-      credentials: 'include',
       body: JSON.stringify(payload)
-    });
-    const json = await res.json();
-    return { res, json };
+    }, state.nonce);
+    return { res: { ok: true }, json }; // 模擬 res.ok 以符合原有的 { res, json } 回傳格式
   };
 
   /**
