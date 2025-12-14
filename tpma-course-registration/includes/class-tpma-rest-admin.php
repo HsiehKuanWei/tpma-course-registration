@@ -221,6 +221,61 @@ public static function admin_get_regs($request)
 
     $rows = $wpdb->get_results($sql, ARRAY_A);
 
+    // 以 Woo 為訂單層級資料來源
+    $orders_map = array();
+    $order_ids = array();
+    foreach ($rows as $r) {
+        if (!empty($r['woocommerce_order_id'])) {
+            $order_ids[] = (int) $r['woocommerce_order_id'];
+        }
+    }
+    $order_ids = array_values(array_unique(array_filter($order_ids)));
+
+    foreach ($order_ids as $oid) {
+        $order = wc_get_order($oid);
+        if (!$order) {
+            continue;
+        }
+        $orders_map[$oid] = array(
+            'status'        => $order->get_status(),
+            'total'         => $order->get_total(),
+            'contact_name'  => $order->get_billing_first_name(),
+            'contact_email' => $order->get_billing_email(),
+            'company_name'  => $order->get_billing_company(),
+            'phone'         => $order->get_billing_phone(),
+            'address'       => $order->get_billing_address_1(),
+            'receiver'      => $order->get_shipping_first_name(),
+            'receipt_type'  => $order->get_meta('_tpma_receipt_type', true),
+            'tax_id'        => $order->get_meta('_billing_vat_id', true),
+            'remit_amount_total' => $order->get_meta('_tpma_remit_amount_total', true),
+            'remit_paid_at'      => $order->get_meta('_tpma_remit_paid_at', true),
+            'remit_account'      => $order->get_meta('_tpma_remit_account', true),
+        );
+    }
+
+    // 將 Woo 資料覆寫到回傳 rows（訂單層級只信 Woo）
+    foreach ($rows as &$r) {
+        $oid = !empty($r['woocommerce_order_id']) ? (int) $r['woocommerce_order_id'] : 0;
+        if ($oid && isset($orders_map[$oid])) {
+            $o = $orders_map[$oid];
+            $r['payment_status']  = $o['status']; // 用 Woo 狀態
+            $r['order_status']    = $o['status'];
+            $r['order_total']     = $o['total'];
+            $r['contact_name']    = $o['contact_name'];
+            $r['contact_email']   = $o['contact_email'];
+            $r['company_name']    = $o['company_name'];
+            $r['phone']           = $o['phone'];
+            $r['address']         = $o['address'];
+            $r['receiver']        = $o['receiver'];
+            $r['receipt_type']    = $o['receipt_type'] !== '' ? $o['receipt_type'] : $r['receipt_type'];
+            $r['tax_id']          = $o['tax_id'] !== '' ? $o['tax_id'] : $r['tax_id'];
+            $r['remit_amount_total'] = $o['remit_amount_total'];
+            $r['remit_paid_at']      = $o['remit_paid_at'] ?: $r['remit_paid_at'];
+            $r['remit_account']      = $o['remit_account'] ?: $r['remit_account'];
+        }
+    }
+    unset($r);
+
     return rest_ensure_response($rows);
 }
 
@@ -238,51 +293,133 @@ public static function admin_update_reg($request)
         return new WP_Error('invalid', '缺少 id', array('status' => 400));
     }
 
-    // 不包含 reg_no / created_at / source（source 唯讀在這頁）
-    $fields = array(
-        'class_date',
+    // 先抓出原始資料，取得 woocommerce_order_id
+    $row = $wpdb->get_row(
+        $wpdb->prepare("SELECT * FROM {$regs_table} WHERE id = %d", $id),
+        ARRAY_A
+    );
+    if (!$row) {
+        return new WP_Error('not_found', '找不到資料', array('status' => 404));
+    }
 
+    $order_id = !empty($row['woocommerce_order_id']) ? (int) $row['woocommerce_order_id'] : 0;
+    $order = $order_id ? wc_get_order($order_id) : null;
+    $woo_status = $order ? $order->get_status() : '';
+    $can_touch_woo_total = in_array($woo_status, array('pending', 'processing'), true);
+
+    // TPMA-only 欄位（不含 Woo 專責欄位、金額另行處理）
+    $tpma_fields = array(
+        'class_date',
         'student_name',
-        'company_name',
-        'tax_id',
         'department',
         'job_title',
-
         'mobile',
-        'phone',
         'emails',
-
-        'contact_name',
-        'contact_email',
-
-        'receiver',
-        'address',
-
-        'receipt_type',
-        'receipt_status',
-
         'status',          // 報名狀態
-        'remit_paid_at',   // 匯款日期
-        'remit_amount',    // 匯款金額
-
+        'receipt_status',
+        'remit_paid_at',   // 匯款日期（仍存在 regs，給教務參考）
         'note',
         'test_score',
         'certificate_id',
-        // 如果你真的想在這頁也能改 source，就把 'source' 加回來
     );
 
-    $update = array();
-    foreach ($fields as $f) {
+    // Woo 專責欄位映射
+    $woo_field_map = array(
+        'contact_name'  => array('type' => 'billing', 'field' => 'first_name'),
+        'contact_email' => array('type' => 'billing', 'field' => 'email'),
+        'company_name'  => array('type' => 'billing', 'field' => 'company'),
+        'phone'         => array('type' => 'billing', 'field' => 'phone'),
+        'address'       => array('type' => 'billing', 'field' => 'address_1'),
+        'receiver'      => array('type' => 'shipping', 'field' => 'first_name'),
+        'receipt_type'  => array('type' => 'meta',    'field' => '_tpma_receipt_type'),
+        'tax_id'        => array('type' => 'meta',    'field' => '_billing_vat_id'),
+    );
+
+    $tpma_update = array();
+    foreach ($tpma_fields as $f) {
         if (isset($d[$f])) {
-            $update[$f] = sanitize_text_field($d[$f]);
+            $tpma_update[$f] = sanitize_text_field($d[$f]);
         }
     }
 
-    if (empty($update)) {
+    $has_change = !empty($tpma_update);
+
+    // Woo 欄位更新
+    if ($order) {
+        foreach ($woo_field_map as $payload_key => $info) {
+            if (!isset($d[$payload_key])) {
+                continue;
+            }
+            $val = sanitize_text_field($d[$payload_key]);
+            $has_change = true;
+            if ($info['type'] === 'billing') {
+                // 只更新單一欄位，避免覆蓋其他 billing 欄位
+                $addr = $order->get_address('billing');
+                $addr[$info['field']] = $val;
+                $order->set_address($addr, 'billing');
+            } elseif ($info['type'] === 'shipping') {
+                $addr = $order->get_address('shipping');
+                $addr[$info['field']] = $val;
+                $order->set_address($addr, 'shipping');
+            } elseif ($info['type'] === 'meta') {
+                $order->update_meta_data($info['field'], $val);
+            }
+        }
+    }
+
+    // remit_amount 特別處理：同單同價且需回寫 Woo 總額
+    if (isset($d['remit_amount'])) {
+        $has_change = true;
+        $new_amount = (int) sanitize_text_field($d['remit_amount']);
+        if ($order_id <= 0 || !$order) {
+            return new WP_Error('no_order', '找不到對應的 Woo 訂單，無法同步金額', array('status' => 400));
+        }
+        if (!$can_touch_woo_total) {
+            return new WP_Error('order_locked', '訂單狀態不允許改金額（僅 pending / processing 可改）', array('status' => 400));
+        }
+
+        // 將同一張訂單的 regs remit_amount 全部同步為同一金額
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$regs_table} SET remit_amount = %d WHERE woocommerce_order_id = %d",
+                $new_amount,
+                $order_id
+            )
+        );
+
+        // 重新計算總額 = 每人金額 * 人數
+        $learner_count = (int) $wpdb->get_var(
+            $wpdb->prepare(
+                "SELECT COUNT(*) FROM {$regs_table} WHERE woocommerce_order_id = %d",
+                $order_id
+            )
+        );
+        $order_total = $new_amount * max(1, $learner_count);
+
+        // 更新單一 line item（目前設計：單一商品 + qty=人數）
+        foreach ($order->get_items() as $item_id => $item) {
+            $item->set_subtotal($order_total);
+            $item->set_total($order_total);
+            $item->save();
+            break; // 只有一個商品
+        }
+
+        $order->set_total($order_total);
+        $order->calculate_totals(false);
+        $order->save();
+    }
+
+    if (empty($tpma_update) && !$has_change) {
         return new WP_Error('no_data', '沒有可更新欄位', array('status' => 400));
     }
 
-    $wpdb->update($regs_table, $update, array('id' => $id));
+    if (!empty($tpma_update)) {
+        $wpdb->update($regs_table, $tpma_update, array('id' => $id));
+    }
+
+    if ($order && $has_change) {
+        $order->save();
+    }
 
     return rest_ensure_response(array('success' => true));
 }

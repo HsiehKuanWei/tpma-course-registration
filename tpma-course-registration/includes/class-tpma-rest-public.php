@@ -294,7 +294,7 @@ class TPMA_CR_REST_Public
             }
 
             $order = wc_create_order();
-            $order->add_product($product, $total_learners); // Add the single WC product with quantity = total learners
+            $item = $order->add_product($product, $total_learners); // Add the single WC product with quantity = total learners
             // Determine billing name and email based on contact_same_first
             $billing_first_name = sanitize_text_field($shared['contact_name'] ?? '');
             $billing_email      = sanitize_email($shared['contact_email'] ?? '');
@@ -339,6 +339,18 @@ class TPMA_CR_REST_Public
             $order->update_meta_data('_tpma_reg_no', $reg_no);
             $order->update_meta_data('_tpma_course_id', $course_id); // Store the TPMA course_id as well
             $order->update_meta_data('_tpma_session_id', $session_id); // Store the TPMA session_id as well
+            $order->update_meta_data('_tpma_receipt_type', sanitize_text_field($shared['receipt_type'] ?? ''));
+            $order->update_meta_data('_billing_vat_id', sanitize_text_field($shared['tax_id'] ?? ''));
+            $order->update_meta_data('_tpma_learner_count', $total_learners);
+
+            // Ensure WC line item/total 等於「每人金額 x 人數」
+            if ($item) {
+                $line_total = $total_order_amount;
+                $item->set_subtotal($line_total);
+                $item->set_total($line_total);
+            }
+            $order->set_total($total_order_amount);
+            $order->calculate_totals(false);
             $order->save();
             $woocommerce_order_id = $order->get_id();
 
