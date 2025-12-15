@@ -313,7 +313,7 @@ function buildPhone(area, main, ext){
   return out;
 }
 
-/ 單一欄位手機字串 → 格式化成 xxxx-xxx-xxx，錯誤回傳 null，空白回傳 ''
+// 單一欄位手機字串 → 格式化成 xxxx-xxx-xxx，錯誤回傳 null，空白回傳 ''
 function buildMobile(rawVal){
   const digits = (rawVal || '').replace(/\D/g,'');
   if(!digits) return '';            // 全空：視為沒填
