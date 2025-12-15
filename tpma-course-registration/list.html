@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>TPMA 課程一覽</title>
+<style>
+  body {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    background: #f5f5f5;
+    margin: 0;
+    padding: 20px;
+  }
+  .tpma-course-list-wrap {
+    max-width: 1100px;
+    margin: 0 auto;
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 2px 6px rgba(0,0,0,.08);
+    padding: 16px 18px;
+  }
+  .tpma-course-list-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .tpma-course-list-header h1 {
+    font-size: 18px;
+    margin: 0;
+  }
+  .tpma-status {
+    font-size: 13px;
+    color: #555;
+  }
+
+  table.tpma-course-table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  table.tpma-course-table thead {
+    background: #fafafa;
+  }
+  table.tpma-course-table th,
+  table.tpma-course-table td {
+    border: 1px solid #ddd;
+    padding: 6px 8px;
+    vertical-align: top;
+    word-break: break-all;
+  }
+  table.tpma-course-table th {
+    font-weight: 600;
+    font-size: 13px;
+    position: relative;
+  }
+  table.tpma-course-table td {
+    font-size: 13px;
+  }
+
+  .tpma-th-inner {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .tpma-th-title {
+    white-space: nowrap;
+  }
+  .tpma-th-indicator {
+    font-size: 11px;
+    color: #777;
+  }
+  .tpma-th-filter-btn {
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 2px;
+    border: 1px solid #ccc;
+    background: #fff;
+    cursor: pointer;
+  }
+  .tpma-th-filter-btn:focus {
+    outline: 1px solid #0073aa;
+  }
+
+  .tpma-th-menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 2px;
+    z-index: 99;
+    background: #fff;
+    border: 1px solid #ddd;
+    box-shadow: 0 3px 8px rgba(0,0,0,.12);
+    padding: 6px;
+    min-width: 180px;
+    font-weight: normal;
+    display: none;
+  }
+  .tpma-th-menu.open {
+    display: block;
+  }
+  .tpma-th-menu label {
+    display: block;
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+  .tpma-th-menu input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    font-size: 12px;
+    border-radius: 2px;
+    border: 1px solid #ccc;
+    margin-top: 2px;
+  }
+  .tpma-th-menu-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+    margin-top: 4px;
+  }
+  .tpma-th-menu-actions button {
+    flex: 1;
+    min-width: 0;
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 2px;
+    border: 1px solid #ccc;
+    background: #f5f5f5;
+    cursor: pointer;
+  }
+
+  .tpma-loading-row {
+    text-align: center;
+    color: #555;
+  }
+  .tpma-empty-row {
+    text-align: center;
+    color: #999;
+  }
+
+  .tpma-reg-link {
+    display: inline-block;
+    padding: 4px 8px;
+    font-size: 12px;
+    border-radius: 3px;
+    background: #0073aa;
+    color: #fff;
+    text-decoration: none;
+  }
+  .tpma-reg-link:hover {
+    background: #005b88;
+  }
+
+  @media (max-width: 768px) {
+    body { padding: 10px; }
+    .tpma-course-list-wrap { padding: 10px; }
+    table.tpma-course-table th,
+    table.tpma-course-table td {
+      font-size: 12px;
+      padding: 5px 6px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="tpma-course-list-wrap">
+  <div class="tpma-course-list-header">
+    <h1>課程一覽</h1>
+    <div class="tpma-status" id="tpma-status">載入課程中...</div>
+  </div>
+
+  <table class="tpma-course-table">
+    <thead>
+      <tr>
+        <!-- 授課時間 -->
+        <th style="width: 28%;">
+          <div class="tpma-th-inner">
+            <span class="tpma-th-title">授課時間</span>
+            <span class="tpma-th-indicator">▼</span>
+            <button type="button"
+                    class="tpma-th-filter-btn"
+                    data-menu-target="menu-time">
+              篩選/排序
+            </button>
+          </div>
+          <div class="tpma-th-menu" id="menu-time">
+            <label>
+              關鍵字篩選（日期、時間）：
+              <input type="text" id="filter-time" placeholder="例如 2025/03 或 09:00">
+            </label>
+            <div class="tpma-th-menu-actions">
+              <button type="button" data-sort="time-asc">時間↑</button>
+              <button type="button" data-sort="time-desc">時間↓</button>
+              <button type="button" data-clear="time">清除</button>
+            </div>
+          </div>
+        </th>
+
+        <!-- 課程名稱 -->
+        <th style="width: 32%;">
+          <div class="tpma-th-inner">
+            <span class="tpma-th-title">課程名稱</span>
+            <span class="tpma-th-indicator">▼</span>
+            <button type="button"
+                    class="tpma-th-filter-btn"
+                    data-menu-target="menu-name">
+              篩選/排序
+            </button>
+          </div>
+          <div class="tpma-th-menu" id="menu-name">
+            <label>
+              關鍵字篩選（課程名稱）：
+              <input type="text" id="filter-name" placeholder="輸入課程關鍵字">
+            </label>
+            <div class="tpma-th-menu-actions">
+              <button type="button" data-sort="name-asc">名稱↑</button>
+              <button type="button" data-sort="name-desc">名稱↓</button>
+              <button type="button" data-clear="name">清除</button>
+            </div>
+          </div>
+        </th>
+
+        <!-- 授課講師 -->
+        <th style="width: 20%;">
+          <div class="tpma-th-inner">
+            <span class="tpma-th-title">授課講師</span>
+            <span class="tpma-th-indicator">▼</span>
+            <button type="button"
+                    class="tpma-th-filter-btn"
+                    data-menu-target="menu-lecturer">
+              篩選/排序
+            </button>
+          </div>
+          <div class="tpma-th-menu" id="menu-lecturer">
+            <label>
+              關鍵字篩選（講師名字）：
+              <input type="text" id="filter-lecturer" placeholder="輸入講師姓名">
+            </label>
+            <div class="tpma-th-menu-actions">
+              <button type="button" data-sort="lecturer-asc">講師↑</button>
+              <button type="button" data-sort="lecturer-desc">講師↓</button>
+              <button type="button" data-clear="lecturer">清除</button>
+            </div>
+          </div>
+        </th>
+
+        <!-- 報名網址 -->
+        <th style="width: 20%;">報名網址</th>
+      </tr>
+    </thead>
+    <tbody id="tpma-course-tbody">
+      <tr>
+        <td colspan="4" class="tpma-loading-row">載入課程中...</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<script>
+/**
+ * API 基底：預設抓同網域的 /wp-json/tpma/v1
+ * 若未來路徑不同（例如 /iching/…），這裡再調整即可。
+ */
+const TPMA_API_BASE = 'https://mazuuni.org.tw/tw-pma/wp-json/tpma/v1';
+
+/**
+ * 報名表網址基底：
+ * - 原則：與本列表同網域
+ * - 請把 '/form.html' 改成實際報名表路徑
+ *   例如：'/iching/tpma/form.html'
+ */
+const REG_FORM_PATH = '/tw-pma/wp-content/plugins/tpma-course-registration/form.html';  // TODO: 依實際路徑修改
+const REG_FORM_URL = location.origin + REG_FORM_PATH;
+
+function pad2(n) { return n.toString().padStart(2, '0'); }
+
+/**
+ * 格式化授課時間：
+ * startRaw 來自 class_date 或 session_datetime
+ * durationMinutes 來自 duration_minutes
+ *
+ * 目前格式：YYYY/MM/DD HH:MM~HH:MM
+ * 若要改成 MMMM/YY/DD HH:MM~HH:MM，
+ * 可在此改成年月日組裝方式。
+ */
+function formatClassTime(startRaw, durationMinutes) {
+  if (!startRaw) return '時間待定';
+  const start = new Date(startRaw.replace(' ', 'T'));
+  if (isNaN(start.getTime())) return startRaw;
+
+  const mins = parseInt(durationMinutes || 0, 10);
+  const end = new Date(start.getTime() + mins * 60000);
+
+  const y = start.getFullYear();
+  const mo = pad2(start.getMonth() + 1);
+  const d = pad2(start.getDate());
+  const sh = pad2(start.getHours());
+  const sm = pad2(start.getMinutes());
+  const eh = pad2(end.getHours());
+  const em = pad2(end.getMinutes());
+
+  // YYYY/MM/DD HH:MM~HH:MM
+  return `${y}/${mo}/${d} ${sh}:${sm}~${eh}:${em}`;
+}
+
+/**
+ * 用於排序的 timestamp
+ */
+function getStartTimestamp(startRaw) {
+  if (!startRaw) return 0;
+  const d = new Date(startRaw.replace(' ', 'T'));
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+/**
+ * 產生報名網址：
+ * - 用 course_id + session_id 帶到報名表
+ * - 報名表端可用 URLSearchParams 讀取 course_id、session_id
+ *   並自動選定下拉式選單
+ */
+function buildRegUrl(row) {
+  const params = new URLSearchParams();
+  if (row.course_id) params.set('course_id', row.course_id);
+  if (row.session_id) params.set('session_id', row.session_id);
+  const qs = params.toString();
+  return qs ? `${REG_FORM_URL}?${qs}` : REG_FORM_URL;
+}
+
+// ===== 資料狀態 =====
+let allRows = [];     // 原始資料列（每一筆為一個「課程 x 場次」）
+let filteredRows = []; // 套用篩選/排序後的結果
+
+const filters = {
+  time: '',
+  name: '',
+  lecturer: ''
+};
+
+const sortState = {
+  key: null,  // 'time' | 'name' | 'lecturer'
+  dir: 'asc'  // 'asc' | 'desc'
+};
+
+// ===== 載入課程資料 =====
+async function loadCourseRows() {
+  const statusEl = document.getElementById('tpma-status');
+  const tbody = document.getElementById('tpma-course-tbody');
+
+  statusEl.textContent = '載入課程中...';
+  tbody.innerHTML = `
+    <tr><td colspan="4" class="tpma-loading-row">載入課程中...</td></tr>
+  `;
+
+  try {
+    const res = await fetch(TPMA_API_BASE + '/courses');
+    if (!res.ok) {
+        let errorMsg = `HTTP Error: ${res.status} ${res.statusText}`;
+        try {
+            const errorData = await res.json();
+            if (errorData.message) {
+                errorMsg = errorData.message;
+            } else if (errorData.code) {
+                errorMsg = `${errorData.code}: ${errorData.message}`;
+            }
+        } catch (jsonError) {
+            // If JSON parsing fails, use the default HTTP error message
+        }
+        throw new Error(errorMsg);
+    }
+    const data = await res.json();
+
+    const rows = [];
+    (data || []).forEach(row => {
+      const courseId = row.course_id;
+      if (!courseId) return;
+
+      // 優先使用 session_datetime，若沒有再用 class_date
+      const startRaw = row.session_datetime || row.class_date || '';
+      const duration = row.duration_minutes || 0;
+      const lecturerName = row.lecturer || row.lecturers_name || '';
+      const sessionId = row.session_id || '';
+
+      rows.push({
+        course_id: courseId,
+        session_id: sessionId,
+        course_name: row.course_name || '',
+        lecturer: lecturerName,
+        start_raw: startRaw,
+        duration_minutes: duration,
+        start_ts: getStartTimestamp(startRaw),
+        display_time: formatClassTime(startRaw, duration)
+      });
+    });
+
+    allRows = rows;
+    filteredRows = [...allRows];
+    applyFilterAndSort();
+    statusEl.textContent = `共 ${filteredRows.length} 筆課程場次`;
+  } catch (e) {
+    console.error(e);
+    statusEl.textContent = `課程載入失敗：${e.message}。請稍後再試。`;
+    tbody.innerHTML = `
+      <tr><td colspan="4" class="tpma-loading-row">課程載入失敗：${e.message}</td></tr>
+    `;
+  }
+}
+
+// ===== 篩選 + 排序 =====
+function applyFilterAndSort() {
+  const tbody = document.getElementById('tpma-course-tbody');
+
+  // 篩選
+  let rows = allRows.filter(r => {
+    // time
+    if (filters.time) {
+      const t = filters.time.toLowerCase();
+      if (!r.display_time.toLowerCase().includes(t)) return false;
+    }
+    // name
+    if (filters.name) {
+      const t = filters.name.toLowerCase();
+      if (!r.course_name.toLowerCase().includes(t)) return false;
+    }
+    // lecturer
+    if (filters.lecturer) {
+      const t = filters.lecturer.toLowerCase();
+      if (!r.lecturer.toLowerCase().includes(t)) return false;
+    }
+    return true;
+  });
+
+  // 排序
+  if (sortState.key) {
+    const dirFactor = sortState.dir === 'desc' ? -1 : 1;
+    rows.sort((a, b) => {
+      let va, vb;
+      if (sortState.key === 'time') {
+        va = a.start_ts;
+        vb = b.start_ts;
+      } else if (sortState.key === 'name') {
+        va = a.course_name || '';
+        vb = b.course_name || '';
+      } else if (sortState.key === 'lecturer') {
+        va = a.lecturer || '';
+        vb = b.lecturer || '';
+      } else {
+        return 0;
+      }
+
+      if (typeof va === 'number' && typeof vb === 'number') {
+        return (va - vb) * dirFactor;
+      }
+      return va.toString().localeCompare(vb.toString(), 'zh-Hant') * dirFactor;
+    });
+  }
+
+  filteredRows = rows;
+  renderTableBody();
+}
+
+function renderTableBody() {
+  const tbody = document.getElementById('tpma-course-tbody');
+
+  if (!filteredRows.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="4" class="tpma-empty-row">目前沒有符合條件的課程場次</td>
+      </tr>
+    `;
+    return;
+  }
+
+  const html = filteredRows.map(r => {
+    const regUrl = buildRegUrl(r);
+    const escCourseName = escapeHtml(r.course_name);
+    const escLecturer = escapeHtml(r.lecturer);
+    const escTime = escapeHtml(r.display_time);
+
+    return `
+      <tr>
+        <td>${escTime}</td>
+        <td>${escCourseName}</td>
+        <td>${escLecturer}</td>
+        <td>
+          <a href="${regUrl}" target="_blank" rel="noopener" class="tpma-reg-link">
+            線上報名
+          </a>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  tbody.innerHTML = html;
+}
+
+function escapeHtml(str) {
+  return (str || '').replace(/[&<>"']/g, s => {
+    switch (s) {
+      case '&': return '&amp;';
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '"': return '&quot;';
+      case "'": return '&#39;';
+      default: return s;
+    }
+  });
+}
+
+// ===== 篩選輸入事件 =====
+document.addEventListener('input', e => {
+  if (e.target.id === 'filter-time') {
+    filters.time = e.target.value.trim();
+    applyFilterAndSort();
+  }
+  if (e.target.id === 'filter-name') {
+    filters.name = e.target.value.trim();
+    applyFilterAndSort();
+  }
+  if (e.target.id === 'filter-lecturer') {
+    filters.lecturer = e.target.value.trim();
+    applyFilterAndSort();
+  }
+});
+
+// ===== 排序 / 清除按鈕事件 =====
+document.addEventListener('click', e => {
+  const btn = e.target;
+  // 排序
+  const sortKey = btn.getAttribute('data-sort');
+  if (sortKey) {
+    if (sortKey === 'time-asc')      { sortState.key = 'time';      sortState.dir = 'asc'; }
+    else if (sortKey === 'time-desc'){ sortState.key = 'time';      sortState.dir = 'desc'; }
+    else if (sortKey === 'name-asc'){ sortState.key = 'name';      sortState.dir = 'asc'; }
+    else if (sortKey === 'name-desc'){ sortState.key = 'name';      sortState.dir = 'desc'; }
+    else if (sortKey === 'lecturer-asc'){ sortState.key = 'lecturer'; sortState.dir = 'asc'; }
+    else if (sortKey === 'lecturer-desc'){ sortState.key = 'lecturer'; sortState.dir = 'desc'; }
+
+    applyFilterAndSort();
+    return;
+  }
+
+  // 清除篩選
+  const clearKey = btn.getAttribute('data-clear');
+  if (clearKey) {
+    if (clearKey === 'time') {
+      filters.time = '';
+      const input = document.getElementById('filter-time');
+      if (input) input.value = '';
+    } else if (clearKey === 'name') {
+      filters.name = '';
+      const input = document.getElementById('filter-name');
+      if (input) input.value = '';
+    } else if (clearKey === 'lecturer') {
+      filters.lecturer = '';
+      const input = document.getElementById('filter-lecturer');
+      if (input) input.value = '';
+    }
+    applyFilterAndSort();
+    return;
+  }
+
+  // 開啟/關閉欄位篩選選單
+  const menuTarget = btn.getAttribute('data-menu-target');
+  if (menuTarget) {
+    e.stopPropagation();
+    const menu = document.getElementById(menuTarget);
+    if (!menu) return;
+
+    // 關閉其他開啟中的 menu
+    document.querySelectorAll('.tpma-th-menu.open').forEach(m => {
+      if (m !== menu) m.classList.remove('open');
+    });
+
+    menu.classList.toggle('open');
+    return;
+  }
+});
+
+// 點擊表格外關閉所有篩選選單
+document.addEventListener('click', e => {
+  const menus = document.querySelectorAll('.tpma-th-menu.open');
+  menus.forEach(menu => {
+    if (!menu.contains(e.target) && !isFilterButton(e.target)) {
+      menu.classList.remove('open');
+    }
+  });
+});
+
+function isFilterButton(el) {
+  return el.classList && el.classList.contains('tpma-th-filter-btn');
+}
+
+// ===== 初始化 =====
+loadCourseRows();
+</script>
+
+</body>
+</html>
