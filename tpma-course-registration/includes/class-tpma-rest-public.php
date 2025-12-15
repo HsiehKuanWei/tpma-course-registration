@@ -6,6 +6,10 @@ if (!defined('ABSPATH')) {
 
 }
 
+// WooCommerce hooks for暫存草稿
+add_action('woocommerce_before_calculate_totals', array('TPMA_CR_REST_Public', 'apply_cart_price'));
+add_action('woocommerce_review_order_before_order_total', array('TPMA_CR_REST_Public', 'render_checkout_summary'));
+
 
 
 class TPMA_CR_REST_Public
@@ -37,6 +41,17 @@ class TPMA_CR_REST_Public
             'methods'  => 'POST',
 
             'callback' => array(__CLASS__, 'register'),
+
+            'permission_callback' => '__return_true',
+
+        ));
+
+        // Checkout init：暫存學員資料、加車並回傳 Woo 結帳網址
+        register_rest_route($ns, '/checkout-init', array(
+
+            'methods'  => 'POST',
+
+            'callback' => array(__CLASS__, 'checkout_init'),
 
             'permission_callback' => '__return_true',
 
@@ -204,21 +219,19 @@ class TPMA_CR_REST_Public
                 return new WP_Error('course_not_found', '課程不存在', array('status' => 404));
             }
 
-            // 場次資料
+            // 場次資料：此表單為董監事課程，必須選擇有時間的場次，不接受 class_date fallback
             $session = null;
             if ($session_id) {
                 $session = $wpdb->get_row(
-                    $wpdb->prepare("SELECT * FROM {$sessions_table} WHERE id = %d", $session_id)
+                    $wpdb->prepare("SELECT * FROM {$sessions_table} WHERE id = %d AND course_id = %d", $session_id, $course_id)
                 );
             }
-
-            // class_date 優先用場次日期
-            $class_date = null;
-            if ($session && !empty($session->session_datetime)) {
-                $class_date = date('Y-m-d', strtotime($session->session_datetime));
-            } elseif (!empty($d['class_date'])) { // Fallback to class_date from frontend if session_datetime is not available
-                $class_date = sanitize_text_field($d['class_date']);
+            if (!$session || empty($session->session_datetime)) {
+                return new WP_Error('session_required', '需先排定上課時間後才能報名', array('status' => 400));
             }
+
+            // class_date 直接依 session_datetime 推導
+            $class_date = date('Y-m-d', strtotime($session->session_datetime));
 
             // 匯款金額：每小時 1000 元（先算出基礎金額，尚未套用折扣）
             $duration_minutes   = intval($course->duration_minutes ?? 0);
@@ -743,5 +756,192 @@ class TPMA_CR_REST_Public
 			'success' => true,
 		));
 	}
+
+    /**
+     * checkout-init：暫存學員資料到 Woo session、加車並回傳 checkout URL
+     */
+    public static function checkout_init($request) {
+        if (!function_exists('WC')) {
+            return new WP_Error('no_woocommerce', 'WooCommerce 尚未載入', array('status' => 500));
+        }
+
+        $d = $request->get_json_params();
+        if (empty($d['course_id']) || empty($d['session_id']) || empty($d['learners']) || !is_array($d['learners'])) {
+            return new WP_Error('invalid_data', '缺少必要欄位', array('status' => 400));
+        }
+
+        $course_id  = intval($d['course_id']);
+        $session_id = intval($d['session_id']);
+        $learners   = $d['learners'];
+        $source     = sanitize_text_field($d['source'] ?? '');
+        $note       = sanitize_textarea_field($d['note'] ?? '');
+
+        global $wpdb;
+        $courses_table   = TPMA_CR_DB::table('courses');
+        $sessions_table  = TPMA_CR_DB::table('sessions');
+        $lecturers_table = TPMA_CR_DB::table('lecturers');
+
+        $course = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $course_id)
+        );
+        if (!$course) {
+            return new WP_Error('course_not_found', '課程不存在', array('status' => 404));
+        }
+
+        $session = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$sessions_table} WHERE id = %d AND course_id = %d", $session_id, $course_id)
+        );
+        if (!$session || empty($session->session_datetime)) {
+            return new WP_Error('session_required', '需先排定上課時間後才能報名', array('status' => 400));
+        }
+
+        $duration_minutes   = intval($course->duration_minutes ?? 0);
+        $hours              = $duration_minutes / 60;
+        $base_remit_amount  = (int) round($hours * 1000);
+        $remit_amount_per_learner = $base_remit_amount;
+
+        $clean_learners = array();
+        foreach ($learners as $learner) {
+            $name = sanitize_text_field($learner['student_name'] ?? '');
+            if ($name === '') continue;
+            $clean_learners[] = array(
+                'student_name' => $name,
+                'department'   => sanitize_text_field($learner['department'] ?? ''),
+                'job_title'    => sanitize_text_field($learner['job_title'] ?? ''),
+                'mobile'       => sanitize_text_field($learner['mobile'] ?? ''),
+                'emails'       => sanitize_email($learner['emails'] ?? ''),
+            );
+        }
+
+        $total_learners = count($clean_learners);
+        if ($total_learners === 0) {
+            return new WP_Error('no_learners', '請至少填寫一位學員', array('status' => 400));
+        }
+        if ($total_learners >= 6) {
+            $remit_amount_per_learner = (int) round($base_remit_amount * 0.8);
+        }
+        $total_order_amount = $remit_amount_per_learner * $total_learners;
+
+        $lecturer_name = '';
+        if (!empty($course->lecturer_code)) {
+            $lect = $wpdb->get_row($wpdb->prepare(
+                "SELECT lecturers_name, lecturers_title FROM {$lecturers_table} WHERE lecturers_code = %s",
+                $course->lecturer_code
+            ));
+            if ($lect && !empty($lect->lecturers_name)) {
+                $lecturer_name = trim($lect->lecturers_name . (!empty($lect->lecturers_title) ? ' ' . $lect->lecturers_title : ''));
+            }
+        }
+
+        $draft = array(
+            'course_id'    => $course_id,
+            'session_id'   => $session_id,
+            'course_name'  => $course->course_name,
+            'lecturer'     => $lecturer_name,
+            'session_datetime' => $session->session_datetime,
+            'class_date'   => date('Y-m-d', strtotime($session->session_datetime)),
+            'learners'     => $clean_learners,
+            'total_learners' => $total_learners,
+            'remit_amount_per_learner' => $remit_amount_per_learner,
+            'total_order_amount'       => $total_order_amount,
+            'source'       => $source,
+            'note'         => $note,
+        );
+
+        WC()->session->set('tpma_reg_draft', $draft);
+
+        $product_id = 1083; // 隱藏商品
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return new WP_Error('wc_product_not_found', 'WooCommerce 課程商品不存在', array('status' => 500));
+        }
+
+        $cart = WC()->cart;
+        if (!$cart) {
+            return new WP_Error('no_cart', '無法初始化購物車', array('status' => 500));
+        }
+
+        // 移除舊草稿品項，避免混淆
+        foreach ($cart->get_cart() as $key => $item) {
+            if (!empty($item['tpma_reg_draft'])) {
+                $cart->remove_cart_item($key);
+            }
+        }
+
+        $cart->add_to_cart($product_id, $total_learners, 0, array(), array(
+            'tpma_reg_draft' => true,
+        ));
+
+        $checkout_url = wc_get_checkout_url();
+
+        return rest_ensure_response(array(
+            'success'      => true,
+            'checkout_url' => $checkout_url,
+        ));
+    }
+
+    /**
+     * 結帳頁右側摘要：課程＋學員清單
+     */
+    public static function render_checkout_summary() {
+        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
+        if (empty($draft) || empty($draft['course_name'])) {
+            return;
+        }
+        $date_str = self::format_class_datetime($draft['session_datetime'] ?? '');
+        echo '<div class=\"tpma-checkout-summary\" style=\"margin-bottom:12px;padding:10px;border:1px solid #ddd;\">';
+        echo '<strong>課程：</strong>' . esc_html($draft['course_name']) . '<br>';
+        if ($date_str) {
+            echo '<strong>日期：</strong>' . esc_html($date_str) . '<br>';
+        }
+        if (!empty($draft['learners'])) {
+            echo '<strong>學員：</strong><ul style=\"margin:6px 0 0 16px;padding:0;\">';
+            foreach ($draft['learners'] as $l) {
+                $line = $l['student_name'] ?? '';
+                if (!empty($l['job_title'])) {
+                    $line .= '（' . $l['job_title'] . '）';
+                }
+                echo '<li>' . esc_html($line) . '</li>';
+            }
+            echo '</ul>';
+        }
+        echo '</div>';
+    }
+
+    /**
+     * 依暫存草稿覆寫 cart 價格
+     */
+    public static function apply_cart_price($cart) {
+        if (is_admin() && !defined('DOING_AJAX')) {
+            return;
+        }
+        if (!$cart || !WC()->session) {
+            return;
+        }
+        $draft = WC()->session->get('tpma_reg_draft');
+        if (empty($draft) || empty($draft['remit_amount_per_learner'])) {
+            return;
+        }
+        $price = floatval($draft['remit_amount_per_learner']);
+        foreach ($cart->get_cart() as $cart_item) {
+            if (!empty($cart_item['tpma_reg_draft'])) {
+                $cart_item['data']->set_price($price);
+            }
+        }
+    }
+
+    /**
+     * 2025-12-20 09:00:00 -> 2025/12/20(六) 09:00~12:00
+     */
+    private static function format_class_datetime($datetime) {
+        if (empty($datetime)) return '';
+        $start_ts = strtotime($datetime);
+        if (!$start_ts) return '';
+        $date_str  = date('Y/m/d', $start_ts);
+        $weeknames = array('日','一','二','三','四','五','六');
+        $week_str  = $weeknames[(int)date('w', $start_ts)] ?? '';
+        $time_range = date('H:i', $start_ts);
+        return sprintf('%s(%s) %s', $date_str, $week_str, $time_range);
+    }
 
 }
