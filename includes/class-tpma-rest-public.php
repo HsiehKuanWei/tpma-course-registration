@@ -889,18 +889,18 @@ class TPMA_CR_REST_Public
                 'type'     => 'text',
                 'required' => false,
                 'label'    => '統一編號',
-                'priority' => 50,
+                'priority' => 40,
             );
         } else {
             $fields['billing']['billing_vat_id']['required'] = false;
             if (empty($fields['billing']['billing_vat_id']['label'])) {
                 $fields['billing']['billing_vat_id']['label'] = '統一編號';
             }
-            $fields['billing']['billing_vat_id']['priority'] = $fields['billing']['billing_vat_id']['priority'] ?? 50;
+            $fields['billing']['billing_vat_id']['priority'] = $fields['billing']['billing_vat_id']['priority'] ?? 40;
         }
         // 國家改在統編之前
         if (isset($fields['billing']['billing_country'])) {
-            $fields['billing']['billing_country']['priority'] = 40;
+            $fields['billing']['billing_country']['priority'] = 50;
         }
 
         // 姓名：用單一欄位（名）展示，姓設為非必填且隱藏
