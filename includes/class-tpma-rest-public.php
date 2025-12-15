@@ -9,6 +9,10 @@ if (!defined('ABSPATH')) {
 // WooCommerce hooks for暫存草稿
 add_action('woocommerce_before_calculate_totals', array('TPMA_CR_REST_Public', 'apply_cart_price'));
 add_action('woocommerce_review_order_before_order_total', array('TPMA_CR_REST_Public', 'render_checkout_summary'));
+add_action('woocommerce_checkout_order_processed', array('TPMA_CR_REST_Public', 'process_order_from_draft'), 10, 1);
+add_filter('woocommerce_checkout_fields', array('TPMA_CR_REST_Public', 'add_checkout_fields'));
+add_action('woocommerce_checkout_process', array('TPMA_CR_REST_Public', 'validate_checkout_fields'));
+add_action('woocommerce_checkout_create_order', array('TPMA_CR_REST_Public', 'save_checkout_fields'), 10, 2);
 
 
 
@@ -839,6 +843,7 @@ class TPMA_CR_REST_Public
             'course_name'  => $course->course_name,
             'lecturer'     => $lecturer_name,
             'session_datetime' => $session->session_datetime,
+            'duration_minutes' => $duration_minutes,
             'class_date'   => date('Y-m-d', strtotime($session->session_datetime)),
             'learners'     => $clean_learners,
             'total_learners' => $total_learners,
@@ -888,7 +893,7 @@ class TPMA_CR_REST_Public
         if (empty($draft) || empty($draft['course_name'])) {
             return;
         }
-        $date_str = self::format_class_datetime($draft['session_datetime'] ?? '');
+        $date_str = self::format_class_datetime($draft['session_datetime'] ?? '', intval($draft['duration_minutes'] ?? 0));
         echo '<div class=\"tpma-checkout-summary\" style=\"margin-bottom:12px;padding:10px;border:1px solid #ddd;\">';
         echo '<strong>課程：</strong>' . esc_html($draft['course_name']) . '<br>';
         if ($date_str) {
@@ -931,9 +936,110 @@ class TPMA_CR_REST_Public
     }
 
     /**
+     * Checkout 自訂欄位（收據方式必填、統編選填）
+     */
+    public static function add_checkout_fields($fields) {
+        $fields['billing']['tpma_receipt_type'] = array(
+            'type'     => 'select',
+            'required' => true,
+            'label'    => '收據方式',
+            'options'  => array(
+                ''            => '請選擇',
+                'electronic'  => '電子收據',
+                'paper'       => '紙本收據',
+            ),
+            'priority' => 210,
+        );
+        $fields['billing']['billing_vat_id'] = array(
+            'type'     => 'text',
+            'required' => false,
+            'label'    => '統一編號（選填）',
+            'priority' => 211,
+        );
+        return $fields;
+    }
+
+    public static function validate_checkout_fields() {
+        if (empty($_POST['tpma_receipt_type'])) {
+            wc_add_notice('請選擇收據方式', 'error');
+        }
+        // 統編如果有填，檢查格式（8碼數字）
+        if (!empty($_POST['billing_vat_id']) && !preg_match('/^[0-9]{8}$/', $_POST['billing_vat_id'])) {
+            wc_add_notice('統一編號格式需為 8 位數字', 'error');
+        }
+    }
+
+    public static function save_checkout_fields($order, $data) {
+        $receipt_type = sanitize_text_field($_POST['tpma_receipt_type'] ?? '');
+        if ($receipt_type) {
+            $order->update_meta_data('_tpma_receipt_type', $receipt_type);
+        }
+        if (!empty($_POST['billing_vat_id'])) {
+            $order->update_meta_data('_billing_vat_id', sanitize_text_field($_POST['billing_vat_id']));
+        }
+    }
+
+    /**
+     * 下單後把草稿寫入 regs 並存 order meta
+     */
+    public static function process_order_from_draft($order_id) {
+        if (!$order_id || !function_exists('WC')) return;
+        $order = wc_get_order($order_id);
+        if (!$order) return;
+        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
+        if (empty($draft) || empty($draft['course_id']) || empty($draft['learners'])) {
+            return;
+        }
+
+        global $wpdb;
+        $regs_table = TPMA_CR_DB::table('regs');
+        $reg_no = TPMA_CR_DB::generate_reg_no('A');
+        $class_date = sanitize_text_field($draft['class_date'] ?? '');
+        $course_id  = intval($draft['course_id']);
+        $session_datetime = $draft['session_datetime'] ?? '';
+
+        foreach ($draft['learners'] as $learner) {
+            $insert = array(
+                'reg_no'        => $reg_no,
+                'created_at'    => current_time('mysql'),
+                'course_id'     => $course_id,
+                'class_date'    => $class_date,
+                'student_name'  => sanitize_text_field($learner['student_name'] ?? ''),
+                'department'    => sanitize_text_field($learner['department'] ?? ''),
+                'job_title'     => sanitize_text_field($learner['job_title'] ?? ''),
+                'mobile'        => sanitize_text_field($learner['mobile'] ?? ''),
+                'emails'        => sanitize_email($learner['emails'] ?? ''),
+                'contact_name'  => $order->get_billing_first_name(),
+                'contact_email' => $order->get_billing_email(),
+                'company_name'  => $order->get_billing_company(),
+                'tax_id'        => $order->get_meta('_billing_vat_id', true),
+                'phone'         => $order->get_billing_phone(),
+                'receipt_type'  => $order->get_meta('_tpma_receipt_type', true) ?: 'electronic',
+                'address'       => $order->get_shipping_address_1(),
+                'receiver'      => $order->get_shipping_first_name(),
+                'source'        => $draft['source'] ?? '',
+                'note'          => $draft['note'] ?? '',
+                'remit_amount'  => intval($draft['remit_amount_per_learner'] ?? 0),
+                'status'        => 'pending',
+                'payment_status'=> $order->get_status(),
+                'woocommerce_order_id' => $order_id,
+            );
+            $wpdb->insert($regs_table, $insert);
+        }
+
+        $order->update_meta_data('_tpma_reg_no', $reg_no);
+        $order->update_meta_data('_tpma_course_id', $course_id);
+        $order->update_meta_data('_tpma_session_datetime', $session_datetime);
+        $order->update_meta_data('_tpma_learner_count', intval($draft['total_learners'] ?? 0));
+        $order->save();
+
+        WC()->session->set('tpma_reg_draft', null);
+    }
+
+    /**
      * 2025-12-20 09:00:00 -> 2025/12/20(六) 09:00~12:00
      */
-    private static function format_class_datetime($datetime) {
+    private static function format_class_datetime($datetime, $duration_minutes = 0) {
         if (empty($datetime)) return '';
         $start_ts = strtotime($datetime);
         if (!$start_ts) return '';
@@ -941,6 +1047,10 @@ class TPMA_CR_REST_Public
         $weeknames = array('日','一','二','三','四','五','六');
         $week_str  = $weeknames[(int)date('w', $start_ts)] ?? '';
         $time_range = date('H:i', $start_ts);
+        if ($duration_minutes > 0) {
+            $end_ts = $start_ts + ($duration_minutes * 60);
+            $time_range = $time_range . '~' . date('H:i', $end_ts);
+        }
         return sprintf('%s(%s) %s', $date_str, $week_str, $time_range);
     }
 
