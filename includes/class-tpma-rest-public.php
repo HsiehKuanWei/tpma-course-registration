@@ -53,7 +53,7 @@ class TPMA_CR_REST_Public
         // Checkout init：暫存學員資料、加車並回傳 Woo 結帳網址
         register_rest_route($ns, '/checkout-init', array(
 
-            'methods'  => 'POST',
+            'methods'  => ['POST'],
 
             'callback' => array(__CLASS__, 'checkout_init'),
 
