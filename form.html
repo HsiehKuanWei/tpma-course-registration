@@ -300,6 +300,14 @@ function formatSessionLabel(sessionDatetime, durationMinutes){
   return `${y}-${mo}-${d}（${w}） ${sh}:${sm}~${eh}:${em}`;
 }
 
+// 手機字串 -> xxxx-xxx-xxx，空白回 ''，格式錯誤回 null
+function buildMobile(rawVal){
+  const digits = (rawVal || '').replace(/\D/g,'');
+  if(!digits) return '';
+  if(digits.length !== 10) return null;
+  return `${digits.slice(0,4)}-${digits.slice(4,7)}-${digits.slice(7,10)}`;
+}
+
 // ===== 驗證輔助 =====
 function setError(id, msg){
   const input = document.getElementById(id);
