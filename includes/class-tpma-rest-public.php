@@ -867,6 +867,9 @@ class TPMA_CR_REST_Public
      * Checkout 自訂欄位（收據方式必填、統編選填）
      */
     public static function add_checkout_fields($fields) {
+        if (!self::is_tpma_reg_cart()) {
+            return $fields;
+        }
         // 收據方式
         $fields['billing']['tpma_receipt_type'] = array(
             'type'     => 'select',
@@ -880,20 +883,24 @@ class TPMA_CR_REST_Public
             'priority' => 100,
         );
 
-        // 統一編號：若其他插件已加入同名欄位則沿用，不再新增第二個
+        // 統一編號：若其他插件已加入同名欄位則沿用，不再新增第二個（位置換到國家之後）
         if (!isset($fields['billing']['billing_vat_id'])) {
             $fields['billing']['billing_vat_id'] = array(
                 'type'     => 'text',
                 'required' => false,
-                'label'    => '統一編號（選填）',
-                'priority' => 40,
+                'label'    => '統一編號',
+                'priority' => 50,
             );
         } else {
             $fields['billing']['billing_vat_id']['required'] = false;
             if (empty($fields['billing']['billing_vat_id']['label'])) {
-                $fields['billing']['billing_vat_id']['label'] = '統一編號（選填）';
+                $fields['billing']['billing_vat_id']['label'] = '統一編號';
             }
-            $fields['billing']['billing_vat_id']['priority'] = $fields['billing']['billing_vat_id']['priority'] ?? 40;
+            $fields['billing']['billing_vat_id']['priority'] = $fields['billing']['billing_vat_id']['priority'] ?? 50;
+        }
+        // 國家改在統編之前
+        if (isset($fields['billing']['billing_country'])) {
+            $fields['billing']['billing_country']['priority'] = 40;
         }
 
         // 姓名：用單一欄位（名）展示，姓設為非必填且隱藏
@@ -916,44 +923,77 @@ class TPMA_CR_REST_Public
             $fields['billing']['billing_company']['priority'] = 30;
         }
 
-        // 地址欄位順序與標籤：縣/市 → 鄉鎮市區 → 街道地址
-        if (isset($fields['billing']['billing_state'])) {
-            $fields['billing']['billing_state']['label'] = '縣/市';
-            $fields['billing']['billing_state']['priority'] = 70;
+        // 放棄 Woo 預設地址欄位，使用自訂欄位再回寫到 Woo
+        foreach (array('billing_country', 'billing_state', 'billing_city', 'billing_postcode', 'billing_address_1', 'billing_address_2') as $f) {
+            if (isset($fields['billing'][$f])) {
+                unset($fields['billing'][$f]);
+            }
         }
-        if (isset($fields['billing']['billing_city'])) {
-            $fields['billing']['billing_city']['label'] = '鄉鎮市區';
-            $fields['billing']['billing_city']['priority'] = 80;
+        foreach (array('shipping_country', 'shipping_state', 'shipping_city', 'shipping_postcode', 'shipping_address_1', 'shipping_address_2') as $f) {
+            if (isset($fields['shipping'][$f])) {
+                unset($fields['shipping'][$f]);
+            }
         }
-        if (isset($fields['billing']['billing_address_1'])) {
-            $fields['billing']['billing_address_1']['label'] = '街道地址';
-            $fields['billing']['billing_address_1']['priority'] = 90;
-        }
-        if (isset($fields['billing']['billing_address_2'])) {
-            $fields['billing']['billing_address_2']['priority'] = 91;
-        }
+
+        // 自訂地址欄位：郵遞區號 → 縣/市 → 鄉鎮市區 → 街道地址
+        $fields['billing']['tpma_postcode'] = array(
+            'type'     => 'text',
+            'required' => true,
+            'label'    => '郵遞區號',
+            'priority' => 60,
+            'class'    => array('form-row-first'),
+        );
+        $fields['billing']['tpma_state'] = array(
+            'type'     => 'text',
+            'required' => true,
+            'label'    => '縣/市',
+            'priority' => 70,
+            'class'    => array('form-row-last'),
+        );
+        $fields['billing']['tpma_city'] = array(
+            'type'     => 'text',
+            'required' => true,
+            'label'    => '鄉鎮市區',
+            'priority' => 80,
+            'class'    => array('form-row-first'),
+        );
+        $fields['billing']['tpma_street'] = array(
+            'type'     => 'text',
+            'required' => true,
+            'label'    => '街道地址',
+            'priority' => 90,
+            'class'    => array('form-row-wide'),
+        );
 
         // 電子郵件標籤微調
         if (isset($fields['billing']['billing_email'])) {
             $fields['billing']['billing_email']['label'] = '電子郵件';
-            $fields['billing']['billing_email']['priority'] = 20;
         }
-        // 郵遞區號順序（若存在）與國家順序
-        if (isset($fields['billing']['billing_country'])) {
-            $fields['billing']['billing_country']['priority'] = 50;
-        }
-        if (isset($fields['billing']['billing_postcode'])) {
-            $fields['billing']['billing_postcode']['priority'] = 60;
-        }
+
         return $fields;
     }
 
-    public static function validate_checkout_fields() {
+public static function validate_checkout_fields() {
+        if (!self::is_tpma_reg_cart()) {
+            return;
+        }
         if (empty($_POST['tpma_receipt_type'])) {
             wc_add_notice('請選擇收據方式', 'error');
         }
         if (empty($_POST['billing_company'])) {
             wc_add_notice('請填寫公司名稱', 'error');
+        }
+        // 自訂地址欄位必填
+        $custom_address_required = array(
+            'tpma_postcode' => '請填寫郵遞區號',
+            'tpma_state'    => '請填寫縣/市',
+            'tpma_city'     => '請填寫鄉鎮市區',
+            'tpma_street'   => '請填寫街道地址',
+        );
+        foreach ($custom_address_required as $key => $msg) {
+            if (empty($_POST[$key])) {
+                wc_add_notice($msg, 'error');
+            }
         }
         // 若未填寫姓氏，將名字複製過去避免 Woo 其他流程需要
         if (empty($_POST['billing_last_name']) && !empty($_POST['billing_first_name'])) {
@@ -966,12 +1006,46 @@ class TPMA_CR_REST_Public
     }
 
     public static function save_checkout_fields($order, $data) {
+        if (!self::is_tpma_reg_cart()) {
+            return;
+        }
         $receipt_type = sanitize_text_field($_POST['tpma_receipt_type'] ?? '');
         if ($receipt_type) {
             $order->update_meta_data('_tpma_receipt_type', $receipt_type);
         }
         if (!empty($_POST['billing_vat_id'])) {
             $order->update_meta_data('_billing_vat_id', sanitize_text_field($_POST['billing_vat_id']));
+        }
+
+        // 自訂地址欄位 → 回寫 Woo 訂單的帳單/配送地址
+        $zip    = sanitize_text_field($_POST['tpma_postcode'] ?? '');
+        $state  = sanitize_text_field($_POST['tpma_state'] ?? '');
+        $city   = sanitize_text_field($_POST['tpma_city'] ?? '');
+        $street = sanitize_text_field($_POST['tpma_street'] ?? '');
+        if ($zip || $state || $city || $street) {
+            $billing_addr = $order->get_address('billing');
+            $billing_addr['postcode']  = $zip;
+            $billing_addr['state']     = $state;
+            $billing_addr['city']      = $city;
+            $billing_addr['address_1'] = $street;
+            $billing_addr['country']   = $billing_addr['country'] ?: 'TW';
+            $order->set_address($billing_addr, 'billing');
+
+            $shipping_addr = $order->get_address('shipping');
+            if (empty($shipping_addr['first_name'])) {
+                $shipping_addr['first_name'] = $order->get_shipping_first_name() ?: $order->get_billing_first_name();
+            }
+            $shipping_addr['postcode']  = $zip;
+            $shipping_addr['state']     = $state;
+            $shipping_addr['city']      = $city;
+            $shipping_addr['address_1'] = $street;
+            $shipping_addr['country']   = $shipping_addr['country'] ?: 'TW';
+            $order->set_address($shipping_addr, 'shipping');
+
+            $order->update_meta_data('_tpma_postcode', $zip);
+            $order->update_meta_data('_tpma_state', $state);
+            $order->update_meta_data('_tpma_city', $city);
+            $order->update_meta_data('_tpma_street', $street);
         }
     }
 
@@ -1098,6 +1172,23 @@ class TPMA_CR_REST_Public
             return false;
         }
         return $is_required;
+    }
+
+
+    private static function is_tpma_reg_cart() {
+        if (!function_exists('WC') || !WC()->cart) {
+            return false;
+        }
+        list($pid) = TPMA_CR_Woo_Service::resolve_registration_product();
+        if (!$pid) {
+            return false;
+        }
+        foreach (WC()->cart->get_cart() as $item) {
+            if (intval($item['product_id']) === intval($pid) && !empty($item['tpma_reg_draft'])) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
