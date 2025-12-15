@@ -273,6 +273,15 @@ const TPMA_API_BASE = window.TPMA_API_BASE;
 
 let coursesMap = {};
 let firstErrorElement = null;
+// 預填參數：供 list.html 產生的 course_id / session_id 自動選課
+const preselectParams = (() => {
+  const search = new URLSearchParams(location.search);
+  return {
+    courseId: search.get("course_id") || search.get("courseId") || "",
+    sessionId: search.get("session_id") || search.get("sessionId") || "",
+  };
+})();
+let prefillingDone = false;
 
 // ===== 工具 =====
 function pad2(n) {
@@ -367,6 +376,7 @@ async function loadCourses() {
     });
     loadingEl.textContent = "";
     select.disabled = false;
+    tryPrefillFromQuery();
   } catch (e) {
     console.error(e);
     loadingEl.textContent = "課程載入失敗";
@@ -403,6 +413,19 @@ function onCourseChange() {
     sessionSelect.appendChild(opt);
   });
   sessionSelect.disabled = false;
+}
+function tryPrefillFromQuery() {
+  if (prefillingDone) return;
+  const courseId = preselectParams.courseId;
+  if (!courseId || !coursesMap[courseId]) return;
+  const courseSelect = document.getElementById("course-select");
+  courseSelect.value = courseId;
+  onCourseChange();
+  if (preselectParams.sessionId) {
+    const sessionSelect = document.getElementById("session-select");
+    sessionSelect.value = preselectParams.sessionId;
+  }
+  prefillingDone = true;
 }
 
 // ===== 動態學員 =====
