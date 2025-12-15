@@ -8,11 +8,14 @@ if (!defined('ABSPATH')) {
 
 // WooCommerce hooks for暫存草稿
 add_action('woocommerce_before_calculate_totals', array('TPMA_CR_REST_Public', 'apply_cart_price'));
-add_action('woocommerce_review_order_before_order_total', array('TPMA_CR_REST_Public', 'render_checkout_summary'));
+add_action('woocommerce_checkout_before_order_review', array('TPMA_CR_REST_Public', 'render_checkout_summary'), 5);
 add_action('woocommerce_checkout_order_processed', array('TPMA_CR_REST_Public', 'process_order_from_draft'), 10, 1);
 add_filter('woocommerce_checkout_fields', array('TPMA_CR_REST_Public', 'add_checkout_fields'));
 add_action('woocommerce_checkout_process', array('TPMA_CR_REST_Public', 'validate_checkout_fields'));
 add_action('woocommerce_checkout_create_order', array('TPMA_CR_REST_Public', 'save_checkout_fields'), 10, 2);
+add_filter('woocommerce_is_purchasable', array('TPMA_CR_REST_Public', 'force_tpma_product_purchasable'), 10, 2);
+add_filter('woocommerce_checkout_registration_required', array('TPMA_CR_REST_Public', 'allow_guest_checkout_for_tpma'), 10, 1);
+add_action('woocommerce_checkout_before_customer_details', array('TPMA_CR_REST_Public', 'render_auto_fill_controls'), 1);
 
 
 
@@ -302,16 +305,29 @@ class TPMA_CR_REST_Public
             }
 
             // === 程式化建立 WooCommerce 訂單 ===
-            $woocommerce_product_id = 1083; // 上市櫃董事課程的 WooCommerce 商品 ID
-            $product = wc_get_product($woocommerce_product_id);
+            list($woocommerce_product_id, $product) = TPMA_CR_Woo_Service::resolve_registration_product();
 
             if (!$product) {
                 error_log("TPMA Integration: WooCommerce product ID {$woocommerce_product_id} not found.");
                 return new WP_Error('wc_product_not_found', 'WooCommerce 課程商品不存在', array('status' => 500));
             }
+            if (!$product->is_type('simple')) {
+                return new WP_Error('wc_product_invalid', '課程商品請設定為「簡單商品」類型', array('status' => 500));
+            }
+            $allowed_statuses = apply_filters('tpma_cr_wc_product_allowed_statuses', array('publish', 'private'));
+            $status = $product->get_status();
+            if (!in_array($status, $allowed_statuses, true)) {
+                return new WP_Error('wc_product_status', '課程商品狀態需為上架或私人（目前狀態：' . esc_html($status) . '）', array('status' => 500));
+            }
+            // 為避免商品未設售價導致不可購買，執行期設定價格/庫存狀態（不寫回資料庫）
+            $product = TPMA_CR_Woo_Service::prepare_product_for_registration($product, $remit_amount_per_learner);
 
-            $order = wc_create_order();
-            $item = $order->add_product($product, $total_learners); // Add the single WC product with quantity = total learners
+            $order = null;
+            $item  = null;
+            TPMA_CR_Woo_Service::with_temp_product_overrides($product->get_id(), $remit_amount_per_learner, function() use (&$order, &$item, $product, $total_learners) {
+                $order = wc_create_order();
+                $item  = $order->add_product($product, $total_learners); // Add the single WC product with quantity = total learners
+            });
             // Determine billing name and email based on contact_same_first
             $billing_first_name = sanitize_text_field($shared['contact_name'] ?? '');
             $billing_email      = sanitize_email($shared['contact_email'] ?? '');
@@ -765,10 +781,6 @@ class TPMA_CR_REST_Public
      * checkout-init：暫存學員資料到 Woo session、加車並回傳 checkout URL
      */
     public static function checkout_init($request) {
-        if (!function_exists('WC')) {
-            return new WP_Error('no_woocommerce', 'WooCommerce 尚未載入', array('status' => 500));
-        }
-
         $d = $request->get_json_params();
         if (empty($d['course_id']) || empty($d['session_id']) || empty($d['learners']) || !is_array($d['learners'])) {
             return new WP_Error('invalid_data', '缺少必要欄位', array('status' => 400));
@@ -780,104 +792,15 @@ class TPMA_CR_REST_Public
         $source     = sanitize_text_field($d['source'] ?? '');
         $note       = sanitize_textarea_field($d['note'] ?? '');
 
-        global $wpdb;
-        $courses_table   = TPMA_CR_DB::table('courses');
-        $sessions_table  = TPMA_CR_DB::table('sessions');
-        $lecturers_table = TPMA_CR_DB::table('lecturers');
-
-        $course = $wpdb->get_row(
-            $wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $course_id)
-        );
-        if (!$course) {
-            return new WP_Error('course_not_found', '課程不存在', array('status' => 404));
+        $draft = TPMA_CR_Woo_Service::build_draft($course_id, $session_id, $learners, $source, $note);
+        if (is_wp_error($draft)) {
+            return $draft;
         }
 
-        $session = $wpdb->get_row(
-            $wpdb->prepare("SELECT * FROM {$sessions_table} WHERE id = %d AND course_id = %d", $session_id, $course_id)
-        );
-        if (!$session || empty($session->session_datetime)) {
-            return new WP_Error('session_required', '需先排定上課時間後才能報名', array('status' => 400));
+        $checkout_url = TPMA_CR_Woo_Service::add_to_cart_from_draft($draft);
+        if (is_wp_error($checkout_url)) {
+            return $checkout_url;
         }
-
-        $duration_minutes   = intval($course->duration_minutes ?? 0);
-        $hours              = $duration_minutes / 60;
-        $base_remit_amount  = (int) round($hours * 1000);
-        $remit_amount_per_learner = $base_remit_amount;
-
-        $clean_learners = array();
-        foreach ($learners as $learner) {
-            $name = sanitize_text_field($learner['student_name'] ?? '');
-            if ($name === '') continue;
-            $clean_learners[] = array(
-                'student_name' => $name,
-                'department'   => sanitize_text_field($learner['department'] ?? ''),
-                'job_title'    => sanitize_text_field($learner['job_title'] ?? ''),
-                'mobile'       => sanitize_text_field($learner['mobile'] ?? ''),
-                'emails'       => sanitize_email($learner['emails'] ?? ''),
-            );
-        }
-
-        $total_learners = count($clean_learners);
-        if ($total_learners === 0) {
-            return new WP_Error('no_learners', '請至少填寫一位學員', array('status' => 400));
-        }
-        if ($total_learners >= 6) {
-            $remit_amount_per_learner = (int) round($base_remit_amount * 0.8);
-        }
-        $total_order_amount = $remit_amount_per_learner * $total_learners;
-
-        $lecturer_name = '';
-        if (!empty($course->lecturer_code)) {
-            $lect = $wpdb->get_row($wpdb->prepare(
-                "SELECT lecturers_name, lecturers_title FROM {$lecturers_table} WHERE lecturers_code = %s",
-                $course->lecturer_code
-            ));
-            if ($lect && !empty($lect->lecturers_name)) {
-                $lecturer_name = trim($lect->lecturers_name . (!empty($lect->lecturers_title) ? ' ' . $lect->lecturers_title : ''));
-            }
-        }
-
-        $draft = array(
-            'course_id'    => $course_id,
-            'session_id'   => $session_id,
-            'course_name'  => $course->course_name,
-            'lecturer'     => $lecturer_name,
-            'session_datetime' => $session->session_datetime,
-            'duration_minutes' => $duration_minutes,
-            'class_date'   => date('Y-m-d', strtotime($session->session_datetime)),
-            'learners'     => $clean_learners,
-            'total_learners' => $total_learners,
-            'remit_amount_per_learner' => $remit_amount_per_learner,
-            'total_order_amount'       => $total_order_amount,
-            'source'       => $source,
-            'note'         => $note,
-        );
-
-        WC()->session->set('tpma_reg_draft', $draft);
-
-        $product_id = 1083; // 隱藏商品
-        $product = wc_get_product($product_id);
-        if (!$product) {
-            return new WP_Error('wc_product_not_found', 'WooCommerce 課程商品不存在', array('status' => 500));
-        }
-
-        $cart = WC()->cart;
-        if (!$cart) {
-            return new WP_Error('no_cart', '無法初始化購物車', array('status' => 500));
-        }
-
-        // 移除舊草稿品項，避免混淆
-        foreach ($cart->get_cart() as $key => $item) {
-            if (!empty($item['tpma_reg_draft'])) {
-                $cart->remove_cart_item($key);
-            }
-        }
-
-        $cart->add_to_cart($product_id, $total_learners, 0, array(), array(
-            'tpma_reg_draft' => true,
-        ));
-
-        $checkout_url = wc_get_checkout_url();
 
         return rest_ensure_response(array(
             'success'      => true,
@@ -889,6 +812,11 @@ class TPMA_CR_REST_Public
      * 結帳頁右側摘要：課程＋學員清單
      */
     public static function render_checkout_summary() {
+        if (did_action('tpma_render_checkout_summary')) {
+            return;
+        }
+        do_action('tpma_render_checkout_summary');
+
         $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
         if (empty($draft) || empty($draft['course_name'])) {
             return;
@@ -939,6 +867,7 @@ class TPMA_CR_REST_Public
      * Checkout 自訂欄位（收據方式必填、統編選填）
      */
     public static function add_checkout_fields($fields) {
+        // 收據方式
         $fields['billing']['tpma_receipt_type'] = array(
             'type'     => 'select',
             'required' => true,
@@ -948,20 +877,87 @@ class TPMA_CR_REST_Public
                 'electronic'  => '電子收據',
                 'paper'       => '紙本收據',
             ),
-            'priority' => 210,
+            'priority' => 100,
         );
-        $fields['billing']['billing_vat_id'] = array(
-            'type'     => 'text',
-            'required' => false,
-            'label'    => '統一編號（選填）',
-            'priority' => 211,
-        );
+
+        // 統一編號：若其他插件已加入同名欄位則沿用，不再新增第二個
+        if (!isset($fields['billing']['billing_vat_id'])) {
+            $fields['billing']['billing_vat_id'] = array(
+                'type'     => 'text',
+                'required' => false,
+                'label'    => '統一編號（選填）',
+                'priority' => 40,
+            );
+        } else {
+            $fields['billing']['billing_vat_id']['required'] = false;
+            if (empty($fields['billing']['billing_vat_id']['label'])) {
+                $fields['billing']['billing_vat_id']['label'] = '統一編號（選填）';
+            }
+            $fields['billing']['billing_vat_id']['priority'] = $fields['billing']['billing_vat_id']['priority'] ?? 40;
+        }
+
+        // 姓名：用單一欄位（名）展示，姓設為非必填且隱藏
+        if (isset($fields['billing']['billing_first_name'])) {
+            $fields['billing']['billing_first_name']['label'] = '姓名';
+            $fields['billing']['billing_first_name']['placeholder'] = '請輸入姓名';
+            $fields['billing']['billing_first_name']['priority'] = 10;
+        }
+        if (isset($fields['billing']['billing_last_name'])) {
+            $fields['billing']['billing_last_name']['required'] = false;
+            $fields['billing']['billing_last_name']['label'] = '姓氏（可留空）';
+            $fields['billing']['billing_last_name']['class'][] = 'tpma-hide-lastname';
+            $fields['billing']['billing_last_name']['priority'] = 11;
+        }
+
+        // 公司名稱必填
+        if (isset($fields['billing']['billing_company'])) {
+            $fields['billing']['billing_company']['required'] = true;
+            $fields['billing']['billing_company']['label'] = $fields['billing']['billing_company']['label'] ?: '公司名稱';
+            $fields['billing']['billing_company']['priority'] = 30;
+        }
+
+        // 地址欄位順序與標籤：縣/市 → 鄉鎮市區 → 街道地址
+        if (isset($fields['billing']['billing_state'])) {
+            $fields['billing']['billing_state']['label'] = '縣/市';
+            $fields['billing']['billing_state']['priority'] = 70;
+        }
+        if (isset($fields['billing']['billing_city'])) {
+            $fields['billing']['billing_city']['label'] = '鄉鎮市區';
+            $fields['billing']['billing_city']['priority'] = 80;
+        }
+        if (isset($fields['billing']['billing_address_1'])) {
+            $fields['billing']['billing_address_1']['label'] = '街道地址';
+            $fields['billing']['billing_address_1']['priority'] = 90;
+        }
+        if (isset($fields['billing']['billing_address_2'])) {
+            $fields['billing']['billing_address_2']['priority'] = 91;
+        }
+
+        // 電子郵件標籤微調
+        if (isset($fields['billing']['billing_email'])) {
+            $fields['billing']['billing_email']['label'] = '電子郵件';
+            $fields['billing']['billing_email']['priority'] = 20;
+        }
+        // 郵遞區號順序（若存在）與國家順序
+        if (isset($fields['billing']['billing_country'])) {
+            $fields['billing']['billing_country']['priority'] = 50;
+        }
+        if (isset($fields['billing']['billing_postcode'])) {
+            $fields['billing']['billing_postcode']['priority'] = 60;
+        }
         return $fields;
     }
 
     public static function validate_checkout_fields() {
         if (empty($_POST['tpma_receipt_type'])) {
             wc_add_notice('請選擇收據方式', 'error');
+        }
+        if (empty($_POST['billing_company'])) {
+            wc_add_notice('請填寫公司名稱', 'error');
+        }
+        // 若未填寫姓氏，將名字複製過去避免 Woo 其他流程需要
+        if (empty($_POST['billing_last_name']) && !empty($_POST['billing_first_name'])) {
+            $_POST['billing_last_name'] = sanitize_text_field($_POST['billing_first_name']);
         }
         // 統編如果有填，檢查格式（8碼數字）
         if (!empty($_POST['billing_vat_id']) && !preg_match('/^[0-9]{8}$/', $_POST['billing_vat_id'])) {
@@ -983,13 +979,25 @@ class TPMA_CR_REST_Public
      * 下單後把草稿寫入 regs 並存 order meta
      */
     public static function process_order_from_draft($order_id) {
-        if (!$order_id || !function_exists('WC')) return;
-        $order = wc_get_order($order_id);
-        if (!$order) return;
-        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
-        if (empty($draft) || empty($draft['course_id']) || empty($draft['learners'])) {
+        error_log("TPMA Debug: process_order_from_draft called for order ID: {$order_id}");
+
+        if (!$order_id || !function_exists('WC')) {
+            error_log("TPMA Debug: process_order_from_draft - Invalid order ID or WC not loaded.");
             return;
         }
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            error_log("TPMA Debug: process_order_from_draft - Order object not found for ID: {$order_id}");
+            return;
+        }
+
+        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
+        if (empty($draft) || empty($draft['course_id']) || empty($draft['learners'])) {
+            error_log("TPMA Debug: process_order_from_draft - Draft data missing or incomplete. Draft: " . print_r($draft, true));
+            return;
+        }
+        error_log("TPMA Debug: process_order_from_draft - Draft data found: " . print_r($draft, true));
+
 
         global $wpdb;
         $regs_table = TPMA_CR_DB::table('regs');
@@ -1025,6 +1033,12 @@ class TPMA_CR_REST_Public
                 'woocommerce_order_id' => $order_id,
             );
             $wpdb->insert($regs_table, $insert);
+
+            if (!$wpdb->insert_id) {
+                error_log("TPMA Debug: process_order_from_draft - INSERT FAILED for reg_no {$reg_no}: " . $wpdb->last_error);
+            } else {
+                error_log("TPMA Debug: process_order_from_draft - Inserted registration ID: {$wpdb->insert_id} for reg_no {$reg_no}");
+            }
         }
 
         $order->update_meta_data('_tpma_reg_no', $reg_no);
@@ -1032,8 +1046,11 @@ class TPMA_CR_REST_Public
         $order->update_meta_data('_tpma_session_datetime', $session_datetime);
         $order->update_meta_data('_tpma_learner_count', intval($draft['total_learners'] ?? 0));
         $order->save();
+        error_log("TPMA Debug: process_order_from_draft - Order meta updated for order ID: {$order_id}");
+
 
         WC()->session->set('tpma_reg_draft', null);
+        error_log("TPMA Debug: process_order_from_draft - Cleared tpma_reg_draft from session.");
     }
 
     /**
@@ -1052,6 +1069,76 @@ class TPMA_CR_REST_Public
             $time_range = $time_range . '~' . date('H:i', $end_ts);
         }
         return sprintf('%s(%s) %s', $date_str, $week_str, $time_range);
+    }
+
+    /**
+     * 讓 tpma 的課程商品在有草稿時保持可購買，避免無痕或重新載入時被 Woo 自動移除
+     */
+    public static function force_tpma_product_purchasable($purchasable, $product) {
+        if (!$product) {
+            return $purchasable;
+        }
+        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
+        if (empty($draft) || empty($draft['total_learners'])) {
+            return $purchasable;
+        }
+        list($pid) = TPMA_CR_Woo_Service::resolve_registration_product();
+        if ($pid && intval($product->get_id()) === intval($pid)) {
+            return true;
+        }
+        return $purchasable;
+    }
+
+    /**
+     * 允許包含 TPMA 草稿的結帳跳過登入限制（維持一般商品原設定）
+     */
+    public static function allow_guest_checkout_for_tpma($is_required) {
+        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
+        if (!empty($draft) && !empty($draft['total_learners'])) {
+            return false;
+        }
+        return $is_required;
+    }
+
+    /**
+     * Checkout 加入「同報名學員」勾選並自動帶入姓名/Email，同時隱藏姓氏欄位
+     */
+    public static function render_auto_fill_controls() {
+        if (!function_exists('is_checkout') || !is_checkout()) {
+            return;
+        }
+        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
+        $first_name = $draft['learners'][0]['student_name'] ?? '';
+        $first_email = $draft['learners'][0]['emails'] ?? '';
+        if ($first_name === '' && $first_email === '') {
+            return;
+        }
+        ?>
+        <style>
+            .tpma-hide-lastname { display: none !important; }
+        </style>
+        <div class="tpma-autofill" style="margin-bottom:10px;">
+            <label><input type="checkbox" id="tpma-fill-first-learner"> 同報名學員</label>
+        </div>
+        <script>
+            (function() {
+                var cb = document.getElementById('tpma-fill-first-learner');
+                if (!cb) return;
+                var name = <?php echo wp_json_encode($first_name); ?>;
+                var email = <?php echo wp_json_encode($first_email); ?>;
+                cb.addEventListener('change', function() {
+                    var n = document.getElementById('billing_first_name');
+                    var ln = document.getElementById('billing_last_name');
+                    var em = document.getElementById('billing_email');
+                    if (cb.checked) {
+                        if (n && name) n.value = name;
+                        if (ln && name) ln.value = name;
+                        if (em && email) em.value = email;
+                    }
+                });
+            })();
+        </script>
+        <?php
     }
 
 }
