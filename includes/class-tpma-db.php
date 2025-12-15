@@ -199,12 +199,15 @@ class TPMA_CR_DB
 			status VARCHAR(20) NOT NULL DEFAULT 'pending',
 			test_score VARCHAR(30) DEFAULT NULL,
 			certificate_id VARCHAR(30) DEFAULT NULL,
+            woocommerce_order_id BIGINT UNSIGNED DEFAULT NULL,
+            payment_status VARCHAR(50) DEFAULT NULL,
 			PRIMARY KEY (id),
 			KEY reg_no_idx (reg_no),
 			KEY course_id_idx (course_id),
 			KEY student_name_idx (student_name),
 			KEY phone_idx (phone),
-			KEY contact_email_idx (contact_email)
+			KEY contact_email_idx (contact_email),
+            KEY woocommerce_order_id_idx (woocommerce_order_id)
 		) {$charset_collate};";
 
 
@@ -248,6 +251,9 @@ class TPMA_CR_DB
         dbDelta($sql_sessions);
 
         dbDelta($sql_lecturers);
+        
+        // Ensure schema is current after initial activation
+        self::ensure_schema_current();
 
     }
 
@@ -292,4 +298,3 @@ class TPMA_CR_DB
     }
 
 }
-

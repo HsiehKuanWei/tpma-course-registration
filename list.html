@@ -263,7 +263,7 @@
  * API 基底：預設抓同網域的 /wp-json/tpma/v1
  * 若未來路徑不同（例如 /iching/…），這裡再調整即可。
  */
-const TPMA_API_BASE = 'https://mazuuni.org.tw/iching/wp-json/tpma/v1';
+const TPMA_API_BASE = 'https://mazuuni.org.tw/tw-pma/wp-json/tpma/v1';
 
 /**
  * 報名表網址基底：
@@ -271,7 +271,7 @@ const TPMA_API_BASE = 'https://mazuuni.org.tw/iching/wp-json/tpma/v1';
  * - 請把 '/form.html' 改成實際報名表路徑
  *   例如：'/iching/tpma/form.html'
  */
-const REG_FORM_PATH = '/iching/wp-content/plugins/tpma-course-registration/form.html';  // TODO: 依實際路徑修改
+const REG_FORM_PATH = '/tw-pma/wp-content/plugins/tpma-course-registration/form.html';  // TODO: 依實際路徑修改
 const REG_FORM_URL = location.origin + REG_FORM_PATH;
 
 function pad2(n) { return n.toString().padStart(2, '0'); }
@@ -355,7 +355,20 @@ async function loadCourseRows() {
 
   try {
     const res = await fetch(TPMA_API_BASE + '/courses');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
+    if (!res.ok) {
+        let errorMsg = `HTTP Error: ${res.status} ${res.statusText}`;
+        try {
+            const errorData = await res.json();
+            if (errorData.message) {
+                errorMsg = errorData.message;
+            } else if (errorData.code) {
+                errorMsg = `${errorData.code}: ${errorData.message}`;
+            }
+        } catch (jsonError) {
+            // If JSON parsing fails, use the default HTTP error message
+        }
+        throw new Error(errorMsg);
+    }
     const data = await res.json();
 
     const rows = [];
@@ -387,9 +400,9 @@ async function loadCourseRows() {
     statusEl.textContent = `共 ${filteredRows.length} 筆課程場次`;
   } catch (e) {
     console.error(e);
-    statusEl.textContent = '課程載入失敗，請稍後再試。';
+    statusEl.textContent = `課程載入失敗：${e.message}。請稍後再試。`;
     tbody.innerHTML = `
-      <tr><td colspan="4" class="tpma-loading-row">課程載入失敗</td></tr>
+      <tr><td colspan="4" class="tpma-loading-row">課程載入失敗：${e.message}</td></tr>
     `;
   }
 }
