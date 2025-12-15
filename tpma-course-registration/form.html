@@ -1,8 +1,8 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
-<title>å ±åæ¸¬è©¦</title>
+<title>報名測試</title>
 <style>
   .tpma-form-wrap {
     max-width: 900px;
@@ -158,101 +158,101 @@
 
 <div id="tpma-course-registration">
   <div class="tpma-form-wrap">
-    <div id="tpma-loading" class="tpma-loading">è¼‰å…¥èª²ç¨‹è³‡æ–™ä¸­...</div>
+    <div id="tpma-loading" class="tpma-loading">載入課程資料中...</div>
     <form id="tpma-reg-form" novalidate>
-      <!-- èª²ç¨‹åç¨± -->
+      <!-- 課程名稱 -->
       <div class="tpma-field">
         <div class="tpma-label-row">
-          <div class="tpma-label">èª²ç¨‹åç¨±</div>
-          <div class="tpma-required">* å¿…å¡«</div>
+          <div class="tpma-label">課程名稱</div>
+          <div class="tpma-required">* 必填</div>
         </div>
         <select id="course-select" class="tpma-select">
-          <option value="">è«‹é¸æ“‡èª²ç¨‹</option>
+          <option value="">請選擇課程</option>
         </select>
         <div class="tpma-error-msg" data-error-for="course-select"></div>
       </div>
 
-      <!-- æŽˆèª²æ—¥æœŸ / å ´æ¬¡ -->
+      <!-- 授課日期 / 場次 -->
       <div class="tpma-field">
         <div class="tpma-label-row">
-          <div class="tpma-label">æŽˆèª²æ—¥æœŸ / å ´æ¬¡</div>
-          <div class="tpma-required">* å¿…å¡«</div>
+          <div class="tpma-label">授課日期 / 場次</div>
+          <div class="tpma-required">* 必填</div>
         </div>
         <select id="session-select" class="tpma-select" disabled>
-          <option value="">è«‹å…ˆé¸æ“‡èª²ç¨‹</option>
+          <option value="">請先選擇課程</option>
         </select>
         <div class="tpma-error-msg" data-error-for="session-select"></div>
       </div>
 
-      <!-- èª²ç¨‹è³‡è¨Šå±•ç¤º -->
+      <!-- 課程資訊展示 -->
       <div class="tpma-field">
-        <div class="tpma-label">è¬›å¸«</div>
+        <div class="tpma-label">講師</div>
         <p id="course-lecturer"></p>
       </div>
 
       <div class="tpma-field">
-        <div class="tpma-label">èª²ç¨‹åç¨±</div>
+        <div class="tpma-label">課程名稱</div>
         <p id="course-name-display"></p>
       </div>
 
       <div class="tpma-field">
-        <div class="tpma-label">ç°¡ä»‹</div>
+        <div class="tpma-label">簡介</div>
         <p id="course-intro"></p>
       </div>
 
       <div class="tpma-field">
-        <div class="tpma-label">å¤§ç¶±</div>
+        <div class="tpma-label">大綱</div>
         <div id="course-outline"></div>
       </div>
 
       <div class="tpma-field">
-        <div class="tpma-label">æŽˆèª²æ™‚æ•¸ï¼ˆå°æ™‚ï¼‰</div>
+        <div class="tpma-label">授課時數（小時）</div>
         <p id="course-duration"></p>
       </div>
 
       <hr>
 
-      <!-- å­¸å“¡å€å¡Š -->
+      <!-- 學員區塊 -->
       <div class="tpma-field">
         <div class="tpma-label-row">
-          <div class="tpma-label">å ±åå­¸å“¡è³‡æ–™</div>
-          <div class="tpma-required">* è‡³å°‘ 1 ä½å­¸å“¡ï¼Œå§“åèˆ‡ Email å¿…å¡«</div>
+          <div class="tpma-label">報名學員資料</div>
+          <div class="tpma-required">* 至少 1 位學員，姓名與 Email 必填</div>
         </div>
       </div>
 
       <div id="learners-wrapper"></div>
 
       <div class="tpma-field">
-        <button type="button" id="add-learner" class="tpma-btn tpma-btn-secondary">+ æ–°å¢žä¸€ä½å­¸å“¡</button>
+        <button type="button" id="add-learner" class="tpma-btn tpma-btn-secondary">+ 新增一位學員</button>
         <div class="tpma-error-msg" data-error-for="learners"></div>
       </div>
 
       <!-- 承辦 / 公司 / 收據 / 收件人欄位已移至 Woo 結帳頁，表單不再收集 -->
 
-      <!-- è³‡è¨Šä¾†æº -->
+      <!-- 資訊來源 -->
       <div class="tpma-field">
         <div class="tpma-label-row">
-          <div class="tpma-label">è³‡è¨Šä¾†æº</div>
+          <div class="tpma-label">資訊來源</div>
         </div>
         <select id="source" class="tpma-select">
-          <option value="">è«‹é¸æ“‡</option>
-          <option value="å­¸æœƒå®˜ç¶²">å­¸æœƒå®˜ç¶²</option>
-          <option value="TWSE å®˜ç¶²">TWSE å®˜ç¶²</option>
-          <option value="å­¸æœƒ Mail">å­¸æœƒ Mail</option>
-          <option value="å­¸æœƒé›»è¨ª">å­¸æœƒé›»è¨ª</option>
-          <option value="å…¶ä»–">å…¶ä»–</option>
+          <option value="">請選擇</option>
+          <option value="學會官網">學會官網</option>
+          <option value="TWSE 官網">TWSE 官網</option>
+          <option value="學會 Mail">學會 Mail</option>
+          <option value="學會電訪">學會電訪</option>
+          <option value="其他">其他</option>
         </select>
       </div>
 
-      <!-- å‚™è¨» -->
+      <!-- 備註 -->
       <div class="tpma-field">
         <div class="tpma-label-row">
-          <div class="tpma-label">å‚™è¨»</div>
+          <div class="tpma-label">備註</div>
         </div>
         <textarea id="note" class="tpma-textarea" rows="3"></textarea>
       </div>
 
-      <button type="button" id="tpma-submit" class="tpma-btn">é€å‡ºå ±å</button>
+      <button type="button" id="tpma-submit" class="tpma-btn">下一步</button>
       <div id="tpma-message"></div>
     </form>
   </div>
@@ -272,23 +272,23 @@ function esc(s) {
     });
 }
 
-// ===== å·¥å…· =====
+// ===== 工具 =====
 function pad2(n){return n.toString().padStart(2,'0');}
 
 function minutesToHoursString(mins){
   const m = parseInt(mins,10)||0;
   if(!m) return '';
   const h = m/60;
-  return Number.isInteger(h) ? h + ' å°æ™‚' : (Math.round(h*10)/10) + ' å°æ™‚';
+  return Number.isInteger(h) ? h + ' 小時' : (Math.round(h*10)/10) + ' 小時';
 }
 
 function formatSessionLabel(sessionDatetime, durationMinutes){
-  if(!sessionDatetime) return 'èª²ç¨‹å°šåœ¨å®‰æŽ’ä¸­...';
+  if(!sessionDatetime) return '課程尚在安排中...';
   const start = new Date(sessionDatetime.replace(' ','T'));
   if(isNaN(start.getTime())) return sessionDatetime;
   const dur = parseInt(durationMinutes||0,10);
   const end = new Date(start.getTime() + dur*60000);
-  const weekdayMap = ['æ—¥','ä¸€','äºŒ','ä¸‰','å››','äº”','å…­'];
+  const weekdayMap = ['日','一','二','三','四','五','六'];
   const y = start.getFullYear();
   const mo = pad2(start.getMonth()+1);
   const d = pad2(start.getDate());
@@ -297,7 +297,7 @@ function formatSessionLabel(sessionDatetime, durationMinutes){
   const sm = pad2(start.getMinutes());
   const eh = pad2(end.getHours());
   const em = pad2(end.getMinutes());
-  return `${y}-${mo}-${d}ï¼ˆ${w}ï¼‰ ${sh}:${sm}~${eh}:${em}`;
+  return `${y}-${mo}-${d}（${w}） ${sh}:${sm}~${eh}:${em}`;
 }
 
 function buildPhone(area, main, ext){
@@ -313,11 +313,11 @@ function buildPhone(area, main, ext){
   return out;
 }
 
-// å–®ä¸€æ¬„ä½æ‰‹æ©Ÿå­—ä¸² â†’ æ ¼å¼åŒ–æˆ xxxx-xxx-xxxï¼ŒéŒ¯èª¤å›žå‚³ nullï¼Œç©ºç™½å›žå‚³ ''
+/ 單一欄位手機字串 → 格式化成 xxxx-xxx-xxx，錯誤回傳 null，空白回傳 ''
 function buildMobile(rawVal){
   const digits = (rawVal || '').replace(/\D/g,'');
-  if(!digits) return '';            // å…¨ç©ºï¼šè¦–ç‚ºæ²’å¡«
-  if(digits.length !== 10) return null; // é•·åº¦éŒ¯èª¤ï¼šè®“é©—è­‰ä¸ŸéŒ¯
+  if(!digits) return '';            // 全空：視為沒填
+  if(digits.length !== 10) return null; // 長度錯誤：讓驗證丟錯
   return (
     digits.slice(0,4) + '-' +
     digits.slice(4,7) + '-' +
@@ -325,7 +325,7 @@ function buildMobile(rawVal){
   );
 }
 
-// ===== æ‰‹æ©Ÿæ¬„ä½è™•ç† =====
+// ===== 手機欄位處理 =====
 function formatMobileInput(input){
   let v = input.value.replace(/\D/g,'');
   if(!v){
@@ -340,7 +340,7 @@ function formatMobileInput(input){
       v.slice(4,7) + '-' +
       v.slice(7,10);
   }else{
-    // é•·åº¦ä¸å°å°±ç¶­æŒç´”æ•¸å­—ï¼Œäº¤çµ¦é©—è­‰è™•ç†
+    // 長度不對就維持純數字，交給驗證處理
     input.value = v;
   }
 }
