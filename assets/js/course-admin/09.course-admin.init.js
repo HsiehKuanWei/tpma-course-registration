@@ -25,10 +25,13 @@
     try {
       await ns.fetchAll();
       ns.buildLecturerFilter();
+      if (dom.filter && dom.filter.lec && dom.filter.lec.options && dom.filter.lec.options[0]) {
+        dom.filter.lec.options[0].textContent = '全部講師';
+      }
       ns.applyFilters();
     } catch (e) {
       console.error(e);
-      if (dom.courseList) dom.courseList.innerHTML = '<p>載入失敗，請稍後再試</p>';
+      if (dom.courseList) dom.courseList.innerHTML = '<tr><td colspan="5">載入失敗，請稍後再試</td></tr>';
     }
   };
 

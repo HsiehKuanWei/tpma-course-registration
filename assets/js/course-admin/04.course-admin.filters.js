@@ -42,6 +42,9 @@
 
     // 課程名稱篩選選單跟著更新（避免選到不存在的名稱）
     ns.buildCourseNameFilter(filtered);
+    if (filters.course && filters.course.options && filters.course.options[0]) {
+      filters.course.options[0].textContent = '全部課程名稱';
+    }
 
     // 關鍵字搜尋（課程代碼/課程名/分類/講師）
     if (q) {
@@ -109,7 +112,37 @@
       return true;
     });
 
+    const sortField = state.sort?.field || '';
+    const sortDir = (state.sort?.dir || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
+    if (sortField) {
+      const dirFactor = sortDir === 'desc' ? -1 : 1;
+      filtered.sort((a, b) => {
+        const toText = (x) => (x == null ? '' : String(x));
+
+        let va = '';
+        let vb = '';
+        if (sortField === 'course_code') {
+          va = toText(a.course_code);
+          vb = toText(b.course_code);
+        } else if (sortField === 'category_code') {
+          va = toText(a.category || util.catCodeToLabel(a.category_code || ''));
+          vb = toText(b.category || util.catCodeToLabel(b.category_code || ''));
+        } else if (sortField === 'course_name') {
+          va = toText(a.course_name);
+          vb = toText(b.course_name);
+        } else if (sortField === 'lecturer_code') {
+          va = toText(a.lecturer || util.lecturerLabelByCode(a.lecturer_code || ''));
+          vb = toText(b.lecturer || util.lecturerLabelByCode(b.lecturer_code || ''));
+        } else {
+          return 0;
+        }
+
+        return va.localeCompare(vb, 'zh-Hant') * dirFactor;
+      });
+    }
+
     ns.renderCourses(filtered);
+    if (typeof ns.updateHeaderMenuStates === 'function') ns.updateHeaderMenuStates();
   };
 
 })(window);

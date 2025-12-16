@@ -129,3 +129,102 @@
 .tpma-modal .tpma-error {
     margin-top:4px;
 }
+
+/* ===== Table + Header Menus (Preview/Detail/Edit) ===== */
+.tpma-course-table{
+    width:100%;
+    border-collapse:collapse;
+    font-size:13px;
+    margin-top:10px;
+}
+.tpma-course-table th,
+.tpma-course-table td{
+    border:1px solid #e0e0e0;
+    padding:8px 10px;
+    vertical-align:middle;
+}
+.tpma-course-table th{
+    background:#f0f0f0;
+    white-space:nowrap;
+    font-weight:600;
+    color:#333;
+}
+.tpma-course-detail-row{
+    background:#fcfcfc;
+    border-top:2px solid #007cba;
+}
+.tpma-course-detail-cell{
+    padding:12px 10px;
+}
+
+.tpma-th-inner{
+    position:relative;
+    display:flex;
+    align-items:center;
+    gap:6px;
+    justify-content:space-between;
+}
+.tpma-th-menu-btn{
+    border:1px solid #ccc;
+    background:#fff;
+    cursor:pointer;
+    font-size:12px;
+    padding:2px 6px;
+    border-radius:3px;
+    line-height:1.2;
+    color:#555;
+}
+.tpma-th-menu-btn:hover{ background:#f0f0f0; }
+.tpma-th-menu-btn.tpma-filter-active{
+    background:#e0f0ff;
+    border-color:#80bfff;
+    color:#0056b3;
+}
+.tpma-th-menu{
+    position:absolute;
+    top:100%;
+    left:0;
+    background:#fff;
+    border:1px solid #bbb;
+    padding:10px;
+    z-index:100;
+    min-width:220px;
+    display:none;
+    box-shadow:0 4px 12px rgba(0,0,0,.18);
+    border-radius:4px;
+    white-space:normal;
+}
+.tpma-th-menu.open{ display:block; }
+.tpma-th-menu .tpma-menu-section{
+    margin-top:10px;
+    padding-top:10px;
+    border-top:1px solid #eee;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+}
+.tpma-th-menu .tpma-menu-section:first-child{
+    margin-top:0;
+    padding-top:0;
+    border-top:none;
+}
+.tpma-th-menu label{
+    display:flex;
+    align-items:center;
+    font-size:13px;
+    margin:0;
+    padding:4px 6px;
+    border-radius:3px;
+    cursor:pointer;
+    transition:background-color 0.15s ease;
+}
+.tpma-th-menu label:hover{ background:#f5f5f5; }
+.tpma-th-menu select{
+    box-sizing:border-box;
+    font-size:13px;
+    padding:4px 6px;
+    border:1px solid #ccc;
+    border-radius:3px;
+    width:100%;
+    margin-top:4px;
+}

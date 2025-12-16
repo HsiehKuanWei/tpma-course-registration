@@ -72,20 +72,86 @@
    * @param {Array<object>} list
    */
   ns.renderCourses = function renderCourses(list) {
-    if (!dom.courseList) return;
-    dom.courseList.innerHTML = '';
+    const tbody = dom.courseList;
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
     if (!list || list.length === 0) {
-      dom.courseList.innerHTML = '<p>目前沒有課程</p>';
+      tbody.innerHTML = '<tr><td colspan="5">沒有符合條件的課程</td></tr>';
       return;
     }
 
+    const catLabel = (c) => c.category || util.catCodeToLabel(c.category_code || '');
+    const lecLabel = (c) => util.lecturerLabelByCode(c.lecturer_code || '') || c.lecturer || '';
+    const showText = (v) => (v == null || v === '' ? '-' : String(v));
+
     list.forEach(c => {
-      const div = document.createElement('div');
-      div.className = 'tpma-course-item';
-      div.dataset.id = c.id || '';
-      div._data = c;
-      ns.renderCourseView(div, false);
-      dom.courseList.appendChild(div);
+      const tr = document.createElement('tr');
+      tr.className = 'tpma-course-row';
+      tr.dataset.id = c.id || '';
+
+      const tdCode = document.createElement('td');
+      tdCode.textContent = showText(c.course_code);
+      tr.appendChild(tdCode);
+
+      const tdCat = document.createElement('td');
+      tdCat.textContent = showText(catLabel(c));
+      tr.appendChild(tdCat);
+
+      const tdName = document.createElement('td');
+      tdName.textContent = showText(c.course_name);
+      tr.appendChild(tdName);
+
+      const tdLec = document.createElement('td');
+      tdLec.textContent = showText(lecLabel(c));
+      tr.appendChild(tdLec);
+
+      const tdAct = document.createElement('td');
+      tdAct.innerHTML = '<button type="button" class="tpma-btn tpma-view-btn">詳細</button>'
+        + '<button type="button" class="tpma-btn tpma-edit-btn">編輯</button>';
+      tr.appendChild(tdAct);
+
+      tbody.appendChild(tr);
+
+      const trDetail = document.createElement('tr');
+      trDetail.className = 'tpma-course-detail-row';
+      trDetail.style.display = 'none';
+      trDetail.dataset.id = c.id || '';
+      const tdDetail = document.createElement('td');
+      tdDetail.className = 'tpma-course-detail-cell';
+      tdDetail.colSpan = 5;
+      trDetail.appendChild(tdDetail);
+      tbody.appendChild(trDetail);
+
+      const detailDiv = document.createElement('div');
+      detailDiv.className = 'tpma-course-item';
+      detailDiv.dataset.id = c.id || '';
+      detailDiv._data = c;
+      tdDetail.appendChild(detailDiv);
+      ns.renderCourseView(detailDiv, false);
+
+      const viewBtn = tdAct.querySelector('.tpma-view-btn');
+      const editBtn = tdAct.querySelector('.tpma-edit-btn');
+
+      const setExpanded = (expanded) => {
+        trDetail.style.display = expanded ? '' : 'none';
+        if (viewBtn) viewBtn.textContent = expanded ? '收合' : '詳細';
+      };
+
+      if (viewBtn) {
+        viewBtn.addEventListener('click', () => {
+          const expanded = trDetail.style.display === 'none';
+          if (expanded) ns.renderCourseView(detailDiv, false);
+          setExpanded(expanded);
+        });
+      }
+
+      if (editBtn) {
+        editBtn.addEventListener('click', () => {
+          setExpanded(true);
+          ns.renderCourseEdit(detailDiv);
+        });
+      }
     });
   };
 
@@ -311,7 +377,16 @@
     const saveBtn = div.querySelector('.tpma-save');
     const cancelBtn = div.querySelector('.tpma-cancel');
     if (saveBtn) saveBtn.onclick = () => ns.saveCourse(div);
-    if (cancelBtn) cancelBtn.onclick = () => ns.renderCourseView(div, false);
+    if (cancelBtn) cancelBtn.onclick = () => {
+      if (!div.dataset.id) {
+        const trDetail = div.closest && div.closest('tr.tpma-course-detail-row');
+        const tr = trDetail ? trDetail.previousElementSibling : null;
+        if (tr && tr.classList && tr.classList.contains('tpma-course-row')) tr.remove();
+        if (trDetail) trDetail.remove();
+        return;
+      }
+      ns.renderCourseView(div, false);
+    };
   };
 
 })(window);

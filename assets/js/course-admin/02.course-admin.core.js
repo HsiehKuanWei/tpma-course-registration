@@ -20,7 +20,8 @@
     nonce: '',
     allCourses: [],
     lecturers: [],
-    currentLecturerTargetSelect: null
+    currentLecturerTargetSelect: null,
+    sort: { field: '', dir: 'asc' }
   };
 
   /**
@@ -74,7 +75,8 @@
    */
   ns.cacheDom = function cacheDom() {
     dom.wrap = document.getElementById('tpma-course-admin');
-    dom.courseList = document.getElementById('tpma-course-list');
+    dom.courseTable = document.getElementById('tpma-course-table');
+    dom.courseList = document.getElementById('tpma-course-tbody');
 
     dom.filter = {
       q: document.getElementById('tpma-filter-q'),
@@ -89,6 +91,14 @@
     dom.buttons = {
       reset: document.getElementById('tpma-reset-filter'),
       addCourse: document.getElementById('tpma-add-course')
+    };
+
+    dom.header = {
+      menuButtons: Array.from(document.querySelectorAll('.tpma-th-menu-btn')),
+      menus: Array.from(document.querySelectorAll('.tpma-th-menu')),
+      clearCategory: document.getElementById('tpma-btn-clear-category'),
+      clearCourse: document.getElementById('tpma-btn-clear-course'),
+      clearLecturer: document.getElementById('tpma-btn-clear-lecturer')
     };
 
     dom.modal = {
