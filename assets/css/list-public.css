@@ -1,196 +1,88 @@
 .tpma-course-list {
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-    font-size: 14px;
     background: var(--tpma-light-gray);
-    margin: 0;
     padding: 20px;
-  }
-  .tpma-course-list-wrap {
+}
+.tpma-course-list-wrap {
     max-width: 1100px;
-    margin: 0 auto;
-    background: #fff;
-    border-radius: 8px; /* Increased border-radius for consistency */
-    box-shadow: 0 4px 12px rgba(0,0,0,0.05); /* Consistent shadow */
-    padding: 16px 18px;
-  }
-  .tpma-course-list-header {
+}
+.tpma-course-list-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 10px;
-  }
-  .tpma-course-list-header h1 {
+}
+.tpma-course-list-header h1 {
     font-size: 18px;
     margin: 0;
-    color: var(--tpma-dark-gray); /* Use dark gray for headings */
-  }
-  .tpma-status {
+    color: var(--tpma-dark-gray);
+}
+.tpma-status {
     font-size: 13px;
-    color: var(--tpma-secondary-color); /* Use secondary color for status text */
-  }
+    color: var(--tpma-secondary-color);
+}
 
-  table.tpma-course-table {
-    width: 100%;
-    border-collapse: separate; /* Changed to separate for consistent table styling */
-    border-spacing: 0; /* Added for separate border-collapse */
+table.tpma-course-table {
     table-layout: fixed;
-    margin-top: 20px; /* Consistent margin-top */
-    box-shadow: 0 4px 8px rgba(0,0,0,0.08); /* Consistent shadow */
-    border-radius: 8px; /* Consistent border-radius */
-    overflow: hidden; /* Ensures rounded corners apply */
-  }
-  table.tpma-course-table thead {
-    background: var(--tpma-dark-gray); /* Use dark gray for table header background */
-  }
-  table.tpma-course-table th,
-  table.tpma-course-table td {
-    border-bottom: 1px solid var(--tpma-medium-gray); /* Use medium gray for border */
-    padding: 10px 8px; /* Consistent padding */
-    vertical-align: middle; /* Consistent vertical alignment */
+}
+table.tpma-course-table th,
+table.tpma-course-table td {
     word-break: break-all;
-  }
-  table.tpma-course-table th {
-    font-weight: 600;
-    font-size: 13px;
-    position: relative;
-    color: #fff; /* White text for dark header */
-    text-align: left; /* Consistent text alignment */
-    text-transform: uppercase; /* Consistent text transform */
-  }
-  table.tpma-course-table td {
-    font-size: 13px;
-  }
-  table.tpma-course-table tbody tr:hover {
-    background: #e6f7ff; /* Consistent hover background */
-  }
-  table.tpma-course-table tbody tr:nth-child(even) {
-    background: var(--tpma-light-gray); /* Consistent even row background */
-  }
-  table.tpma-course-table tbody tr:last-child td {
-    border-bottom: none; /* Remove bottom border for last row */
-  }
+}
 
-  .tpma-th-inner {
-    display: flex;
-    align-items: center;
-    gap: 8px; /* Increased gap for consistency */
-    justify-content: space-between; /* Added for consistent layout */
-  }
-  .tpma-th-title {
+.tpma-th-title {
     white-space: nowrap;
-  }
-  .tpma-th-indicator {
+}
+.tpma-th-indicator {
     font-size: 11px;
-    color: var(--tpma-secondary-color); /* Use secondary color for indicator */
-  }
-
-  .tpma-th-menu {
-    position: absolute;
-    top: 100%;
-    left: 0;
+    color: var(--tpma-secondary-color);
+}
+.tpma-th-menu {
     margin-top: 2px;
-    z-index: 99;
-    background: #fff;
-    border: 1px solid var(--tpma-border-color); /* Use border color variable */
-    box-shadow: 0 6px 18px rgba(0,0,0,.2); /* Consistent shadow */
-    padding: 15px; /* Consistent padding */
-    min-width: 260px; /* Consistent min-width */
-    font-weight: normal;
-    display: none;
-    border-radius: 5px; /* Consistent border-radius */
-    white-space: normal; /* Consistent white-space */
-  }
-  .tpma-th-menu.open {
-    display: block;
-  }
-  .tpma-th-menu label {
-    display: block;
-    font-size: 13px; /* Consistent font size */
-    margin-bottom: 4px;
-    color: var(--tpma-dark-gray); /* Consistent color */
-    font-weight: 600; /* Consistent font-weight */
-  }
-  .tpma-th-menu input[type="text"] {
+}
+.tpma-th-menu input[type="text"] {
     width: 100%;
     box-sizing: border-box;
-    padding: 6px 8px; /* Consistent padding */
-    font-size: 13px; /* Consistent font size */
-    border-radius: 4px; /* Consistent border-radius */
-    border: 1px solid var(--tpma-border-color); /* Use border color variable */
-    margin-top: 4px; /* Consistent margin-top */
-    transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Consistent transition */
-  }
-  .tpma-th-menu input[type="text"]:focus {
-    border-color: var(--tpma-primary-color); /* Consistent focus border color */
-    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25); /* Consistent focus shadow */
-    outline: none; /* Remove default outline */
-  }
-  .tpma-th-menu-actions {
+    padding: 6px 8px;
+    font-size: 13px;
+    border-radius: 4px;
+    border: 1px solid var(--tpma-border-color);
+    margin-top: 4px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.tpma-th-menu input[type="text"]:focus {
+    border-color: var(--tpma-primary-color);
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+    outline: none;
+}
+.tpma-th-menu-actions {
     display: flex;
-    gap: 6px; /* Consistent gap */
+    gap: 6px;
     flex-wrap: wrap;
-    margin-top: 10px; /* Consistent margin-top */
-  }
-  .tpma-th-menu-actions button {
+    margin-top: 10px;
+}
+.tpma-th-menu-actions .tpma-btn {
     flex: 1;
     min-width: 0;
-    font-size: 13px; /* Consistent font size */
-    padding: 6px 12px; /* Consistent padding */
-    border-radius: 4px; /* Consistent border-radius */
-    border: 1px solid var(--tpma-secondary-color); /* Use secondary color for border */
-    background: var(--tpma-secondary-color); /* Use secondary color for background */
-    color: #fff; /* White text for secondary button */
-    cursor: pointer;
-    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease; /* Consistent transition */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Consistent shadow */
-  }
-  .tpma-th-menu-actions button:hover {
-    background: var(--tpma-secondary-hover-color); /* Consistent hover background */
-    border-color: var(--tpma-secondary-hover-color); /* Consistent hover border color */
-    transform: translateY(-1px); /* Consistent hover effect */
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15); /* Consistent hover shadow */
-  }
-  .tpma-th-menu-actions button[data-clear] {
-    background: var(--tpma-danger-color); /* Use danger color for clear button */
-    border-color: var(--tpma-danger-color); /* Use danger color for clear button */
-  }
-  .tpma-th-menu-actions button[data-clear]:hover {
-    background: var(--tpma-danger-hover-color); /* Use danger hover color for clear button */
-    border-color: var(--tpma-danger-hover-color); /* Use danger hover color for clear button */
-  }
+    margin: 0;
+}
 
-  .tpma-loading-row,
-  .tpma-empty-row {
+.tpma-loading-row,
+.tpma-empty-row {
     text-align: center;
-    color: var(--tpma-secondary-color); /* Use secondary color for loading/empty text */
-    padding: 15px; /* Consistent padding */
-  }
+    color: var(--tpma-secondary-color);
+    padding: 15px;
+}
 
-  .tpma-reg-link {
+.tpma-reg-link {
     display: inline-block;
-    padding: 8px 16px; /* Consistent padding */
-    font-size: 14px; /* Consistent font size */
-    border-radius: 8px; /* Consistent border-radius */
-    background: var(--tpma-primary-color); /* Use primary color */
-    color: #fff;
-    text-decoration: none;
-    border: 1px solid var(--tpma-primary-color); /* Consistent border */
-    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease; /* Consistent transition */
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Consistent shadow */
-  }
-  .tpma-reg-link:hover {
-    background: var(--tpma-primary-hover-color); /* Use primary hover color */
-    border-color: var(--tpma-primary-hover-color); /* Use primary hover color */
-    transform: translateY(-1px); /* Consistent hover effect */
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15); /* Consistent hover shadow */
-  }
+    margin: 0;
+}
 
-  @media (max-width: 768px) {
+@media (max-width: 768px) {
     .tpma-course-list { padding: 10px; }
-    .tpma-course-list-wrap { padding: 10px; }
     table.tpma-course-table th,
     table.tpma-course-table td {
       font-size: 12px;
       padding: 5px 6px;
     }
-  }
+}

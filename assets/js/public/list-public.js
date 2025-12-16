@@ -211,7 +211,7 @@ function renderTableBody() {
         <td>${escCourseName}</td>
         <td>${escLecturer}</td>
         <td>
-          <a href="${regUrl}" target="_blank" rel="noopener" class="tpma-reg-link">
+          <a href="${regUrl}" target="_blank" rel="noopener" class="tpma-reg-link tpma-btn">
             線上報名
           </a>
         </td>

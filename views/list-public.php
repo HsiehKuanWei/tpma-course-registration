@@ -7,7 +7,7 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
 <link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/admin-common.css'); ?>">
 <link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/list-public.css'); ?>">
 <div class="tpma-course-list">
-<div class="tpma-course-list-wrap">
+<div class="tpma-course-list-wrap tpma-wrap">
   <div class="tpma-course-list-header">
     <h1>課程一覽</h1>
     <div class="tpma-status" id="tpma-status">載入課程中...</div>
@@ -32,9 +32,9 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
               <input type="text" id="filter-time" placeholder="例如 2025/03 或 09:00">
             </label>
             <div class="tpma-th-menu-actions">
-              <button type="button" data-sort="time-asc">時間↑</button>
-              <button type="button" data-sort="time-desc">時間↓</button>
-              <button type="button" data-clear="time">清除</button>
+              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="time-asc">時間↑</button>
+              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="time-desc">時間↓</button>
+              <button type="button" class="tpma-btn tpma-btn-danger" data-clear="time">清除</button>
             </div>
           </div>
         </th>
@@ -55,9 +55,9 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
               <input type="text" id="filter-name" placeholder="輸入課程關鍵字">
             </label>
             <div class="tpma-th-menu-actions">
-              <button type="button" data-sort="name-asc">名稱↑</button>
-              <button type="button" data-sort="name-desc">名稱↓</button>
-              <button type="button" data-clear="name">清除</button>
+              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="name-asc">名稱↑</button>
+              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="name-desc">名稱↓</button>
+              <button type="button" class="tpma-btn tpma-btn-danger" data-clear="name">清除</button>
             </div>
           </div>
         </th>
@@ -78,9 +78,9 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
               <input type="text" id="filter-lecturer" placeholder="輸入講師姓名">
             </label>
             <div class="tpma-th-menu-actions">
-              <button type="button" data-sort="lecturer-asc">講師↑</button>
-              <button type="button" data-sort="lecturer-desc">講師↓</button>
-              <button type="button" data-clear="lecturer">清除</button>
+              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-asc">講師↑</button>
+              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-desc">講師↓</button>
+              <button type="button" class="tpma-btn tpma-btn-danger" data-clear="lecturer">清除</button>
             </div>
           </div>
         </th>
