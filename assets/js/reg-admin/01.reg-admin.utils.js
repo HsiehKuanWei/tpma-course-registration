@@ -4,6 +4,7 @@
 'use strict';
 
 const PublicUtil = (global.TPMAPublic = global.TPMAPublic || {}).util || {};
+const DateUtil = (global.TPMAPublic = global.TPMAPublic || {}).datetime || {};
 
 global.TPMARegAdmin = global.TPMARegAdmin || {};
 const U = global.TPMARegAdmin.utils = global.TPMARegAdmin.utils || {};
@@ -18,6 +19,10 @@ U.safeDate = PublicUtil.safeDate;
 
 //授課場次顯示格式化
 U.formatSessionDisplay = function formatSessionDisplay(sessionDatetime, durationMinutes){
+  if (DateUtil.formatRange) {
+    const formatted = DateUtil.formatRange(sessionDatetime, durationMinutes);
+    if (formatted) return formatted;
+  }
   const info = PublicUtil.buildSessionRange(sessionDatetime, durationMinutes);
   if (!info) return '';
   const prefix = info.weekday ? `${info.date}（${info.weekday}）` : info.date;

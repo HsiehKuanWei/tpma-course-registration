@@ -273,42 +273,39 @@ const TPMA_API_BASE = 'https://mazuuni.org.tw/tw-pma/wp-json/tpma/v1';
  */
 const REG_FORM_PATH = '/tw-pma/wp-content/plugins/tpma-course-registration/form.html';  // TODO: 依實際路徑修改
 const REG_FORM_URL = location.origin + REG_FORM_PATH;
+const DateUtil = (window.TPMAPublic = window.TPMAPublic || {}).datetime || {};
 
-function pad2(n) { return n.toString().padStart(2, '0'); }
-
-/**
- * 格式化授課時間：
- * startRaw 來自 class_date 或 session_datetime
- * durationMinutes 來自 duration_minutes
- *
- * 目前格式：YYYY/MM/DD HH:MM~HH:MM
- * 若要改成 MMMM/YY/DD HH:MM~HH:MM，
- * 可在此改成年月日組裝方式。
- */
 function formatClassTime(startRaw, durationMinutes) {
+  if (DateUtil.formatRange) {
+    const formatted = DateUtil.formatRange(startRaw, durationMinutes);
+    if (formatted) return formatted;
+  }
   if (!startRaw) return '時間待定';
   const start = new Date(startRaw.replace(' ', 'T'));
   if (isNaN(start.getTime())) return startRaw;
 
   const mins = parseInt(durationMinutes || 0, 10);
   const end = new Date(start.getTime() + mins * 60000);
+  const pad2 = (n) => n.toString().padStart(2, '0');
+  const weekdayMap = ['日', '一', '二', '三', '四', '五', '六'];
 
   const y = start.getFullYear();
   const mo = pad2(start.getMonth() + 1);
   const d = pad2(start.getDate());
+  const w = weekdayMap[start.getDay()];
   const sh = pad2(start.getHours());
   const sm = pad2(start.getMinutes());
   const eh = pad2(end.getHours());
   const em = pad2(end.getMinutes());
 
-  // YYYY/MM/DD HH:MM~HH:MM
-  return `${y}/${mo}/${d} ${sh}:${sm}~${eh}:${em}`;
+  // YYYY/MM/DD（Week）HH:MM~HH:MM
+  return `${y}/${mo}/${d}（${w}） ${sh}:${sm}~${eh}:${em}`;
 }
 
-/**
- * 用於排序的 timestamp
- */
 function getStartTimestamp(startRaw) {
+  if (DateUtil.getTimestamp) {
+    return DateUtil.getTimestamp(startRaw);
+  }
   if (!startRaw) return 0;
   const d = new Date(startRaw.replace(' ', 'T'));
   return isNaN(d.getTime()) ? 0 : d.getTime();

@@ -1,16 +1,15 @@
-// Shared helpers for admin pages (reg-admin, course-admin, etc.)
+﻿// Shared helpers for admin pages (reg-admin, course-admin, etc.)
 // - Safe HTML escaping
-// - Common date/time formatting utilities (delegates to TPMAPublic.datetime)
+// - Common date/time formatting utilities
 // - Lightweight number/string helpers
 
 (function (global) {
 'use strict';
 
   const ns = global.TPMAPublic = global.TPMAPublic || {};
-  const datetime = ns.datetime = ns.datetime || {};
   const util = ns.util = ns.util || {};
 
-  const pad2 = datetime.pad2 || ((n) => (n < 10 ? '0' + n : String(n)));
+  const pad2 = (n) => (n < 10 ? '0' + n : String(n));
 
   /**
    * HTML escape to keep innerHTML safe.
@@ -57,11 +56,10 @@
 
   /**
    * Parse a date string safely; accepts "YYYY-MM-DD HH:MM" or ISO strings.
-   * Delegates to TPMAPublic.datetime when available.
    * @param {string} s
    * @returns {Date|null}
    */
-  util.safeDate = datetime.safeDate || function safeDate(s) {
+  util.safeDate = function safeDate(s) {
     try {
       const d = new Date(String(s).replace(' ', 'T'));
       return isNaN(d.getTime()) ? null : d;
@@ -70,19 +68,15 @@
     }
   };
 
-  util.dayNames = datetime.dayNames || ['日', '一', '二', '三', '四', '五', '六'];
+  util.dayNames = ['?氐?, '銝', '鈭?, '銝?, '??, '鈭?, '??];
 
   /**
    * Build a session range object (date, weekday, start/end HH:MM).
-   * Delegates to TPMAPublic.datetime when available.
    * @param {string} dtStr
    * @param {number} durationMinutes
    * @returns {{date:string, weekday:string, start:string, end:string}|null}
    */
   util.buildSessionRange = function buildSessionRange(dtStr, durationMinutes) {
-    if (datetime.buildSessionRange) {
-      return datetime.buildSessionRange(dtStr, durationMinutes);
-    }
     const start = util.safeDate(dtStr);
     if (!start) return null;
     const dur = parseInt(durationMinutes, 10);
@@ -90,7 +84,7 @@
     const end = hasDuration ? new Date(start.getTime() + dur * 60000) : null;
 
     return {
-      date: `${start.getFullYear()}/${pad2(start.getMonth() + 1)}/${pad2(start.getDate())}`,
+      date: `${start.getFullYear()}-${pad2(start.getMonth() + 1)}-${pad2(start.getDate())}`,
       weekday: util.dayNames[start.getDay()] || '',
       start: `${pad2(start.getHours())}:${pad2(start.getMinutes())}`,
       end: end ? `${pad2(end.getHours())}:${pad2(end.getMinutes())}` : ''
@@ -98,3 +92,4 @@
   };
 
 })(window);
+

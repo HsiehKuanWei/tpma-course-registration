@@ -1,11 +1,10 @@
-<?php
+﻿<?php
 if (!defined('ABSPATH')) {
     exit;
 }
 
 /**
- * 共用的 WooCommerce 報名處理服務：建立草稿、加車、商品處理
- */
+ * 共用的 WooCommerce 報名處理服務：建立草稿、加車、商品處理 */
 class TPMA_CR_Woo_Service {
 
     /**
@@ -408,6 +407,7 @@ class TPMA_CR_Woo_Service {
         if (empty($draft) || empty($draft['course_name'])) {
             return;
         }
+
         $date_str = self::format_class_datetime($draft['session_datetime'] ?? '', intval($draft['duration_minutes'] ?? 0));
         echo '<div class="tpma-checkout-summary" style="margin-bottom:12px;padding:10px;border:1px solid #ddd;">';
         echo '<strong>課程：</strong>' . esc_html($draft['course_name']) . '<br>';
@@ -586,7 +586,7 @@ class TPMA_CR_Woo_Service {
         }
     }
 
-    /**
+   /**
      * 儲存自訂欄位到訂單。
      */
     public static function save_checkout_fields($order, $data) {
@@ -795,24 +795,12 @@ class TPMA_CR_Woo_Service {
     }
 
     /**
-     * 2025-12-20 09:00:00 -> 2025/12/20(六) 09:00~12:00
+     * Format class datetime using the shared standard formatter.
      */
     private static function format_class_datetime($datetime, $duration_minutes = 0) {
-        if (empty($datetime)) {
+        if (!class_exists('TPMA_CR_DateTime')) {
             return '';
         }
-        $start_ts = strtotime($datetime);
-        if (!$start_ts) {
-            return '';
-        }
-        $date_str  = date('Y/m/d', $start_ts);
-        $weeknames = array('日','一','二','三','四','五','六');
-        $week_str  = $weeknames[(int)date('w', $start_ts)] ?? '';
-        $time_range = date('H:i', $start_ts);
-        if ($duration_minutes > 0) {
-            $end_ts = $start_ts + ($duration_minutes * 60);
-            $time_range = $time_range . '~' . date('H:i', $end_ts);
-        }
-        return sprintf('%s(%s) %s', $date_str, $week_str, $time_range);
+        return TPMA_CR_DateTime::format_range($datetime, $duration_minutes);
     }
 }

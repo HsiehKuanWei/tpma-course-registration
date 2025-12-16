@@ -321,6 +321,7 @@ window.TPMARegAdminConfig = <?php echo wp_json_encode(array(
     'orderEditBase' => admin_url('post.php?post='),
 )); ?>;
 </script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/00.tpma-datetime.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/01.tpma-public.utils.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/02.tpma-public.api.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/01.reg-admin.utils.js?ver=' . TPMA_CR_VERSION ); ?>"></script>

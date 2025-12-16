@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -259,6 +259,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="assets/js/public/00.tpma-datetime.js"></script>
 <script>
 // 動態取得 API 基底：?api_base=... > window.TPMA_API_BASE > 常見路徑
 (function () {
@@ -284,9 +285,7 @@ const preselectParams = (() => {
 let prefillingDone = false;
 
 // ===== 工具 =====
-function pad2(n) {
-  return n.toString().padStart(2, "0");
-}
+const DateUtil = (window.TPMAPublic = window.TPMAPublic || {}).datetime || {};
 function minutesToHoursString(mins) {
   const m = parseInt(mins, 10) || 0;
   if (!m) return "";
@@ -295,11 +294,16 @@ function minutesToHoursString(mins) {
 }
 function formatSessionLabel(sessionDatetime, durationMinutes) {
   if (!sessionDatetime) return "課程尚在安排中...";
+  if (DateUtil.formatRange) {
+    const formatted = DateUtil.formatRange(sessionDatetime, durationMinutes);
+    if (formatted) return formatted;
+  }
   const start = new Date(sessionDatetime.replace(" ", "T"));
   if (isNaN(start.getTime())) return sessionDatetime;
   const dur = parseInt(durationMinutes || 0, 10);
   const end = new Date(start.getTime() + dur * 60000);
   const weekdayMap = ["日", "一", "二", "三", "四", "五", "六"];
+  const pad2 = (n) => n.toString().padStart(2, "0");
   const y = start.getFullYear();
   const mo = pad2(start.getMonth() + 1);
   const d = pad2(start.getDate());
@@ -308,7 +312,7 @@ function formatSessionLabel(sessionDatetime, durationMinutes) {
   const sm = pad2(start.getMinutes());
   const eh = pad2(end.getHours());
   const em = pad2(end.getMinutes());
-  return `${y}-${mo}-${d}（${w}） ${sh}:${sm}~${eh}:${em}`;
+  return `${y}/${mo}/${d}（${w}） ${sh}:${sm}${dur > 0 ? `~${eh}:${em}` : ""}`;
 }
 // 手機字串 -> xxxx-xxx-xxx，空白回 ''，格式錯誤回 null
 function buildMobile(rawVal) {

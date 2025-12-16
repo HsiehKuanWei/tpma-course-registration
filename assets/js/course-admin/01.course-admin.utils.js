@@ -8,6 +8,7 @@
   'use strict';
 
   const PublicUtil = (w.TPMAPublic = w.TPMAPublic || {}).util || {};
+  const DateUtil = (w.TPMAPublic = w.TPMAPublic || {}).datetime || {};
   const ns = w.TPMACourseAdmin = w.TPMACourseAdmin || {};
   const util = ns.util = ns.util || {};
 
@@ -46,10 +47,15 @@
   util.formatSessionLabel = function formatSessionLabel(dtStr, durationMinutes) {
     if (!dtStr) return '';
 
+    if (DateUtil.formatRange) {
+      const formatted = DateUtil.formatRange(dtStr, durationMinutes || 180);
+      if (formatted) return formatted;
+    }
+
     const info = PublicUtil.buildSessionRange(dtStr, durationMinutes || 180);
     if (!info) return util.esc(dtStr);
     const range = info.end ? `${info.start}~${info.end}` : info.start;
-    const wd = info.weekday ? ` (${info.weekday})` : '';
+    const wd = info.weekday ? `（${info.weekday}）` : '';
     return `${info.date}${wd} ${range}`;
   };
 
