@@ -1,336 +1,57 @@
-	.tpma-wrap { font-size:13px; } /* Adjusted base font size */
+.tpma-seq-col {
+    text-align:right;
+    width:40px;
+}
 
-	/* Global button style */
-	.tpma-btn {
-		padding:6px 12px; /* Larger padding */
-		font-size:13px; /* Adjusted font size */
-		cursor:pointer;
-		margin:0 4px 4px 0;
-		border-radius:4px; /* Rounded corners */
-		border:1px solid #007cba; /* Primary button color */
-		background:#007cba;
-		color:#fff;
-		transition:background-color 0.2s ease; /* Smooth transition */
-	}
-	.tpma-btn:hover {
-		background:#005b88; /* Darker on hover */
-		border-color:#005b88;
-	}
-	.tpma-btn.secondary {
-		background:#f0f0f0;
-		border-color:#ccc;
-		color:#333;
-	}
-	.tpma-btn.secondary:hover {
-		background:#e0e0e0;
-		border-color:#bbb;
-	}
-	.tpma-btn:disabled {
-		opacity:0.6;
-		cursor:not-allowed;
-	}
+/* Cell content wrapping */
+.tpma-cell-wrap {
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    -webkit-line-clamp:2;
+    overflow:hidden;
+    word-break:break-all;
+    line-height:1.4;
+}
 
-	/* Top filter row */
-	.tpma-filter-row {
-		display:flex;
-		flex-wrap:wrap;
-		gap:8px; /* Increased gap */
-		margin-bottom:12px; /* Increased margin */
-		align-items:center;
-		padding:8px;
-		background:#f9f9f9;
-		border:1px solid #eee;
-		border-radius:4px;
-	}
-	.tpma-filter-row input[type="text"],
-	.tpma-filter-row input[type="date"],
-	.tpma-filter-row select {
-		padding:6px 8px; /* Larger padding */
-		font-size:13px; /* Adjusted font size */
-		border:1px solid #ccc;
-		border-radius:4px;
-		box-sizing:border-box;
-	}
-	.tpma-filter-row input[type="text"] {
-		flex-grow:1; /* Allow keyword search to take more space */
-		min-width:180px;
-	}
+/* Status icons (integrated) */
+.tpma-status-icons {
+    display:flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items:flex-start;
+}
+.tpma-status-pill {
+    display:inline-block;
+    padding:2px 8px;
+    border-radius:12px;
+    font-size:11px;
+    line-height:1.2;
+    white-space:nowrap;
+    border:1px solid transparent;
+    font-weight:500;
+}
 
-	/* Table header with filter menus */
-	.tpma-th-inner {
-		position:relative;
-		display:flex;
-		align-items:center;
-		gap:4px;
-		justify-content:space-between; /* Space out title and button */
-	}
-	.tpma-th-menu-btn {
-		border:1px solid #ccc; /* Lighter border */
-		background:#fff;
-		cursor:pointer;
-		font-size:12px; /* Smaller font for button */
-		padding:2px 6px; /* Smaller padding */
-		border-radius:3px;
-		line-height:1.2;
-		color:#555;
-	}
-	.tpma-th-menu-btn:hover {
-		background:#f0f0f0;
-	}
-	.tpma-th-menu-btn.tpma-filter-active {
-		background:#e0f0ff; /* Lighter blue for active filter */
-		border-color:#80bfff; /* Blue border */
-		color:#0056b3;
-	}
-	.tpma-th-menu {
-		position:absolute;
-		top:100%;
-		left:0;
-		background:#fff;
-		border:1px solid #bbb; /* Stronger border for menu */
-		padding:10px; /* More padding */
-		z-index:100; /* Higher z-index */
-		min-width:240px; /* Wider menu */
-		display:none;
-		box-shadow:0 4px 12px rgba(0,0,0,.18); /* Stronger shadow */
-		border-radius:4px;
-		white-space:normal;
-	}
-	.tpma-th-menu h4 {
-		margin:0 0 8px; /* More margin */
-		font-size:13px; /* Adjusted font size */
-		color:#333;
-		font-weight:600;
-	}
-	.tpma-th-menu .tpma-menu-section {
-		margin-top: 10px; /* More margin */
-		padding-top: 10px;
-		border-top: 1px solid #eee;
-		display: flex; /* Use flex for options */
-		flex-direction: column; /* Stack options vertically */
-		gap: 4px; /* Space between options */
-	}
-	.tpma-th-menu .tpma-menu-section:first-child {
-		margin-top:0;
-		padding-top:0;
-		border-top:none;
-	}
-	.tpma-th-menu label {
-		display:flex; /* Use flex for label content */
-		align-items:center;
-		font-size:13px; /* Adjusted font size */
-		margin:0; /* Remove default label margin */
-		padding:4px 6px; /* Padding for clickable area */
-		border-radius:3px;
-		cursor:pointer;
-		transition:background-color 0.15s ease;
-	}
-	.tpma-th-menu label:hover {
-		background:#f5f5f5;
-	}
-	.tpma-th-menu input[type="date"],
-	.tpma-th-menu select {
-		box-sizing:border-box;
-		font-size:13px; /* Adjusted font size */
-		padding:4px 6px;
-		border:1px solid #ccc;
-		border-radius:3px;
-		width:100%;
-		margin-top:4px; /* Space from label */
-	}
-	.tpma-th-menu .tpma-btn {
-		font-size:12px;
-		padding:4px 8px;
-		margin-top:8px; /* More space */
-		width:auto; /* Auto width for buttons */
-		align-self:flex-end; /* Align to right */
-	}
-	.tpma-th-menu .tpma-btn.clear-filter {
-		background:#dc3545; /* Red for clear button */
-		border-color:#dc3545;
-	}
-	.tpma-th-menu .tpma-btn.clear-filter:hover {
-		background:#c82333;
-		border-color:#bd2130;
-	}
+/* Status pill colors - Group 1: Payment/Registration Status */
+.tpma-status-pill-g1-pending     { background:#fff3cd; border-color:#ffeeba; color:#856404; }
+.tpma-status-pill-g1-verifying   { background:#ffe6b3; border-color:#ffcc80; color:#856404; }
+.tpma-status-pill-g1-paid        { background:#d4edda; border-color:#c3e6cb; color:#155724; }
+.tpma-status-pill-g1-cert        { background:#d1ecf1; border-color:#bee5eb; color:#0c5460; }
+.tpma-status-pill-g1-completed   { background:#e2e3e5; border-color:#d6d8db; color:#383d41; }
+.tpma-status-pill-g1-cancelled   { background:#f8d7da; border-color:#f5c6cb; color:#721c24; }
 
-	/* Table styles */
-	.tpma-reg-table {
-		width:100%;
-		border-collapse:collapse;
-		font-size:13px; /* Adjusted table font size */
-		margin-top:12px;
-	}
-	.tpma-reg-table th,
-	.tpma-reg-table td {
-		border:1px solid #e0e0e0; /* Lighter border */
-		padding:8px 10px; /* More padding */
-		vertical-align:middle; /* Center align vertically */
-	}
-	.tpma-reg-table th {
-		background:#f0f0f0; /* Lighter header background */
-		white-space:nowrap;
-		font-weight:600;
-		color:#333;
-	}
-	.tpma-seq-col {
-		text-align:right;
-		width:40px;
-	}
+/* Status pill colors - Group 2: Receipt Status */
+.tpma-status-pill-g2-pending   { background:#f0f0f0; border-color:#d6d8db; color:#383d41; }
+.tpma-status-pill-g2-opened    { background:#e2f0ff; border-color:#b3d4ff; color:#004085; }
+.tpma-status-pill-g2-sent      { background:#d4edda; border-color:#c3e6cb; color:#155724; }
 
-	/* Cell content wrapping */
-	.tpma-cell-wrap {
-		display:-webkit-box;
-		-webkit-box-orient:vertical;
-		-webkit-line-clamp:2; /* Limit to 2 lines */
-		overflow:hidden;
-		word-break:break-all;
-		line-height:1.4;
-	}
+/* Status pill colors - Group 3: Test Status */
+.tpma-status-pill-g3-notyet   { background:#fff3cd; border-color:#ffeeba; color:#856404; }
+.tpma-status-pill-g3-done     { background:#d4edda; border-color:#c3e6cb; color:#155724; }
 
-	/* Status icons (integrated) */
-	.tpma-status-icons {
-		display:flex;
-		flex-direction: column; /* Stack vertically */
-		gap: 4px; /* Space between pills */
-		align-items:flex-start; /* Align pills to the left */
-	}
-	.tpma-status-pill {
-		display:inline-block;
-		padding:2px 8px; /* More padding */
-		border-radius:12px; /* More rounded */
-		font-size:11px; /* Smaller font for pills */
-		line-height:1.2;
-		white-space:nowrap;
-		border:1px solid transparent;
-		font-weight:500;
-	}
-
-	/* Status pill colors - Group 1: Payment/Registration Status */
-	.tpma-status-pill-g1-pending     { background:#fff3cd; border-color:#ffeeba; color:#856404; }
-	.tpma-status-pill-g1-verifying   { background:#ffe6b3; border-color:#ffcc80; color:#856404; }
-	.tpma-status-pill-g1-paid        { background:#d4edda; border-color:#c3e6cb; color:#155724; }
-	.tpma-status-pill-g1-cert        { background:#d1ecf1; border-color:#bee5eb; color:#0c5460; }
-	.tpma-status-pill-g1-completed   { background:#e2e3e5; border-color:#d6d8db; color:#383d41; }
-	.tpma-status-pill-g1-cancelled   { background:#f8d7da; border-color:#f5c6cb; color:#721c24; }
-
-	/* Status pill colors - Group 2: Receipt Status */
-	.tpma-status-pill-g2-pending   { background:#f0f0f0; border-color:#d6d8db; color:#383d41; }
-	.tpma-status-pill-g2-opened    { background:#e2f0ff; border-color:#b3d4ff; color:#004085; }
-	.tpma-status-pill-g2-sent      { background:#d4edda; border-color:#c3e6cb; color:#155724; }
-
-	/* Status pill colors - Group 3: Test Status */
-	.tpma-status-pill-g3-notyet   { background:#fff3cd; border-color:#ffeeba; color:#856404; }
-	.tpma-status-pill-g3-done     { background:#d4edda; border-color:#c3e6cb; color:#155724; }
-
-	/* Detail/Edit Row styles */
-	.tpma-reg-detail-row {
-		background:#fcfcfc;
-		border-top:2px solid #007cba; /* Highlight detail row */
-	}
-	.tpma-reg-detail-cell {
-		padding:15px 12px; /* More padding */
-	}
-	.tpma-reg-detail-grid {
-		display:grid;
-		grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); /* Adjusted min-width */
-		gap:15px 20px; /* More gap */
-	}
-	.tpma-reg-detail-section-title {
-		font-weight:bold;
-		border-left:4px solid #007cba; /* Primary color for title border */
-		padding-left:8px; /* More padding */
-		margin-bottom:8px;
-		font-size:15px;
-		color:#333;
-	}
-	.tpma-reg-detail-section label {
-		display:block;
-		font-weight:600; /* Stronger font weight */
-		margin-top:8px; /* More margin */
-		margin-bottom:2px;
-		font-size:13px;
-		color:#555;
-	}
-	.tpma-reg-detail-section .value {
-		margin-top:2px;
-		white-space:pre-wrap;
-		background:#fefefe; /* Light background for values */
-		border:1px solid #eee;
-		padding:6px 8px;
-		border-radius:3px;
-		min-height:30px; /* Ensure consistent height */
-		box-sizing:border-box;
-	}
-	.tpma-reg-detail-section input,
-	.tpma-reg-detail-section select,
-	.tpma-reg-detail-section textarea {
-		width:100%;
-		box-sizing:border-box;
-		font-size:13px;
-		padding:6px 8px;
-		border:1px solid #ccc;
-		border-radius:4px;
-	}
-	.tpma-reg-detail-section textarea {
-		min-height:80px; /* Taller textareas */
-	}
-	.tpma-reg-detail-actions {
-		text-align:right;
-		margin-top:15px;
-		padding-top:10px;
-		border-top:1px solid #eee;
-	}
-    /* Edit mode specific styles */
-    .tpma-reg-detail-section.edit-mode {
-        background-color: #fffde7; /* Lighter yellow background for edit mode */
-        border: 1px solid #ffe082; /* Yellow border */
-        padding: 10px;
-        border-radius: 5px;
-    }
-    .tpma-reg-detail-section.edit-mode .value {
-        display: none; /* Hide read-only values in edit mode */
-    }
-    .tpma-reg-detail-section.edit-mode input,
-    .tpma-reg-detail-section.edit-mode select,
-    .tpma-reg-detail-section.edit-mode textarea {
-        display: block; /* Show input fields in edit mode */
-    }
-    .tpma-reg-detail-section:not(.edit-mode) input,
-    .tpma-reg-detail-section:not(.edit-mode) select,
-    .tpma-reg-detail-section:not(.edit-mode) textarea {
-        display: none; /* Hide input fields in view mode */
-    }
-
-	/* Batch action styles */
-	.tpma-batch-btn:disabled,
-	.tpma-batch-select:disabled,
-	.tpma-batch-input:disabled {
-		opacity:0.5;
-		cursor:not-allowed;
-	}
-
-	/* Pagination styles */
-	.tpma-pagination {
-		margin-top:15px;
-		display:flex;
-		align-items:center;
-		gap:10px;
-		justify-content:flex-end;
-		font-size:13px;
-	}
-	.tpma-pagination-info {
-		white-space:nowrap;
-		color:#555;
-	}
-	.tpma-pagination .tpma-btn {
-		padding:5px 10px;
-		font-size:13px;
-	}
-
-	/* Specific filter clear button */
-	#tpma-btn-clear-status-all, #tpma-btn-clear-payment-status {
-		margin-top:8px;
-		width:100%;
-		box-sizing:border-box;
-	}
+/* Specific filter clear button */
+#tpma-btn-clear-status-all,
+#tpma-btn-clear-payment-status {
+    margin-top:8px;
+    width:100%;
+    box-sizing:border-box;
+}

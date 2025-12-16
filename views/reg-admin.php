@@ -10,6 +10,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 // 假設 mail-modal.php 跟 reg-admin.php 一樣在 views 資料夾：
 include __DIR__ . '/mail-modal.php';
 ?>
+<link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/admin-common.css?ver=' . TPMA_CR_VERSION ); ?>">
 <link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/reg-admin.css?ver=' . TPMA_CR_VERSION ); ?>">
 
 <div id="tpma-reg-admin" class="tpma-wrap">

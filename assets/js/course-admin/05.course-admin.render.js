@@ -175,16 +175,16 @@
 
     let sessionsHtml = '';
     if (!allSessions.length) {
-      sessionsHtml = `<span class="value">尚未設定上課時段</span>`;
+      sessionsHtml = `<span class="value">尚無任何開課時段</span>`;
     } else if (sessions && sessions.length) {
       sessionsHtml = '<ul>';
       sessions.forEach(s => {
         const label = util.formatSessionLabel(s.session_datetime, c.duration_minutes);
-        sessionsHtml += '<li>' + util.esc(label) + (s.is_active ? '' : '（關閉）') + '</li>';
+        sessionsHtml += '<li>' + util.esc(label) + (s.is_active ? '' : '（已停用）') + '</li>';
       });
       sessionsHtml += '</ul>';
     } else {
-      sessionsHtml = `<span class="value">日期範圍內沒有場次</span>`;
+      sessionsHtml = `<span class="value">目前篩選無時段</span>`;
     }
 
     const catText = c.category || util.catCodeToLabel(c.category_code || '');
@@ -199,26 +199,45 @@
         ${isClosed ? '<span style="color:#c00;">[課程已關閉]</span>' : ''}
       </div>
 
-      <label>課程名稱</label>
-      <div class="value">${util.esc(c.course_name || '')}</div>
-
-      <label>課程簡介</label>
-      <div class="value">${util.esc(c.intro || '')}</div>
-
-      <label>課程大綱（支援 Markdown）</label>
-      <div class="tpma-outline-view">${outlineHtml || '<span class="value">尚未填寫</span>'}</div>
-
-      <label>上課時段</label>
-      <div class="tpma-course-dates">
-        ${sessionsHtml}
-        ${hasExtra && allSessions.length > 0
-          ? `<button class="tpma-btn tpma-toggle-dates">${showAllDates ? '收合場次' : '顯示全部場次'}</button>`
-          : ''
-        }
+      <div class="tpma-course-detail-grid">
+        <div class="tpma-detail-field">
+          <label>課程名稱</label>
+          <div class="value">${util.esc(c.course_name || '')}</div>
+        </div>
+        <div class="tpma-detail-field">
+          <label>分類</label>
+          <div class="value">${util.esc(catText || '-')}</div>
+        </div>
+        <div class="tpma-detail-field">
+          <label>講師</label>
+          <div class="value">${util.esc(lecText || '-')}</div>
+        </div>
+        <div class="tpma-detail-field">
+          <label>最後更新</label>
+          <div class="value">${util.esc(c.updated_at || '')}</div>
+        </div>
       </div>
 
-      <label>最後更新</label>
-      <div class="value">${util.esc(c.updated_at || '')}</div>
+      <div class="tpma-course-section">
+        <h4 class="tpma-section-title">課程簡介</h4>
+        <div class="tpma-value-block">${util.esc(c.intro || '') || '<span class="value">尚無內容</span>'}</div>
+      </div>
+
+      <div class="tpma-course-section">
+        <h4 class="tpma-section-title">課程大綱</h4>
+        <div class="tpma-outline-view">${outlineHtml || '<span class="value">尚無內容</span>'}</div>
+      </div>
+
+      <div class="tpma-course-section">
+        <h4 class="tpma-section-title">開課時間</h4>
+        <div class="tpma-course-dates">
+          ${sessionsHtml}
+          ${hasExtra && allSessions.length > 0
+            ? `<button class="tpma-btn tpma-toggle-dates">${showAllDates ? '收合時段' : '顯示所有時段'}</button>`
+            : ''
+          }
+        </div>
+      </div>
 
       <div class="tpma-row-actions">
         <button class="tpma-btn tpma-edit">編輯</button>
@@ -232,11 +251,6 @@
     if (toggleBtn) toggleBtn.onclick = () => ns.renderCourseView(div, !showAllDates);
   };
 
-  /**
-   * 在編輯畫面新增一列「場次 datetime-local + 移除」輸入
-   * @param {HTMLElement} container
-   * @param {string} raw 原始 datetime（可為 "YYYY-MM-DD HH:MM" 或 "YYYY-MM-DDTHH:MM"）
-   */
   ns.addSessionRow = function addSessionRow(container, raw) {
     let val = '';
     if (raw) {

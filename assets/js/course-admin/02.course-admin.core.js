@@ -104,13 +104,13 @@
     dom.modal = {
       backdrop: document.getElementById('tpma-lecturer-backdrop'),
       box: document.getElementById('tpma-lecturer-modal'),
-      code: document.getElementById('tpma-lect-code'),
-      name: document.getElementById('tpma-lect-name'),
-      title: document.getElementById('tpma-lect-title'),
-      sort: document.getElementById('tpma-lect-sort'),
-      error: document.getElementById('tpma-lect-error'),
-      btnSave: document.getElementById('tpma-lect-save-btn'),
-      btnCancel: document.getElementById('tpma-lect-cancel-btn')
+      code: document.getElementById('tpma-lecturer-modal').querySelector('#tpma-lect-code'),
+      name: document.getElementById('tpma-lecturer-modal').querySelector('#tpma-lect-name'),
+      title: document.getElementById('tpma-lecturer-modal').querySelector('#tpma-lect-title'),
+      sort: document.getElementById('tpma-lecturer-modal').querySelector('#tpma-lect-sort'),
+      error: document.getElementById('tpma-lecturer-modal').querySelector('#tpma-lect-error'),
+      btnSave: document.getElementById('tpma-lecturer-modal').querySelector('#tpma-lect-save-btn'),
+      btnCancel: document.getElementById('tpma-lecturer-modal').querySelector('#tpma-lect-cancel-btn') // This will select the first one, which is in the header
     };
   };
 

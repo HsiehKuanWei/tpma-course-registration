@@ -4,6 +4,7 @@ if (!defined('ABSPATH')) { exit; }
 $apiBase   = esc_url_raw( untrailingslashit( rest_url('tpma/v1') ) );
 $restNonce = wp_create_nonce( 'wp_rest' );
 ?>
+<link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/admin-common.css?ver=' . TPMA_CR_VERSION ); ?>">
 <link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/course-admin.css?ver=' . TPMA_CR_VERSION ); ?>">
 
 <div id="tpma-course-admin" class="tpma-wrap">
@@ -36,7 +37,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <th>
                 <div class="tpma-th-inner">
                     <span>課程代碼</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_code">⋯</button>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_code">▾</button>
                     <div class="tpma-th-menu" data-menu-col="course_code">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="course_code" data-sort-dir="asc">升冪排序</label>
@@ -50,7 +51,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <th>
                 <div class="tpma-th-inner">
                     <span>課程類別</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="category">⋯</button>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="category">▾</button>
                     <div class="tpma-th-menu" data-menu-col="category">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="asc">升冪排序</label>
@@ -83,7 +84,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <th>
                 <div class="tpma-th-inner">
                     <span>課程名稱</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_name">⋯</button>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_name">▾</button>
                     <div class="tpma-th-menu" data-menu-col="course_name">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="asc">升冪排序</label>
@@ -102,7 +103,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <th>
                 <div class="tpma-th-inner">
                     <span>講師</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="lecturer">⋯</button>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="lecturer">▾</button>
                     <div class="tpma-th-menu" data-menu-col="lecturer">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="lecturer_code" data-sort-dir="asc">升冪排序</label>
@@ -128,23 +129,28 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 </div>
 
 <!-- 新增講師 Modal -->
-<div id="tpma-lecturer-backdrop" class="tpma-modal-backdrop"></div>
-<div id="tpma-lecturer-modal" class="tpma-modal">
-    <h3>新增講師</h3>
-    <label>講師代碼<span class="tpma-required-label">必填</span></label>
-    <input type="text" id="tpma-lect-code" placeholder="例如 HSSA">
-    <label>講師姓名<span class="tpma-required-label">必填</span></label>
-    <input type="text" id="tpma-lect-name" placeholder="講師姓名">
-    <label>講師頭銜</label>
-    <input type="text" id="tpma-lect-title" placeholder="例如 講師 / 顧問">
-    <label>講師排序（數字越小越前面）</label>
-    <input type="number" id="tpma-lect-sort" placeholder="例如 10">
+<div id="tpma-lecturer-backdrop" class="tpma-modal-backdrop">
+    <div id="tpma-lecturer-modal" class="tpma-modal">
+        <div class="tpma-modal-header">
+            <h3>新增講師</h3>
+            <button type="button" class="tpma-modal-close-btn" id="tpma-lect-cancel-btn">×</button>
+        </div>
+        <div class="tpma-modal-content">
+            <label>講師代碼<span class="tpma-required-label">必填</span></label>
+            <input type="text" id="tpma-lect-code" placeholder="例如 HSSA">
+            <label>講師姓名<span class="tpma-required-label">必填</span></label>
+            <input type="text" id="tpma-lect-name" placeholder="講師姓名">
+            <label>講師頭銜</label>
+            <input type="text" id="tpma-lect-title" placeholder="例如 講師 / 顧問">
+            <label>講師排序（數字越小越前面）</label>
+            <input type="number" id="tpma-lect-sort" placeholder="例如 10">
 
-    <div class="tpma-error" id="tpma-lect-error" style="display:none;"></div>
-
-    <div class="tpma-modal-actions">
-        <button type="button" class="tpma-btn" id="tpma-lect-cancel-btn">取消</button>
-        <button type="button" class="tpma-btn" id="tpma-lect-save-btn">儲存講師</button>
+            <div class="tpma-error" id="tpma-lect-error" style="display:none;"></div>
+        </div>
+        <div class="tpma-modal-footer">
+            <button type="button" class="tpma-btn secondary" id="tpma-lect-cancel-btn">取消</button>
+            <button type="button" class="tpma-btn" id="tpma-lect-save-btn">儲存講師</button>
+        </div>
     </div>
 </div>
 

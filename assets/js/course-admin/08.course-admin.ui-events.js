@@ -113,7 +113,6 @@
       });
     }
 
-    // modal 按鈕
     // ===== 表頭選單：開關 / 排序 / 清除 =====
     const closeAllMenus = (except) => {
       (header.menus || []).forEach(m => {
@@ -153,9 +152,33 @@
     if (header.clearCourse && filters.course) header.clearCourse.addEventListener('click', () => { filters.course.value = ''; ns.applyFilters(); });
     if (header.clearLecturer && filters.lec) header.clearLecturer.addEventListener('click', () => { filters.lec.value = ''; ns.applyFilters(); });
 
-    if (dom.modal.btnCancel) dom.modal.btnCancel.addEventListener('click', ns.closeLecturerModal);
-    if (dom.modal.backdrop) dom.modal.backdrop.addEventListener('click', ns.closeLecturerModal);
-    if (dom.modal.btnSave) dom.modal.btnSave.addEventListener('click', ns.saveLecturerFromModal);
+    // Modal 按鈕事件
+    const lecturerModalBackdrop = document.getElementById('tpma-lecturer-backdrop');
+    const lecturerModal = document.getElementById('tpma-lecturer-modal');
+    const lecturerCancelBtns = document.querySelectorAll('#tpma-lecturer-modal #tpma-lect-cancel-btn');
+    const lecturerSaveBtn = document.getElementById('tpma-lect-save-btn');
+
+    if (lecturerCancelBtns) {
+        lecturerCancelBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                lecturerModalBackdrop.classList.remove('open');
+                lecturerModal.classList.remove('open');
+                ns.closeLecturerModal(); // Call original close logic
+            });
+        });
+    }
+    if (lecturerModalBackdrop) {
+        lecturerModalBackdrop.addEventListener('click', (e) => {
+            if (e.target === lecturerModalBackdrop) { // Only close if backdrop itself is clicked
+                lecturerModalBackdrop.classList.remove('open');
+                lecturerModal.classList.remove('open');
+                ns.closeLecturerModal(); // Call original close logic
+            }
+        });
+    }
+    if (lecturerSaveBtn) {
+        lecturerSaveBtn.addEventListener('click', ns.saveLecturerFromModal);
+    }
   };
 
   ns.updateHeaderMenuStates = function updateHeaderMenuStates() {

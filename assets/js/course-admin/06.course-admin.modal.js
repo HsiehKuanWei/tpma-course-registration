@@ -31,8 +31,8 @@
     m.error.style.display = 'none';
     m.error.textContent = '';
 
-    m.backdrop.style.display = 'block';
-    m.box.style.display = 'block';
+    m.backdrop.classList.add('open');
+    m.box.classList.add('open');
     m.code.focus();
   };
 
@@ -42,8 +42,8 @@
   ns.closeLecturerModal = function closeLecturerModal() {
     const m = dom.modal;
     if (!m.box) return;
-    m.backdrop.style.display = 'none';
-    m.box.style.display = 'none';
+    m.backdrop.classList.remove('open');
+    m.box.classList.remove('open');
     state.currentLecturerTargetSelect = null;
   };
 

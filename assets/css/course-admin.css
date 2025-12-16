@@ -1,230 +1,76 @@
-.tpma-wrap { font-size:13px; }
-.tpma-filter-row {
-    display:flex;
-    flex-wrap:wrap;
-    gap:6px;
-    margin-bottom:8px;
-    align-items:center;
-}
-.tpma-filter-row input,
-.tpma-filter-row select {
-    padding:3px 6px;
-    font-size:13px;
-}
-.tpma-btn {
-    padding:3px 8px;
-    font-size:12px;
-    cursor:pointer;
-    margin:0 4px 4px 0;
-}
 .tpma-course-item {
-    border:1px solid #ddd;
-    padding:8px;
-    margin-bottom:8px;
-    font-size:13px;
+    border:1px solid var(--tpma-border-color);
+    padding:12px;
+    margin-bottom:12px;
+    font-size:14px;
+    border-radius:8px;
+    box-shadow:0 2px 4px rgba(0,0,0,0.05);
+    background:#fff;
 }
-.tpma-course-item label { display:block; font-weight:bold; margin-top:4px; }
-.tpma-course-item .value { margin-top:2px; white-space:pre-wrap; }
+.tpma-course-item label { display:block; font-weight:600; margin-top:8px; color:var(--tpma-dark-gray); }
+.tpma-course-item .value { margin-top:4px; white-space:pre-wrap; }
 .tpma-course-item input,
 .tpma-course-item textarea,
 .tpma-course-item select {
     width:100%;
     box-sizing:border-box;
-    font-size:13px;
-    padding:3px 4px;
+    font-size:14px;
+    padding:8px 10px;
+    border:1px solid var(--tpma-border-color);
+    border-radius:4px;
 }
-.tpma-course-dates { margin-top:4px; }
+.tpma-course-dates { margin-top:8px; }
 .tpma-session-row {
     display:flex;
     align-items:center;
-    gap:4px;
-    margin-bottom:4px;
+    gap:6px;
+    margin-bottom:6px;
 }
 .tpma-session-row input[type="datetime-local"] {
     flex:1;
-    padding:3px 4px;
-    font-size:13px;
+    padding:6px 8px;
+    font-size:14px;
+    border:1px solid var(--tpma-border-color);
+    border-radius:4px;
 }
 .tpma-outline-view {
     border:1px solid #eee;
-    padding:4px;
+    padding:8px;
     background:#fafafa;
-    margin-top:2px;
+    margin-top:4px;
+    border-radius:4px;
 }
 .tpma-tags {
-    margin-bottom:4px;
+    margin-bottom:6px;
     color:#333;
     font-weight:bold;
     display:flex;
     flex-wrap:wrap;
     gap:12px;
 }
-.tpma-bulk {
-    margin-top:4px;
-    font-size:12px;
-    color:#666;
-}
-.tpma-error {
-    color:#c00;
-    font-size:12px;
-    margin-top:2px;
-}
-.tpma-required-label {
-    display:inline-block;
-    margin-left:4px;
-    padding:0 3px;
-    font-size:10px;
-    background:#d9534f;
-    color:#fff;
-    border-radius:2px;
-}
-.tpma-invalid {
-    border-color:#d9534f !important;
-    background:#fff5f5;
-}
-
-/* Modal‹¬s‘-ø†›zŠª>†,® */
-.tpma-modal-backdrop {
-    position:fixed;
-    inset:0;
-    background:rgba(0,0,0,.4);
-    display:none;
-    z-index:9998;
-}
-.tpma-modal {
-    position:fixed;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
+.tpma-course-section {
+    margin-top:12px;
+    padding:12px;
+    border:1px solid var(--tpma-border-color);
+    border-radius:8px;
     background:#fff;
-    border-radius:4px;
-    box-shadow:0 4px 15px rgba(0,0,0,.25);
-    width:360px;
-    max-width:95%;
-    padding:10px;
-    z-index:9999;
-    display:none;
-    font-size:13px;
+    box-shadow:0 2px 4px rgba(0,0,0,0.04);
 }
-.tpma-modal h3 {
-    margin:0 0 6px;
+.tpma-section-title {
+    margin:0 0 8px 0;
     font-size:15px;
-}
-.tpma-modal label {
-    display:block;
-    margin-top:6px;
-    font-weight:bold;
-}
-.tpma-modal input[type="text"],
-.tpma-modal input[type="number"] {
-    width:100%;
-    padding:3px 4px;
-    box-sizing:border-box;
-    font-size:12px;
-}
-.tpma-modal-actions {
-    margin-top:8px;
-    text-align:right;
-}
-.tpma-modal .tpma-error {
-    margin-top:4px;
-}
-
-/* ===== Table + Header Menus (Preview/Detail/Edit) ===== */
-.tpma-course-table{
-    width:100%;
-    border-collapse:collapse;
-    font-size:13px;
-    margin-top:10px;
-}
-.tpma-course-table th,
-.tpma-course-table td{
-    border:1px solid #e0e0e0;
-    padding:8px 10px;
-    vertical-align:middle;
-}
-.tpma-course-table th{
-    background:#f0f0f0;
-    white-space:nowrap;
     font-weight:600;
     color:#333;
 }
-.tpma-course-detail-row{
-    background:#fcfcfc;
-    border-top:2px solid #007cba;
-}
-.tpma-course-detail-cell{
-    padding:12px 10px;
-}
-
-.tpma-th-inner{
-    position:relative;
-    display:flex;
-    align-items:center;
-    gap:6px;
-    justify-content:space-between;
-}
-.tpma-th-menu-btn{
-    border:1px solid #ccc;
-    background:#fff;
-    cursor:pointer;
-    font-size:12px;
-    padding:2px 6px;
-    border-radius:3px;
-    line-height:1.2;
-    color:#555;
-}
-.tpma-th-menu-btn:hover{ background:#f0f0f0; }
-.tpma-th-menu-btn.tpma-filter-active{
-    background:#e0f0ff;
-    border-color:#80bfff;
-    color:#0056b3;
-}
-.tpma-th-menu{
-    position:absolute;
-    top:100%;
-    left:0;
-    background:#fff;
-    border:1px solid #bbb;
-    padding:10px;
-    z-index:100;
-    min-width:220px;
-    display:none;
-    box-shadow:0 4px 12px rgba(0,0,0,.18);
+.tpma-value-block {
+    padding:8px 10px;
+    border:1px solid var(--tpma-border-color);
     border-radius:4px;
-    white-space:normal;
+    background:#fafafa;
+    white-space:pre-wrap;
 }
-.tpma-th-menu.open{ display:block; }
-.tpma-th-menu .tpma-menu-section{
-    margin-top:10px;
-    padding-top:10px;
-    border-top:1px solid #eee;
-    display:flex;
-    flex-direction:column;
-    gap:4px;
-}
-.tpma-th-menu .tpma-menu-section:first-child{
-    margin-top:0;
-    padding-top:0;
-    border-top:none;
-}
-.tpma-th-menu label{
-    display:flex;
-    align-items:center;
-    font-size:13px;
-    margin:0;
-    padding:4px 6px;
-    border-radius:3px;
-    cursor:pointer;
-    transition:background-color 0.15s ease;
-}
-.tpma-th-menu label:hover{ background:#f5f5f5; }
-.tpma-th-menu select{
-    box-sizing:border-box;
-    font-size:13px;
-    padding:4px 6px;
-    border:1px solid #ccc;
-    border-radius:3px;
-    width:100%;
-    margin-top:4px;
+.tpma-bulk {
+    margin-top:8px;
+    font-size:12px;
+    color:#666;
 }

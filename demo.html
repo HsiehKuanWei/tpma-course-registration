@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>報名管理頁面預覽</title>
+    <!-- 引入 Tailwind CSS for modern utility classes -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* 1. 全域變數和字體 */
+        :root {
+            --tpma-primary-color: #007BFF; /* 藍色 */
+            --tpma-primary-hover-color: #0056b3;
+            --tpma-secondary-color: #6c757d;
+            --tpma-secondary-hover-color: #5a6268;
+            --tpma-success-color: #28a745;
+            --tpma-danger-color: #dc3545;
+            --tpma-danger-hover-color: #c82333;
+            --tpma-warning-color: #ffc107;
+            --tpma-info-color: #17a2b8;
+            --tpma-light-gray: #f8f9fa;
+            --tpma-medium-gray: #e9ecef;
+            --tpma-dark-gray: #343a40;
+            --tpma-border-color: #ced4da;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f4f6f9; 
+        }
+        .tpma-wrap { 
+            font-size: 14px; 
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        }
+
+        /* 2. 按鈕樣式 */
+        .tpma-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            margin: 0 6px 6px 0;
+            border-radius: 8px; 
+            border: 1px solid var(--tpma-primary-color);
+            background: var(--tpma-primary-color);
+            color: #fff;
+            transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); 
+        }
+        .tpma-btn:hover {
+            background-color: var(--tpma-primary-hover-color);
+            border-color: var(--tpma-primary-hover-color);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15);
+        }
+        .tpma-btn-secondary {
+            background: var(--tpma-secondary-color);
+            border-color: var(--tpma-secondary-color);
+            color: #fff;
+        }
+        .tpma-btn-danger {
+            background: var(--tpma-danger-color);
+            border-color: var(--tpma-danger-color);
+            color: #fff;
+        }
+
+        /* 3. 篩選列 */
+        .tpma-filter-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: var(--tpma-light-gray);
+            border-radius: 8px;
+        }
+        .tpma-filter-row input[type="text"] {
+            flex-grow: 1;
+            min-width: 200px;
+            padding: 10px 12px;
+            border: 1px solid var(--tpma-border-color);
+            border-radius: 6px;
+        }
+        
+        /* 4. 狀態標籤 */
+        .tpma-status-icons {
+            display: flex;
+            flex-direction: column;
+            gap: 6px; 
+            align-items: flex-start;
+        }
+        .tpma-status-pill {
+            display: inline-block;
+            padding: 4px 10px; 
+            border-radius: 16px; 
+            font-size: 12px; 
+            line-height: 1.2;
+            white-space: nowrap;
+            border: 1px solid transparent;
+            font-weight: 600; 
+            letter-spacing: 0.5px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); 
+        }
+
+        /* 狀態顏色組 (與前一次相同) */
+        .tpma-status-pill-g1-pending     { background:#fff3cd; border-color:#ffeeba; color:#856404; } 
+        .tpma-status-pill-g1-paid        { background:#d4edda; border-color:#c3e6cb; color:#155724; } 
+        .tpma-status-pill-g1-cancelled   { background:#f8d7da; border-color:#f5c6cb; color:#721c24; } 
+        .tpma-status-pill-g2-pending   { background:#f0f0f0; border-color:#d6d8db; color:#383d41; } 
+        .tpma-status-pill-g2-processed { background:#d4edda; border-color:#c3e6cb; color:#155724; } 
+
+        /* 5. 資料表格樣式 - 包含篩選與排序的表頭優化 */
+        .tpma-reg-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            border-radius: 8px;
+            overflow: hidden; 
+        }
+        .tpma-reg-table th, .tpma-reg-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid var(--tpma-medium-gray);
+            position: relative; /* 為了篩選彈窗 */
+        }
+        .tpma-reg-table th {
+            background-color: var(--tpma-dark-gray);
+            color: #ffffff;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 13px;
+        }
+        .tpma-reg-table tr:nth-child(even) {
+            background-color: var(--tpma-light-gray);
+        }
+        .tpma-reg-table tr:hover {
+            background-color: #e6f7ff; 
+            cursor: pointer;
+        }
+
+        /* 表頭篩選和排序容器 */
+        .tpma-th-content {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 5px;
+        }
+        .tpma-sort-controls {
+            display: flex;
+            flex-direction: column;
+            cursor: pointer;
+            line-height: 0.7; /* 調整箭頭間距 */
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+        .tpma-sort-controls:hover {
+            opacity: 1;
+        }
+        .tpma-sort-controls .active {
+            color: var(--tpma-warning-color); /* 突出顯示當前排序方向 */
+            opacity: 1;
+        }
+        .tpma-sort-icon {
+            font-size: 10px;
+        }
+
+        /* 篩選彈窗 (Filter Dropdown) 樣式 */
+        .tpma-filter-dropdown {
+            position: absolute;
+            top: 100%; /* 位於表頭下方 */
+            left: 0;
+            min-width: 200px;
+            background: #fff;
+            border: 1px solid var(--tpma-border-color);
+            border-radius: 6px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            padding: 10px;
+            z-index: 50;
+            display: none; /* 預設隱藏 */
+            color: var(--tpma-dark-gray);
+            margin-top: 5px; /* 略微拉開與表頭的距離 */
+        }
+        .tpma-filter-dropdown.active {
+            display: block;
+        }
+        .tpma-filter-dropdown label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: normal;
+        }
+        .tpma-filter-dropdown input[type="checkbox"] {
+            margin-right: 8px;
+        }
+        .tpma-filter-dropdown button {
+            margin-top: 10px;
+            width: 100%;
+            padding: 5px;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        /* 6. 詳情區塊 (Detail Section) 樣式 (與前一次相同) */
+        .tpma-reg-detail-container {
+            margin-top: 20px;
+        }
+        .tpma-reg-detail-section {
+            background-color: #ffffff;
+            border: 1px solid var(--tpma-border-color);
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+            gap: 20px;
+        }
+        .tpma-detail-field {
+            display: flex;
+            flex-direction: column;
+        }
+        .tpma-detail-field label {
+            font-weight: 700;
+            color: var(--tpma-dark-gray);
+            margin-bottom: 4px;
+            font-size: 13px;
+            text-transform: uppercase;
+        }
+        .tpma-detail-field .value {
+            padding: 8px 0;
+            border-bottom: 1px dashed var(--tpma-medium-gray);
+            color: #333;
+            font-size: 14px;
+            word-break: break-word;
+        }
+        .tpma-reg-detail-actions {
+            text-align: right;
+            margin-top: 25px;
+            padding-top: 15px;
+            border-top: 1px solid var(--tpma-medium-gray);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        /* 彈出視窗樣式（Mail Modal 模擬） */
+        .tpma-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none; 
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .tpma-modal-content {
+            background: #fff;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+</head>
+<body>
+
+<div id="tpma-reg-admin" class="tpma-wrap">
+    <h1 class="text-2xl font-bold mb-5">報名管理系統</h1>
+
+    <!-- 關鍵字搜尋列 -->
+    <div class="tpma-filter-row">
+        <span>關鍵字搜尋：</span>
+        <input type="text" id="tpma-filter-q"
+               placeholder="報名編號 / 學員 / 承辦 / 公司（模糊）">
+        <button class="tpma-btn" id="tpma-btn-apply-q">搜尋</button>
+        <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-clear-all">清除全部篩選</button>
+    </div>
+	
+    <!-- 操作按鈕列 -->
+	<div class="flex flex-wrap gap-4 mb-5">
+        <button type="button" class="tpma-btn" id="tpma-btn-mail-modal">發送通知郵件</button>
+        <button type="button" class="tpma-btn tpma-btn-secondary" id="tpma-btn-export-all">匯出報名列表</button>
+    </div>
+
+    <!-- 報名列表表格 (模擬) -->
+    <table class="tpma-reg-table">
+        <thead>
+            <tr>
+                <!-- # 欄位 - 無篩選與排序 -->
+                <th class="tpma-seq-col">#</th>
+                
+                <!-- 狀態欄位 - 篩選功能 -->
+                <th style="width: 180px;">
+                    <div class="tpma-th-content">
+                        <span>狀態</span>
+                        <div class="tpma-filter-trigger" data-column="status" onclick="toggleFilterDropdown(this, event)">
+                            <!-- SVG 篩選圖示 -->
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 cursor-pointer hover:text-yellow-400"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                        </div>
+                    </div>
+                    <!-- 篩選彈窗模擬 -->
+                    <div class="tpma-filter-dropdown" data-column="status">
+                        <label><input type="checkbox" checked> 待付款</label>
+                        <label><input type="checkbox"> 已付款</label>
+                        <label><input type="checkbox"> 已取消</label>
+                        <label><input type="checkbox"> 收據待處理</label>
+                        <button class="tpma-btn">篩選</button>
+                    </div>
+                </th>
+
+                <!-- 課程名稱欄位 - 無篩選與排序 -->
+                <th>課程名稱 / 代碼</th>
+                
+                <!-- 學員姓名 / 公司 - 篩選功能 (例如：公司名稱) -->
+                <th>
+                    <div class="tpma-th-content">
+                        <span>學員姓名 / 公司</span>
+                        <div class="tpma-filter-trigger" data-column="company" onclick="toggleFilterDropdown(this, event)">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 cursor-pointer hover:text-yellow-400"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>
+                        </div>
+                    </div>
+                    <!-- 篩選彈窗模擬 -->
+                    <div class="tpma-filter-dropdown" data-column="company">
+                        <label><input type="checkbox" checked> 科技股份有限公司</label>
+                        <label><input type="checkbox"> 廣告設計有限公司</label>
+                        <button class="tpma-btn">篩選</button>
+                    </div>
+                </th>
+                
+                <!-- 報名日期欄位 - 排序功能 -->
+                <th>
+                    <div class="tpma-th-content">
+                        <span>金額 / 繳費狀態</span>
+                        <div class="tpma-sort-controls" data-column="amount" onclick="handleSort(this, 'amount')">
+                            <!-- 向上箭頭 -->
+                            <span class="tpma-sort-icon asc active">▲</span>
+                            <!-- 向下箭頭 -->
+                            <span class="tpma-sort-icon desc">▼</span>
+                        </div>
+                    </div>
+                </th>
+                
+                <!-- 報名日期欄位 - 排序功能 -->
+                <th>
+                    <div class="tpma-th-content">
+                        <span>報名日期</span>
+                        <div class="tpma-sort-controls" data-column="date" onclick="handleSort(this, 'date')">
+                            <!-- 向上箭頭 -->
+                            <span class="tpma-sort-icon asc">▲</span>
+                            <!-- 向下箭頭 -->
+                            <span class="tpma-sort-icon desc active">▼</span>
+                        </div>
+                    </div>
+                </th>
+                
+                <!-- 操作欄位 - 無篩選與排序 -->
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr data-reg-id="20241101-001" onclick="showDetail(this)">
+                <td class="tpma-seq-col">1</td>
+                <td>
+                    <div class="tpma-status-icons">
+                        <span class="tpma-status-pill tpma-status-pill-g1-pending">待付款 (P)</span>
+                        <span class="tpma-status-pill tpma-status-pill-g2-pending">收據待處理 (R)</span>
+                    </div>
+                </td>
+                <td><div class="tpma-cell-wrap">高級專案管理實務 (PM-A001)</div></td>
+                <td><div class="tpma-cell-wrap">王大明 / 科技股份有限公司</div></td>
+                <td>NT$ 8,000 / 待核對</td>
+                <td>2024/11/01</td>
+                <td><button class="tpma-btn-secondary text-xs p-1">查看</button></td>
+            </tr>
+            <tr data-reg-id="20241025-002" onclick="showDetail(this)">
+                <td class="tpma-seq-col">2</td>
+                <td>
+                    <div class="tpma-status-icons">
+                        <span class="tpma-status-pill tpma-status-pill-g1-paid">已付款 (P)</span>
+                        <span class="tpma-status-pill tpma-status-pill-g2-processed">收據已寄出 (R)</span>
+                    </div>
+                </td>
+                <td><div class="tpma-cell-wrap">網路行銷策略初階 (MK-B002)</div></td>
+                <td><div class="tpma-cell-wrap">李小美 / 廣告設計有限公司</div></td>
+                <td>NT$ 4,500 / 已完成</td>
+                <td>2024/10/25</td>
+                <td><button class="tpma-btn-secondary text-xs p-1">查看</button></td>
+            </tr>
+            <!-- 更多模擬數據... -->
+        </tbody>
+    </table>
+
+    <!-- 報名詳情區塊 (模擬單一報名記錄的詳細內容) -->
+    <div id="reg-detail-view" class="tpma-reg-detail-container" style="display: none;">
+        <h2 class="text-xl font-semibold mb-4 border-b pb-2">報名編號：<span id="detail-reg-id"></span> 詳細資料</h2>
+
+        <!-- 區塊 1: 報名基本資料 -->
+        <div class="tpma-reg-detail-section" id="section-basic">
+            <!-- 欄位結構與前次相同 -->
+            <div class="tpma-detail-field">
+                <label>課程名稱</label>
+                <span class="value">高級專案管理實務 (PM-A001)</span>
+            </div>
+            <div class="tpma-detail-field">
+                <label>學員姓名</label>
+                <span class="value">王大明</span>
+                <input type="text" name="student_name" value="王大明" style="display: none;">
+            </div>
+            <div class="tpma-detail-field">
+                <label>電子郵件</label>
+                <span class="value">david.wang@tech.com.tw</span>
+                <input type="email" name="email" value="david.wang@tech.com.tw" style="display: none;">
+            </div>
+            <div class="tpma-detail-field">
+                <label>連絡電話</label>
+                <span class="value">0912-345678</span>
+                <input type="text" name="phone" value="0912-345678" style="display: none;">
+            </div>
+        </div>
+        
+        <!-- 區塊 2: 費用與狀態 -->
+        <div class="tpma-reg-detail-section" id="section-status">
+             <div class="tpma-detail-field">
+                <label>報名狀態</label>
+                <span class="value">待付款</span>
+                <select name="reg_status" style="display: none;">
+                    <option value="pending" selected>待付款</option>
+                    <option value="paid">已付款</option>
+                    <option value="cancelled">已取消</option>
+                </select>
+            </div>
+            <div class="tpma-detail-field">
+                <label>應繳金額</label>
+                <span class="value">8000</span>
+                <input type="number" name="amount" value="8000" style="display: none;">
+            </div>
+             <div class="tpma-detail-field">
+                <label>收據處理狀態</label>
+                <span class="value">收據待處理</span>
+                <select name="receipt_status" style="display: none;">
+                    <option value="pending" selected>收據待處理</option>
+                    <option value="processed">收據已處理/已寄出</option>
+                </select>
+            </div>
+            <div class="tpma-detail-field">
+                <label>繳費備註</label>
+                <span class="value">ATM 轉帳，末五碼 12345</span>
+                <textarea name="payment_note" style="display: none;">ATM 轉帳，末五碼 12345</textarea>
+            </div>
+
+            <!-- 詳情操作按鈕 (在編輯模式下顯示) -->
+            <div class="tpma-reg-detail-actions col-span-full" style="display: none;">
+                <button class="tpma-btn" id="tpma-btn-save-detail">儲存變更</button>
+                <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit" onclick="toggleEditMode(false)">取消編輯</button>
+            </div>
+        </div>
+
+        <div class="flex justify-end mt-4 gap-3">
+             <button class="tpma-btn tpma-btn-danger" id="tpma-btn-delete">刪除報名記錄</button>
+             <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit" onclick="toggleEditMode(true)">編輯詳情</button>
+        </div>
+    </div>
+</div>
+
+<!-- 郵件彈出視窗 (Mail Modal 模擬) -->
+<div id="mail-modal" class="tpma-modal-overlay" onclick="if(event.target.id === 'mail-modal') closeMailModal()">
+    <div class="tpma-modal-content">
+        <h3 class="flex justify-between items-center">
+            發送通知郵件
+            <button class="text-gray-500 hover:text-gray-800" onclick="closeMailModal()">
+                <!-- SVG X Icon -->
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+            </button>
+        </h3>
+        <p class="mb-4">收件人：王大明, 李小美, ... (已選取 2 位)</p>
+        <div class="mb-4">
+            <label class="block font-bold mb-2">郵件範本</label>
+            <select class="w-full p-2 border border-gray-300 rounded-lg">
+                <option>繳費通知</option>
+                <option>開課前提醒</option>
+                <option>課程取消通知</option>
+            </select>
+        </div>
+        <div class="mb-4">
+            <label class="block font-bold mb-2">主旨</label>
+            <input type="text" class="w-full p-2 border border-gray-300 rounded-lg" value="[課程名稱] 繳費通知信">
+        </div>
+        <div class="mb-6">
+            <label class="block font-bold mb-2">內容預覽</label>
+            <textarea class="w-full p-3 border border-gray-300 rounded-lg" rows="8">親愛的王大明學員，您的報名已完成，請於期限內完成繳費...</textarea>
+        </div>
+        <div class="flex justify-end gap-3">
+            <button class="tpma-btn tpma-btn-secondary" onclick="closeMailModal()">取消</button>
+            <button class="tpma-btn">確認發送</button>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    const detailView = document.getElementById('reg-detail-view');
+    const detailRegId = document.getElementById('detail-reg-id');
+    const sections = ['section-basic', 'section-status'];
+    const mailModal = document.getElementById('mail-modal');
+    const mailBtn = document.getElementById('tpma-btn-mail-modal');
+
+    // 1. 顯示詳情區塊
+    function showDetail(row) {
+        const regId = row.getAttribute('data-reg-id');
+        detailRegId.textContent = regId || 'N/A';
+        detailView.style.display = 'block';
+        toggleEditMode(false); // 預設為查看模式
+        // 在實際應用中，這裡會調用 API 載入該 regId 的詳細資料
+    }
+
+    // 2. 切換編輯模式
+    function toggleEditMode(isEditing) {
+        sections.forEach(id => {
+            const section = document.getElementById(id);
+            if (section) {
+                // 切換區塊的 edit-mode 類別
+                section.classList.toggle('edit-mode', isEditing);
+                
+                // 切換 input/select/textarea 的 display 狀態
+                section.querySelectorAll('input, select, textarea').forEach(el => {
+                    el.style.display = isEditing ? 'block' : 'none';
+                });
+                // 切換 span.value 的 display 狀態
+                section.querySelectorAll('.value').forEach(el => {
+                    el.style.display = isEditing ? 'none' : 'block';
+                });
+            }
+        });
+
+        // 隱藏/顯示操作按鈕
+        document.getElementById('tpma-btn-edit').style.display = isEditing ? 'none' : 'inline-block';
+        document.querySelector('.tpma-reg-detail-actions').style.display = isEditing ? 'flex' : 'none';
+    }
+
+    // 3. 郵件彈出視窗
+    mailBtn.addEventListener('click', () => {
+        mailModal.style.display = 'flex';
+    });
+    function closeMailModal() {
+        mailModal.style.display = 'none';
+    }
+
+    // 4. 表頭篩選彈窗邏輯
+    let currentFilterDropdown = null;
+    function toggleFilterDropdown(triggerElement, event) {
+        event.stopPropagation(); // 阻止事件冒泡到表格行或文檔
+        const column = triggerElement.getAttribute('data-column');
+        const dropdown = document.querySelector(`.tpma-filter-dropdown[data-column="${column}"]`);
+
+        // 關閉目前開啟的其他彈窗
+        if (currentFilterDropdown && currentFilterDropdown !== dropdown) {
+            currentFilterDropdown.classList.remove('active');
+        }
+
+        // 切換當前彈窗的狀態
+        if (dropdown) {
+            dropdown.classList.toggle('active');
+            currentFilterDropdown = dropdown.classList.contains('active') ? dropdown : null;
+        }
+    }
+
+    // 點擊文檔其他地方時關閉彈窗
+    document.addEventListener('click', (event) => {
+        // 確保點擊事件不是來自下拉選單或觸發器
+        if (currentFilterDropdown && !currentFilterDropdown.contains(event.target)) {
+            currentFilterDropdown.classList.remove('active');
+            currentFilterDropdown = null;
+        }
+    });
+
+
+    // 5. 排序邏輯
+    function handleSort(sortControl, column) {
+        // 實際應用中，這裡會調用 API 重新載入排序後的數據
+        console.log(`Sorting by column: ${column}`);
+        
+        // 移除所有箭頭的 active 狀態
+        document.querySelectorAll('.tpma-sort-icon').forEach(icon => {
+            icon.classList.remove('active');
+        });
+
+        // 模擬切換排序方向
+        let newDirection;
+        const ascIcon = sortControl.querySelector('.asc');
+        const descIcon = sortControl.querySelector('.desc');
+
+        if (ascIcon.classList.contains('active')) {
+            // 目前是 ASC，切換到 DESC
+            ascIcon.classList.remove('active');
+            descIcon.classList.add('active');
+            newDirection = 'desc';
+        } else if (descIcon.classList.contains('active')) {
+            // 目前是 DESC，切換到 ASC
+            descIcon.classList.remove('active');
+            ascIcon.classList.add('active');
+            newDirection = 'asc';
+        } else {
+            // 預設切換到 DESC
+            descIcon.classList.add('active');
+            newDirection = 'desc';
+        }
+
+        console.log(`New sort direction: ${newDirection}`);
+    }
+
+    // 頁面載入時初始化
+    window.onload = () => {
+        detailView.style.display = 'none';
+        // 確保詳情區塊的 input 預設是隱藏的
+        toggleEditMode(false); 
+    };
+
+</script>
+
+</body>
+</html>
