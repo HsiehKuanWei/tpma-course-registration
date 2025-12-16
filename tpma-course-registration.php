@@ -138,6 +138,52 @@ add_shortcode('tpma_course_admin', array('TPMA_CR_REST_Admin', 'shortcode_course
 
 add_shortcode('tpma_import_admin', array('TPMA_CR_Import', 'shortcode_import_admin'));
 
+
+/**
+ * Frontend shortcodes
+ *
+ * [tpma_form]         公開報名表單
+ * [tpma_course_list]  公開課程列表，form_url 可覆寫報名頁網址，api_base 可自訂 REST 位置
+ */
+function tpma_cr_shortcode_form($atts = array())
+{
+    $api_base    = rtrim(rest_url('tpma/v1'), '/');
+    if (!empty($atts['api_base'])) {
+        $api_base = esc_url_raw(rtrim($atts['api_base'], '/'));
+    }
+    $assets_base = TPMA_CR_URL;
+
+    ob_start();
+    include TPMA_CR_PATH . 'views/form-public.php';
+    return ob_get_clean();
+}
+add_shortcode('tpma_form', 'tpma_cr_shortcode_form');
+
+function tpma_cr_shortcode_course_list($atts = array())
+{
+    $atts = shortcode_atts(
+        array(
+            'form_url' => '',
+            'api_base' => '',
+        ),
+        $atts
+    );
+
+    $api_base    = rtrim(rest_url('tpma/v1'), '/');
+    $assets_base = TPMA_CR_URL;
+    if (!empty($atts['api_base'])) {
+        $api_base = esc_url_raw(rtrim($atts['api_base'], '/'));
+    }
+    $form_url = !empty($atts['form_url']) ? esc_url_raw($atts['form_url']) : ($assets_base . 'form.html');
+
+    ob_start();
+    include TPMA_CR_PATH . 'views/list-public.php';
+    return ob_get_clean();
+}
+add_shortcode('tpma_course_list', 'tpma_cr_shortcode_course_list');
+add_shortcode('tpma_list', 'tpma_cr_shortcode_course_list');
+
+
 // --- 允許特定網域的 CORS（給 REST API 用）---
 add_action('rest_api_init', function () {
     // 允許的前端網域
