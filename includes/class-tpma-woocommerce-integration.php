@@ -6,9 +6,21 @@ if (!defined('ABSPATH')) {
 class TPMA_WooCommerce_Integration {
 
     public static function init() {
-        // Hook into WooCommerce order processing
+        // Frontend checkout/cart helpers
+        add_action('woocommerce_before_calculate_totals', ['TPMA_CR_Woo_Service', 'apply_cart_price']);
+        add_action('woocommerce_checkout_before_order_review', ['TPMA_CR_Woo_Service', 'render_checkout_summary'], 5);
+        add_action('woocommerce_checkout_before_customer_details', ['TPMA_CR_Woo_Service', 'render_auto_fill_controls'], 1);
+        add_action('woocommerce_checkout_process', ['TPMA_CR_Woo_Service', 'validate_checkout_fields']);
+        add_action('woocommerce_checkout_create_order', ['TPMA_CR_Woo_Service', 'save_checkout_fields'], 10, 2);
+        add_filter('woocommerce_checkout_fields', ['TPMA_CR_Woo_Service', 'add_checkout_fields']);
+        add_filter('woocommerce_is_purchasable', ['TPMA_CR_Woo_Service', 'force_tpma_product_purchasable'], 10, 2);
+        add_filter('woocommerce_checkout_registration_required', ['TPMA_CR_Woo_Service', 'allow_guest_checkout_for_tpma'], 10, 1);
+
+        // Order creation hooks
+        add_action('woocommerce_checkout_order_processed', ['TPMA_CR_Woo_Service', 'process_order_from_draft'], 9, 1);
         add_action('woocommerce_checkout_order_processed', [self::class, 'sync_order_to_registrations'], 10, 3);
-        // Hook into WooCommerce order status changes for payment status updates
+
+        // Order status updates
         add_action('woocommerce_order_status_changed', [self::class, 'update_registration_payment_status'], 10, 4);
     }
 
