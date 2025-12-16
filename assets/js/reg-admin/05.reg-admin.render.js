@@ -159,78 +159,121 @@ R.appendFieldView = function appendFieldView(section, labelText, val, asHtml){
 R.renderDetailView = function renderDetailView(ctx, container, row){
   container.innerHTML = '';
 
-  const grid = document.createElement('div');
-  grid.className = 'tpma-reg-detail-grid';
+  const detailContainer = document.createElement('div');
+  detailContainer.className = 'tpma-reg-detail-container';
 
-  const basic = document.createElement('div');
-  basic.className = 'tpma-reg-detail-section';
-  basic.innerHTML = '<div class="tpma-reg-detail-section-title">基本資訊（部分唯讀）</div>';
-  R.appendFieldView(basic, '報名編號', row.reg_no);
-  R.appendFieldView(basic, '報名時間', U.trimToMinute(row.created_at));
-  R.appendFieldView(basic, '課程名稱', row.course_name);
-  R.appendFieldView(basic, '授課講師', row.lecturer);
-  R.appendFieldView(basic, '授課日期時間', R.buildClassDateRangeHtml(ctx, row), true);
+  const title = document.createElement('h2');
+  title.className = 'text-xl font-semibold mb-4 border-b pb-2';
+  title.innerHTML = `報名編號：<span id="detail-reg-id">${U.esc(row.reg_no || 'N/A')}</span> 詳細資料`;
+  detailContainer.appendChild(title);
 
+  // 區塊 1: 報名基本資料
+  const basicSection = document.createElement('div');
+  basicSection.className = 'tpma-reg-detail-section';
+  basicSection.id = 'section-basic';
+  
+  const appendField = (parent, labelText, value, isHtml = false) => {
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'tpma-detail-field';
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const valueSpan = document.createElement('span');
+    valueSpan.className = 'value';
+    if (isHtml) {
+      valueSpan.innerHTML = value || '';
+    } else {
+      valueSpan.textContent = U.esc(U.display(value));
+    }
+    fieldDiv.appendChild(label);
+    fieldDiv.appendChild(valueSpan);
+    parent.appendChild(fieldDiv);
+  };
+
+  appendField(basicSection, '課程名稱', row.course_name);
+  appendField(basicSection, '授課講師', row.lecturer);
+  appendField(basicSection, '授課日期時間', R.buildClassDateRangeHtml(ctx, row), true);
+  appendField(basicSection, '報名時間', U.trimToMinute(row.created_at));
   if (row.woocommerce_order_id) {
     const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
     const orderIdLabel = row.woocommerce_order_id;
     const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
-    R.appendFieldView(basic, 'WooCommerce 訂單 ID', linkHtml, true);
+    appendField(basicSection, 'WooCommerce 訂單 ID', linkHtml, true);
   }
-  R.appendFieldView(basic, '付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
-  grid.appendChild(basic);
+  appendField(basicSection, '付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
+  detailContainer.appendChild(basicSection);
 
-  const stu = document.createElement('div');
-  stu.className = 'tpma-reg-detail-section';
-  stu.innerHTML = '<div class="tpma-reg-detail-section-title">學員資訊</div>';
-  R.appendFieldView(stu, '學員姓名', row.student_name);
-  R.appendFieldView(stu, '部門', row.department);
-  R.appendFieldView(stu, '職稱', row.job_title);
-  R.appendFieldView(stu, '手機', row.mobile);
-  R.appendFieldView(stu, '電話', row.phone);
-  R.appendFieldView(stu, 'Email（多筆）', row.emails);
-  grid.appendChild(stu);
+  // 區塊 2: 學員資訊
+  const studentSection = document.createElement('div');
+  studentSection.className = 'tpma-reg-detail-section';
+  studentSection.id = 'section-student';
+  appendField(studentSection, '學員姓名', row.student_name);
+  appendField(studentSection, '部門', row.department);
+  appendField(studentSection, '職稱', row.job_title);
+  appendField(studentSection, '手機', row.mobile);
+  appendField(studentSection, '電話', row.phone);
+  appendField(studentSection, 'Email（多筆）', row.emails);
+  detailContainer.appendChild(studentSection);
 
-  const company = document.createElement('div');
-  company.className = 'tpma-reg-detail-section';
-  company.innerHTML = '<div class="tpma-reg-detail-section-title">公司與聯絡資訊</div>';
-  R.appendFieldView(company, '公司抬頭', row.company_name);
-  R.appendFieldView(company, '統一編號', row.tax_id);
-  R.appendFieldView(company, '承辦人姓名', row.contact_name);
-  R.appendFieldView(company, '承辦人Email', row.contact_email);
-  R.appendFieldView(company, '收件人', row.receiver);
-  R.appendFieldView(company, '地址', row.address);
-  R.appendFieldView(company, '資訊來源', row.source);
-  grid.appendChild(company);
+  // 區塊 3: 公司與聯絡資訊
+  const companySection = document.createElement('div');
+  companySection.className = 'tpma-reg-detail-section';
+  companySection.id = 'section-company';
+  appendField(companySection, '公司抬頭', row.company_name);
+  appendField(companySection, '統一編號', row.tax_id);
+  appendField(companySection, '承辦人姓名', row.contact_name);
+  appendField(companySection, '承辦人Email', row.contact_email);
+  appendField(companySection, '收件人', row.receiver);
+  appendField(companySection, '地址', row.address);
+  appendField(companySection, '資訊來源', row.source);
+  detailContainer.appendChild(companySection);
 
-  const receipt = document.createElement('div');
-  receipt.className = 'tpma-reg-detail-section';
-  receipt.innerHTML = '<div class="tpma-reg-detail-section-title">收據與付款</div>';
-  R.appendFieldView(receipt, '收據方式', L.receiptTypeLabel(row.receipt_type));
-  R.appendFieldView(receipt, '收據狀態', L.receiptStatusLabel(row.receipt_status));
-  R.appendFieldView(receipt, '匯款金額（元）', U.formatAmount(row.remit_amount));
-  R.appendFieldView(receipt, '匯款日期', row.remit_paid_at);
-  grid.appendChild(receipt);
+  // 區塊 4: 收據與付款
+  const receiptSection = document.createElement('div');
+  receiptSection.className = 'tpma-reg-detail-section';
+  receiptSection.id = 'section-receipt';
+  appendField(receiptSection, '收據方式', L.receiptTypeLabel(row.receipt_type));
+  appendField(receiptSection, '收據狀態', L.receiptStatusLabel(row.receipt_status));
+  appendField(receiptSection, '匯款金額（元）', U.formatAmount(row.remit_amount));
+  appendField(receiptSection, '匯款日期', row.remit_paid_at);
+  detailContainer.appendChild(receiptSection);
 
-  const other = document.createElement('div');
-  other.className = 'tpma-reg-detail-section';
-  other.innerHTML = '<div class="tpma-reg-detail-section-title">其他資訊</div>';
-  R.appendFieldView(other, '報名狀態', L.statusLabel(row.status));
-  R.appendFieldView(other, '測驗成績', row.test_score);
-  R.appendFieldView(other, '證書編號', row.certificate_id);
-  R.appendFieldView(other, '備註', row.note);
-  grid.appendChild(other);
+  // 區塊 5: 其他資訊
+  const otherSection = document.createElement('div');
+  otherSection.className = 'tpma-reg-detail-section';
+  otherSection.id = 'section-other';
+  appendField(otherSection, '報名狀態', L.statusLabel(row.status));
+  appendField(otherSection, '測驗成績', row.test_score);
+  appendField(otherSection, '證書編號', row.certificate_id);
+  appendField(otherSection, '備註', row.note);
+  detailContainer.appendChild(otherSection);
 
-  container.appendChild(grid);
+  // 操作按鈕
+  const actionsDiv = document.createElement('div');
+  actionsDiv.className = 'flex justify-end mt-4 gap-3';
+/*  actionsDiv.innerHTML = `
+    <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-${row.id}">編輯詳情</button>
+    <button class="tpma-btn tpma-btn-danger" id="tpma-btn-delete-${row.id}">刪除報名記錄</button>    
+  `;
+*/
+  actionsDiv.innerHTML = `
+    <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-${row.id}">編輯詳情</button>
+  `;
 
-  const actions = document.createElement('div');
-  actions.className = 'tpma-reg-detail-actions';
-  actions.innerHTML = '<button class="tpma-btn tpma-edit-btn">編輯</button>';
-  container.appendChild(actions);
+  detailContainer.appendChild(actionsDiv);
 
-  actions.querySelector('.tpma-edit-btn').addEventListener('click', function(){
+  container.appendChild(detailContainer);
+
+  // 綁定編輯按鈕事件
+  actionsDiv.querySelector(`#tpma-btn-edit-${row.id}`).addEventListener('click', function(){
     R.renderDetailEdit(ctx, container, row);
   });
+  // 綁定刪除按鈕事件 (這裡只是模擬，實際需要實作刪除邏輯)
+/*  actionsDiv.querySelector(`#tpma-btn-delete-${row.id}`).addEventListener('click', function(){
+    if (confirm('確定要刪除這筆報名記錄嗎？')) {
+      // 實際應用中，這裡會調用 API 執行刪除
+      alert('刪除功能尚未實作');
+    }
+  });*/
 };
 
 R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
@@ -303,106 +346,147 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
 R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   container.innerHTML = '';
 
-  const grid = document.createElement('div');
-  grid.className = 'tpma-reg-detail-grid';
+  const detailContainer = document.createElement('div');
+  detailContainer.className = 'tpma-reg-detail-container';
 
-  const basic = document.createElement('div');
-  basic.className = 'tpma-reg-detail-section edit-mode';
-  basic.innerHTML = ''
-    + '<div class="tpma-reg-detail-section-title">基本資訊</div>'
-    + '<label>報名編號（唯讀）</label>'
-    + '<div class="value">' + U.esc(U.display(row.reg_no)) + '</div>'
-    + '<input type="hidden" data-field="reg_no" value="'+U.esc(U.display(row.reg_no))+'">'
-    + '<label>報名時間（唯讀）</label>'
-    + '<div class="value">' + U.esc(U.trimToMinute(row.created_at)) + '</div>'
-    + '<input type="hidden" data-field="created_at" value="'+U.esc(U.trimToMinute(row.created_at))+'">'
-    + '<label>課程名稱</label>'
-    + '<select data-field="course_id" id="tpma-edit-course-' + row.id + '"></select>'
-    + '<label>授課日期時間</label>'
-    + '<select data-field="class_date" id="tpma-edit-class-date-' + row.id + '"></select>'
-    + '<label>WooCommerce 訂單 ID（唯讀）</label>'
-    + '<div class="value">' + U.esc(U.display(row.woocommerce_order_id)) + '</div>'
-    + '<input type="hidden" data-field="woocommerce_order_id" value="'+U.esc(U.display(row.woocommerce_order_id))+'">'
-    + '<label>付款狀態 (WC)（唯讀）</label>'
-    + '<div class="value">' + U.esc(L.paymentStatusLabel(row.payment_status)) + '</div>'
-    + '<input type="hidden" data-field="payment_status" value="'+U.esc(U.display(row.payment_status))+'">';
-  grid.appendChild(basic);
+  const title = document.createElement('h2');
+  title.className = 'text-xl font-semibold mb-4 border-b pb-2';
+  title.innerHTML = `報名編號：<span id="detail-reg-id">${U.esc(row.reg_no || 'N/A')}</span> 編輯資料`;
+  detailContainer.appendChild(title);
 
-  const stu = document.createElement('div');
-  stu.className = 'tpma-reg-detail-section edit-mode';
-  stu.innerHTML = '<div class="tpma-reg-detail-section-title">學員資訊</div>'
-    + '<label>學員姓名</label><input type="text" data-field="student_name" value="'+U.esc(U.display(row.student_name))+'">'
-    + '<label>部門</label><input type="text" data-field="department" value="'+U.esc(U.display(row.department))+'">'
-    + '<label>職稱</label><input type="text" data-field="job_title" value="'+U.esc(U.display(row.job_title))+'">'
-    + '<label>手機</label><input type="text" data-field="mobile" value="'+U.esc(U.display(row.mobile))+'">'
-    + '<label>電話</label><input type="text" data-field="phone" value="'+U.esc(U.display(row.phone))+'">'
-    + '<label>Email（多筆）</label><input type="text" data-field="emails" value="'+U.esc(U.display(row.emails))+'">';
-  grid.appendChild(stu);
+  const appendEditField = (parent, labelText, fieldName, type, value, options = [], isReadonly = false) => {
+    const fieldDiv = document.createElement('div');
+    fieldDiv.className = 'tpma-detail-field';
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    fieldDiv.appendChild(label);
 
-  const company = document.createElement('div');
-  company.className = 'tpma-reg-detail-section edit-mode';
-  company.innerHTML = '<div class="tpma-reg-detail-section-title">公司與聯絡資訊</div>'
-    + '<label>公司抬頭</label><input type="text" data-field="company_name" value="'+U.esc(U.display(row.company_name))+'">'
-    + '<label>統一編號</label><input type="text" data-field="tax_id" value="'+U.esc(U.display(row.tax_id))+'">'
-    + '<label>承辦人姓名</label><input type="text" data-field="contact_name" value="'+U.esc(U.display(row.contact_name))+'">'
-    + '<label>承辦人Email</label><input type="text" data-field="contact_email" value="'+U.esc(U.display(row.contact_email))+'">'
-    + '<label>收件人</label><input type="text" data-field="receiver" value="'+U.esc(U.display(row.receiver))+'">'
-    + '<label>地址</label><input type="text" data-field="address" value="'+U.esc(U.display(row.address))+'">';
-  grid.appendChild(company);
+    if (type === 'select') {
+      const select = document.createElement('select');
+      select.dataset.field = fieldName;
+      options.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt.value;
+        option.textContent = opt.label;
+        if (String(opt.value) === String(value)) option.selected = true;
+        select.appendChild(option);
+      });
+      fieldDiv.appendChild(select);
+    } else if (type === 'textarea') {
+      const textarea = document.createElement('textarea');
+      textarea.dataset.field = fieldName;
+      textarea.value = U.esc(U.display(value));
+      if (isReadonly) textarea.readOnly = true;
+      fieldDiv.appendChild(textarea);
+    } else {
+      const input = document.createElement('input');
+      input.type = type;
+      input.dataset.field = fieldName;
+      input.value = U.esc(U.display(value));
+      if (isReadonly) input.readOnly = true;
+      fieldDiv.appendChild(input);
+    }
+    parent.appendChild(fieldDiv);
+  };
 
-  const receipt = document.createElement('div');
-  receipt.className = 'tpma-reg-detail-section edit-mode';
-  receipt.innerHTML = '<div class="tpma-reg-detail-section-title">收據與付款</div>'
-    + '<label>收據方式</label>'
-    + '<select data-field="receipt_type">'
-    + '  <option value="">請選擇</option>'
-    + '  <option value="electronic"'+(row.receipt_type==='electronic'?' selected':'')+'>電子</option>'
-    + '  <option value="paper"'+(row.receipt_type==='paper'?' selected':'')+'>紙本</option>'
-    + '</select>'
-    + '<label>收據狀態</label>'
-    + '<select data-field="receipt_status">'
-    + '  <option value="">請選擇</option>'
-    + '  <option value="pending"'+(row.receipt_status==='pending'?' selected':'')+'>待開立</option>'
-    + '  <option value="auto"'+(row.receipt_status==='auto'?' selected':'')+'>已開立待寄（自動）</option>'
-    + '  <option value="manual"'+(row.receipt_status==='manual'?' selected':'')+'>已開立待寄（手動）</option>'
-    + '  <option value="sent"'+(row.receipt_status==='sent'?' selected':'')+'>已寄出</option>'
-    + '</select>'
-    + '<label>匯款金額（元）</label>'
-    + '<input type="text" data-field="remit_amount" value="'+U.esc(U.formatAmount(row.remit_amount))+'">'
-    + '<label>匯款日期</label>'
-    + '<input type="date" data-field="remit_paid_at" value="'+U.esc(U.display(row.remit_paid_at))+'">';
-  grid.appendChild(receipt);
+  // 區塊 1: 報名基本資料
+  const basicSection = document.createElement('div');
+  basicSection.className = 'tpma-reg-detail-section edit-mode';
+  basicSection.id = 'section-basic';
+  appendEditField(basicSection, '報名編號', 'reg_no', 'text', row.reg_no, [], true);
+  appendEditField(basicSection, '報名時間', 'created_at', 'text', U.trimToMinute(row.created_at), [], true);
+  appendEditField(basicSection, '課程名稱', 'course_id', 'select', row.course_id, [], false); // This will be populated by populateEditCourseAndDate
+  basicSection.querySelector('[data-field="course_id"]').id = `tpma-edit-course-${row.id}`;
+  appendEditField(basicSection, '授課日期時間', 'class_date', 'select', row.class_date, [], false); // This will be populated by populateEditCourseAndDate
+  basicSection.querySelector('[data-field="class_date"]').id = `tpma-edit-class-date-${row.id}`;
+  if (row.woocommerce_order_id) {
+    const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
+    const orderIdLabel = row.woocommerce_order_id;
+    const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
+    appendEditField(basicSection, 'WooCommerce 訂單 ID', 'woocommerce_order_id', 'text', linkHtml, [], true);
+  }
+  appendEditField(basicSection, '付款狀態 (WC)', 'payment_status', 'text', L.paymentStatusLabel(row.payment_status), [], true);
+  detailContainer.appendChild(basicSection);
 
-  const other = document.createElement('div');
-  other.className = 'tpma-reg-detail-section edit-mode';
-  other.innerHTML = '<div class="tpma-reg-detail-section-title">其他資訊</div>'
-    + '<label>報名狀態</label>'
-    + '<select data-field="status">'
-    + '  <option value="pending"'+(row.status==='pending'?' selected':'')+'>待付款</option>'
-    + '  <option value="verifying"'+(row.status==='verifying'?' selected':'')+'>待核帳</option>'
-    + '  <option value="paid"'+(row.status==='paid'?' selected':'')+'>已付款</option>'
-    + '  <option value="cert_pending"'+(row.status==='cert_pending'?' selected':'')+'>待發證</option>'
-    + '  <option value="completed"'+(row.status==='completed'?' selected':'')+'>已結訓</option>'
-    + '  <option value="cancelled"'+(row.status==='cancelled'?' selected':'')+'>已取消</option>'
-    + '</select>'
-    + '<label>測驗成績</label><input type="text" data-field="test_score" value="'+U.esc(U.display(row.test_score))+'">'
-    + '<label>證書編號</label><input type="text" data-field="certificate_id" value="'+U.esc(U.display(row.certificate_id))+'">'
-    + '<label>備註</label><textarea data-field="note">'+U.esc(U.display(row.note))+'</textarea>';
-  grid.appendChild(other);
+  // 區塊 2: 學員資訊
+  const studentSection = document.createElement('div');
+  studentSection.className = 'tpma-reg-detail-section edit-mode';
+  studentSection.id = 'section-student';
+  appendEditField(studentSection, '學員姓名', 'student_name', 'text', row.student_name);
+  appendEditField(studentSection, '部門', 'department', 'text', row.department);
+  appendEditField(studentSection, '職稱', 'job_title', 'text', row.job_title);
+  appendEditField(studentSection, '手機', 'mobile', 'text', row.mobile);
+  appendEditField(studentSection, '電話', 'phone', 'text', row.phone);
+  appendEditField(studentSection, 'Email（多筆）', 'emails', 'text', row.emails);
+  detailContainer.appendChild(studentSection);
 
-  container.appendChild(grid);
+  // 區塊 3: 公司與聯絡資訊
+  const companySection = document.createElement('div');
+  companySection.className = 'tpma-reg-detail-section edit-mode';
+  companySection.id = 'section-company';
+  appendEditField(companySection, '公司抬頭', 'company_name', 'text', row.company_name);
+  appendEditField(companySection, '統一編號', 'tax_id', 'text', row.tax_id);
+  appendEditField(companySection, '承辦人姓名', 'contact_name', 'text', row.contact_name);
+  appendEditField(companySection, '承辦人Email', 'contact_email', 'text', row.contact_email);
+  appendEditField(companySection, '收件人', 'receiver', 'text', row.receiver);
+  appendEditField(companySection, '地址', 'address', 'text', row.address);
+  appendEditField(companySection, '資訊來源', 'source', 'text', row.source);
+  detailContainer.appendChild(companySection);
 
-  const actions = document.createElement('div');
-  actions.className = 'tpma-reg-detail-actions';
-  actions.innerHTML = '<button class="tpma-btn tpma-save-btn">儲存</button><button class="tpma-btn tpma-cancel-btn">取消</button>';
-  container.appendChild(actions);
+  // 區塊 4: 收據與付款
+  const receiptSection = document.createElement('div');
+  receiptSection.className = 'tpma-reg-detail-section edit-mode';
+  receiptSection.id = 'section-receipt';
+  appendEditField(receiptSection, '收據方式', 'receipt_type', 'select', row.receipt_type, [
+    { value: '', label: '請選擇' },
+    { value: 'electronic', label: '電子' },
+    { value: 'paper', label: '紙本' }
+  ]);
+  appendEditField(receiptSection, '收據狀態', 'receipt_status', 'select', row.receipt_status, [
+    { value: '', label: '請選擇' },
+    { value: 'pending', label: '待開立' },
+    { value: 'auto', label: '已開立待寄（自動）' },
+    { value: 'manual', label: '已開立待寄（手動）' },
+    { value: 'sent', label: '已寄出' }
+  ]);
+  appendEditField(receiptSection, '匯款金額（元）', 'remit_amount', 'text', U.formatAmount(row.remit_amount));
+  appendEditField(receiptSection, '匯款日期', 'remit_paid_at', 'date', row.remit_paid_at);
+  detailContainer.appendChild(receiptSection);
+
+  // 區塊 5: 其他資訊
+  const otherSection = document.createElement('div');
+  otherSection.className = 'tpma-reg-detail-section edit-mode';
+  otherSection.id = 'section-other';
+  appendEditField(otherSection, '報名狀態', 'status', 'select', row.status, [
+    { value: 'pending', label: '待付款' },
+    { value: 'verifying', label: '待核帳' },
+    { value: 'paid', label: '已付款' },
+    { value: 'cert_pending', label: '待發證' },
+    { value: 'completed', label: '已結訓' },
+    { value: 'cancelled', label: '已取消' }
+  ]);
+  appendEditField(otherSection, '測驗成績', 'test_score', 'text', row.test_score);
+  appendEditField(otherSection, '證書編號', 'certificate_id', 'text', row.certificate_id);
+  appendEditField(otherSection, '備註', 'note', 'textarea', row.note);
+  detailContainer.appendChild(otherSection);
+
+  // 操作按鈕
+  const actionsDiv = document.createElement('div');
+  actionsDiv.className = 'flex justify-end mt-4 gap-3';
+  actionsDiv.innerHTML = `
+    <button class="tpma-btn" id="tpma-btn-save-detail-${row.id}">儲存變更</button>
+    <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit-${row.id}">取消編輯</button>
+  `;
+  detailContainer.appendChild(actionsDiv);
+
+  container.appendChild(detailContainer);
 
   R.populateEditCourseAndDate(ctx, row);
 
-  actions.querySelector('.tpma-save-btn').addEventListener('click', async function(){
+  actionsDiv.querySelector(`#tpma-btn-save-detail-${row.id}`).addEventListener('click', async function(){
     await R.saveDetail(ctx, container, row.id);
   });
-  actions.querySelector('.tpma-cancel-btn').addEventListener('click', function(){
+  actionsDiv.querySelector(`#tpma-btn-cancel-edit-${row.id}`).addEventListener('click', function(){
     R.renderDetailView(ctx, container, row);
   });
 };
@@ -518,7 +602,7 @@ R.renderTable = function renderTable(ctx){
     tr.appendChild(tdStatus);
 
     const tdAct = document.createElement('td');
-    tdAct.innerHTML = '<button class="tpma-btn tpma-view-btn">檢視</button>';
+    tdAct.innerHTML = '<button class="tpma-btn tpma-view-btn">詳細</button>';
     tr.appendChild(tdAct);
 
     tbody.appendChild(tr);
@@ -537,7 +621,7 @@ R.renderTable = function renderTable(ctx){
 
     tdAct.querySelector('.tpma-view-btn').addEventListener('click', function(){
       const isVisible = trDetail.style.display !== 'none';
-      if (isVisible) { trDetail.style.display = 'none'; this.textContent = '檢視'; }
+      if (isVisible) { trDetail.style.display = 'none'; this.textContent = '詳細'; }
       else { trDetail.style.display = ''; this.textContent = '收合'; }
     });
 

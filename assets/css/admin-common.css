@@ -142,7 +142,7 @@ body {
 .tpma-course-table th,
 .tpma-course-table td {
     border-bottom:1px solid var(--tpma-medium-gray);
-    padding:12px 14px;
+    padding:10px 8px;
     vertical-align:middle;
 }
 .tpma-reg-table th,
@@ -448,63 +448,47 @@ body {
 }
 
 /* Detail/Edit Row styles */
-.tpma-reg-detail-grid {
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
-    gap:20px 25px;
+/* 6. 詳情區塊 (Detail Section) 樣式 */
+.tpma-reg-detail-container {
+    margin-top: 20px;
 }
-.tpma-reg-detail-section-title {
-    font-weight:bold;
-    border-left:5px solid var(--tpma-primary-color);
-    padding-left:10px;
-    margin-bottom:10px;
-    font-size:16px;
-    color:var(--tpma-dark-gray);
+.tpma-reg-detail-section {
+    background-color: #ffffff;
+    border: 1px solid var(--tpma-border-color);
+    padding: 15px;
+    margin-bottom: 15px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); 
+    gap: 20px;
 }
-.tpma-reg-detail-section label {
-    display:block;
-    font-weight:600;
-    margin-top:10px;
-    margin-bottom:4px;
-    font-size:14px;
-    color:var(--tpma-dark-gray);
+.tpma-detail-field {
+    display: flex;
+    flex-direction: column;
 }
-.tpma-reg-detail-section .value {
-    margin-top:4px;
-    white-space:pre-wrap;
-    background:#fefefe;
-    border:1px solid var(--tpma-medium-gray);
-    padding:8px 10px;
-    border-radius:4px;
-    min-height:35px;
-    box-sizing:border-box;
+.tpma-detail-field label {
+    font-weight: 700;
+    color: var(--tpma-dark-gray);
+    margin-bottom: 4px;
+    font-size: 13px;
+    text-transform: uppercase;
 }
-.tpma-reg-detail-section input,
-.tpma-reg-detail-section select,
-.tpma-reg-detail-section textarea {
-    width:100%;
-    box-sizing:border-box;
-    font-size:14px;
-    padding:8px 10px;
-    border:1px solid var(--tpma-border-color);
-    border-radius:4px;
-    transition:border-color 0.2s ease, box-shadow 0.2s ease;
-}
-.tpma-reg-detail-section input:focus,
-.tpma-reg-detail-section select:focus,
-.tpma-reg-detail-section textarea:focus {
-    border-color:var(--tpma-primary-color);
-    box-shadow:0 0 0 0.2rem rgba(0,123,255,.25);
-    outline:none;
-}
-.tpma-reg-detail-section textarea {
-    min-height:100px;
+.tpma-detail-field .value {
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--tpma-medium-gray);
+    color: #333;
+    font-size: 14px;
+    word-break: break-word;
 }
 .tpma-reg-detail-actions {
-    text-align:right;
-    margin-top:20px;
-    padding-top:15px;
-    border-top:1px solid var(--tpma-medium-gray);
+    text-align: right;
+    margin-top: 25px;
+    padding-top: 15px;
+    border-top: 1px solid var(--tpma-medium-gray);
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
 }
 
 /* Edit mode specific styles */
@@ -528,27 +512,4 @@ body {
 .tpma-batch-input:disabled {
     opacity:0.5;
     cursor:not-allowed;
-}
-
-/* Detail layout helpers (from demo) */
-.tpma-reg-detail-container {
-    margin-top:20px;
-}
-.tpma-detail-field {
-    display:flex;
-    flex-direction:column;
-}
-.tpma-detail-field label {
-    font-weight:700;
-    color:var(--tpma-dark-gray);
-    margin-bottom:4px;
-    font-size:13px;
-    text-transform:uppercase;
-}
-.tpma-detail-field .value {
-    padding:8px 0;
-    border-bottom:1px dashed var(--tpma-medium-gray);
-    color:#333;
-    font-size:14px;
-    word-break:break-word;
 }
