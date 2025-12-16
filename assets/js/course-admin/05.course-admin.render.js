@@ -94,10 +94,6 @@
       tdCode.textContent = showText(c.course_code);
       tr.appendChild(tdCode);
 
-      const tdCat = document.createElement('td');
-      tdCat.textContent = showText(catLabel(c));
-      tr.appendChild(tdCat);
-
       const tdName = document.createElement('td');
       tdName.textContent = showText(c.course_name);
       tr.appendChild(tdName);
@@ -106,9 +102,12 @@
       tdLec.textContent = showText(lecLabel(c));
       tr.appendChild(tdLec);
 
+      const tdCat = document.createElement('td');
+      tdCat.textContent = showText(catLabel(c));
+      tr.appendChild(tdCat);
+
       const tdAct = document.createElement('td');
-      tdAct.innerHTML = '<button type="button" class="tpma-btn tpma-view-btn">詳細</button>'
-        + '<button type="button" class="tpma-btn tpma-edit-btn">編輯</button>';
+      tdAct.innerHTML = '<button type="button" class="tpma-btn tpma-view-btn">詳細</button>';
       tr.appendChild(tdAct);
 
       tbody.appendChild(tr);

@@ -50,39 +50,6 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
             <th>
                 <div class="tpma-th-inner">
-                    <span>課程類別</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="category">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="category">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="asc">升冪排序</label>
-                            <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="desc">降冪排序</label>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <select id="tpma-filter-category">
-                                <option value="">全部類別</option>
-                                <optgroup label="核心課程">
-                                    <option value="A1">董事的法律義務與責任</option>
-                                    <option value="A2">董事會的架構與運作</option>
-                                    <option value="A3">提升董事會績效</option>
-                                    <option value="A4">財務、會計</option>
-                                    <option value="A5">永續發展</option>
-                                </optgroup>
-                                <optgroup label="專業課程">
-                                    <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
-                                    <option value="B2">董事與股東會事務</option>
-                                    <option value="B3">公司所屬產業之業務、商務</option>
-                                    <option value="B4">風險管理、內部控制、數位治理</option>
-                                    <option value="B5">其他</option>
-                                </optgroup>
-                            </select>
-                            <label class="tpma-menu-options" id="tpma-btn-clear-category">清除篩選</label>
-                        </div>
-                    </div>
-                </div>
-            </th>
-
-            <th>
-                <div class="tpma-th-inner">
                     <span>課程名稱</span>
                     <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_name">▾</button>
                     <div class="tpma-th-menu" data-menu-col="course_name">
@@ -114,6 +81,39 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                                 <option value="">全部講師</option>
                             </select>
                             <label class="tpma-menu-options" id="tpma-btn-clear-lecturer">清除篩選</label>
+                        </div>
+                    </div>
+                </div>
+            </th>
+            
+            <th>
+                <div class="tpma-th-inner">
+                    <span>課程類別</span>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="category">▾</button>
+                    <div class="tpma-th-menu" data-menu-col="category">
+                        <div class="tpma-menu-section">
+                            <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="asc">升冪排序</label>
+                            <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="desc">降冪排序</label>
+                        </div>
+                        <div class="tpma-menu-section">
+                            <select id="tpma-filter-category">
+                                <option value="">全部類別</option>
+                                <optgroup label="核心課程">
+                                    <option value="A1">董事的法律義務與責任</option>
+                                    <option value="A2">董事會的架構與運作</option>
+                                    <option value="A3">提升董事會績效</option>
+                                    <option value="A4">財務、會計</option>
+                                    <option value="A5">永續發展</option>
+                                </optgroup>
+                                <optgroup label="專業課程">
+                                    <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
+                                    <option value="B2">董事與股東會事務</option>
+                                    <option value="B3">公司所屬產業之業務、商務</option>
+                                    <option value="B4">風險管理、內部控制、數位治理</option>
+                                    <option value="B5">其他</option>
+                                </optgroup>
+                            </select>
+                            <label class="tpma-menu-options" id="tpma-btn-clear-category">清除篩選</label>
                         </div>
                     </div>
                 </div>
