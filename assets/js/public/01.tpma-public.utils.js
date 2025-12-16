@@ -95,6 +95,19 @@
       start: `${pad2(start.getHours())}:${pad2(start.getMinutes())}`,
       end: end ? `${pad2(end.getHours())}:${pad2(end.getMinutes())}` : ''
     };
+    };
+
+  /**
+   * Dynamically determine the API base URL.
+   * Checks URL query param 'api_base', then window.TPMA_API_BASE, then fallback.
+   * @param {string} fallbackBase - The default API base from PHP.
+   * @returns {string}
+   */
+  util.getApiBase = function getApiBase(fallbackBase) {
+    const qsBase = new URLSearchParams(location.search).get("api_base");
+    const windowBase = global.TPMA_API_BASE;
+    const defaultFallback = `${location.origin}/wp-json/tpma/v1`;
+    return qsBase || windowBase || fallbackBase || defaultFallback;
   };
 
 })(window);

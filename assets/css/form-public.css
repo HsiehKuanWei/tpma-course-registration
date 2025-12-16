@@ -1,0 +1,223 @@
+.tpma-form-wrap {
+    max-width: 900px;
+    margin: 20px auto;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; /* Consistent font */
+    font-size: 14px;
+    line-height: 1.6;
+    background: #fff; /* Consistent background */
+    border-radius: 8px; /* Consistent border-radius */
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05); /* Consistent shadow */
+    padding: 20px; /* Consistent padding */
+  }
+  .tpma-field { margin-bottom: 14px; }
+  .tpma-label-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+    gap: 6px;
+  }
+  .tpma-label {
+    font-weight: 600;
+    color: var(--tpma-dark-gray); /* Consistent label color */
+  }
+  .tpma-required {
+    font-size: 10px; /* Consistent font size */
+    color: #fff; /* White text for danger background */
+    border: 1px solid var(--tpma-danger-color); /* Use danger color variable */
+    background: var(--tpma-danger-color); /* Use danger color variable */
+    padding: 2px 5px; /* Consistent padding */
+    border-radius: 3px;
+  }
+  .tpma-input,
+  .tpma-select,
+  .tpma-textarea {
+    width: 100%;
+    padding: 10px 12px; /* Consistent padding */
+    border: 1px solid var(--tpma-border-color); /* Use border color variable */
+    border-radius: 4px; /* Consistent border-radius */
+    box-sizing: border-box;
+    font-size: 14px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease; /* Consistent transition */
+  }
+  .tpma-input:focus,
+  .tpma-select:focus,
+  .tpma-textarea:focus {
+    border-color: var(--tpma-primary-color); /* Consistent focus border color */
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25); /* Consistent focus shadow */
+    outline: none; /* Remove default outline */
+  }
+  .tpma-input-error {
+    border-color: var(--tpma-danger-color) !important; /* Use danger color variable */
+    background-color: #fff5f5; /* Consistent error background */
+  }
+  .tpma-error-msg {
+    margin-top: 4px; /* Consistent margin-top */
+    font-size: 12px; /* Consistent font size */
+    color: var(--tpma-danger-color); /* Use danger color variable */
+  }
+  .tpma-note {
+    font-size: 12px;
+    color: var(--tpma-secondary-color); /* Use secondary color for notes */
+  }
+  .tpma-inline-3 {
+    display: flex;
+    gap: 10px; /* Consistent gap */
+  }
+  .tpma-inline-3 > div { flex: 1; }
+  .tpma-btn {
+    padding: 8px 16px;
+    background: var(--tpma-primary-color); /* Use primary color variable */
+    color: #fff;
+    border-radius: 8px; /* Consistent border-radius */
+    border: 1px solid var(--tpma-primary-color); /* Consistent border */
+    cursor: pointer;
+    font-size: 14px;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease; /* Consistent transition */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Consistent shadow */
+  }
+  .tpma-btn:hover {
+    background: var(--tpma-primary-hover-color); /* Consistent hover background */
+    border-color: var(--tpma-primary-hover-color); /* Consistent hover border color */
+    transform: translateY(-1px); /* Consistent hover effect */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15); /* Consistent hover shadow */
+  }
+  .tpma-btn:active {
+    transform: translateY(0); /* Consistent active effect */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1); /* Consistent active shadow */
+  }
+  .tpma-btn:disabled {
+    opacity: .6;
+    cursor: not-allowed;
+    transform: none; /* Consistent disabled effect */
+    box-shadow: none; /* Consistent disabled effect */
+  }
+  .tpma-btn-secondary {
+    background: var(--tpma-secondary-color); /* Use secondary color variable */
+    border-color: var(--tpma-secondary-color); /* Use secondary color variable */
+  }
+  .tpma-btn-secondary:hover {
+    background: var(--tpma-secondary-hover-color); /* Consistent hover background */
+    border-color: var(--tpma-secondary-hover-color); /* Consistent hover border color */
+  }
+  .tpma-summary-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998; /* Consistent z-index with admin-common modal backdrop */
+    opacity: 0; /* Initial opacity for transition */
+    transition: opacity 0.3s ease; /* Consistent transition */
+  }
+  .tpma-summary-modal-backdrop.open {
+    opacity: 1; /* Open state opacity */
+  }
+  .tpma-summary-modal {
+    background: #fff;
+    max-width: 720px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 20px; /* Consistent padding */
+    border-radius: 8px; /* Consistent border-radius */
+    box-shadow: 0 8px 25px rgba(0,0,0,.3); /* Consistent shadow */
+    font-size: 14px; /* Consistent font size */
+    position: relative; /* Added for consistent modal positioning */
+    transform: scale(0.95); /* Initial transform for transition */
+    opacity: 0; /* Initial opacity for transition */
+    transition: opacity 0.3s ease, transform 0.3s ease; /* Consistent transition */
+  }
+  .tpma-summary-modal.open {
+    opacity: 1; /* Open state opacity */
+    transform: scale(1); /* Open state transform */
+  }
+  .tpma-summary-modal h3 {
+    margin: 0 0 10px; /* Consistent margin */
+    font-size: 18px; /* Consistent font size */
+    font-weight: 600;
+    color: var(--tpma-dark-gray); /* Consistent heading color */
+  }
+  .tpma-summary-table {
+    width: 100%;
+    border-collapse: separate; /* Consistent table styling */
+    border-spacing: 0; /* Consistent table styling */
+    margin: 15px 0; /* Consistent margin */
+    font-size: 14px; /* Consistent font size */
+    box-shadow: 0 4px 8px rgba(0,0,0,0.08); /* Consistent shadow */
+    border-radius: 8px; /* Consistent border-radius */
+    overflow: hidden; /* Ensures rounded corners apply */
+  }
+  .tpma-summary-table th,
+  .tpma-summary-table td {
+    border-bottom: 1px solid var(--tpma-medium-gray); /* Consistent border */
+    padding: 10px 8px; /* Consistent padding */
+    vertical-align: middle; /* Consistent vertical alignment */
+  }
+  .tpma-summary-table th {
+    background: var(--tpma-dark-gray); /* Consistent header background */
+    color: #fff; /* White text for dark header */
+    text-align: left; /* Consistent text alignment */
+    text-transform: uppercase; /* Consistent text transform */
+    font-weight: 600; /* Consistent font-weight */
+    font-size: 13px; /* Consistent font size */
+  }
+  .tpma-summary-table tbody tr:hover {
+    background: #e6f7ff; /* Consistent hover background */
+  }
+  .tpma-summary-table tbody tr:nth-child(even) {
+    background: var(--tpma-light-gray); /* Consistent even row background */
+  }
+  .tpma-summary-table tbody tr:last-child td {
+    border-bottom: none; /* Remove bottom border for last row */
+  }
+  .tpma-summary-actions {
+    margin-top: 15px; /* Consistent margin-top */
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px; /* Consistent gap */
+    padding-top: 15px; /* Consistent padding-top */
+    border-top: 1px solid var(--tpma-medium-gray); /* Consistent border-top */
+  }
+  .tpma-alert {
+    margin-top: 15px; /* Consistent margin-top */
+    padding: 10px 15px; /* Consistent padding */
+    border-radius: 4px; /* Consistent border-radius */
+    font-size: 14px; /* Consistent font size */
+    border: 1px solid transparent; /* Consistent border */
+  }
+  .tpma-alert-success {
+    background: var(--tpma-success-color); /* Use success color variable */
+    border-color: var(--tpma-success-color); /* Use success color variable */
+    color: #fff; /* White text for success background */
+  }
+  .tpma-alert-error {
+    background: var(--tpma-danger-color); /* Use danger color variable */
+    border-color: var(--tpma-danger-color); /* Use danger color variable */
+    color: #fff; /* White text for danger background */
+  }
+  .tpma-loading {
+    font-size: 14px; /* Consistent font size */
+    color: var(--tpma-secondary-color); /* Use secondary color variable */
+    margin-bottom: 10px; /* Consistent margin-bottom */
+  }
+  .tpma-learner {
+    padding: 15px; /* Consistent padding */
+    margin-bottom: 15px; /* Consistent margin-bottom */
+    border: 1px solid var(--tpma-border-color); /* Consistent border */
+    border-radius: 8px; /* Consistent border-radius */
+    background: var(--tpma-light-gray); /* Consistent background */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05); /* Consistent shadow */
+  }
+  .tpma-learner-title {
+    font-weight: 700; /* Consistent font-weight */
+    margin-bottom: 8px; /* Consistent margin-bottom */
+    color: var(--tpma-dark-gray); /* Consistent title color */
+    font-size: 16px; /* Consistent font size */
+  }
+  .tpma-flex-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
