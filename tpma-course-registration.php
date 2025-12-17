@@ -185,6 +185,24 @@ add_shortcode('tpma_list', 'tpma_cr_shortcode_course_list');
 
 
 // --- 允許特定網域的 CORS（給 REST API 用）---
+/**
+ * Frontend assets for Woo checkout.
+ */
+add_action('wp_enqueue_scripts', function () {
+    if (!function_exists('is_checkout') || !function_exists('is_cart')) {
+        return;
+    }
+    if (!is_checkout() && !is_cart()) {
+        return;
+    }
+    wp_enqueue_style(
+        'tpma-cr-checkout',
+        TPMA_CR_URL . 'assets/css/checkout.css',
+        array(),
+        defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null
+    );
+}, 20);
+
 add_action('rest_api_init', function () {
     // 允許的前端網域
     $allowed_origins = [

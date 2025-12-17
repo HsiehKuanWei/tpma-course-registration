@@ -1,0 +1,16 @@
+.woocommerce-checkout .tpma-field-spacer,
+.woocommerce-checkout .tpma-field-spacer label,
+.woocommerce-checkout .tpma-field-spacer .woocommerce-input-wrapper {
+  display: block;
+}
+
+.woocommerce-checkout .tpma-field-spacer label {
+  display: none;
+}
+
+.woocommerce-checkout .tpma-field-spacer input,
+.woocommerce-checkout .tpma-field-spacer textarea,
+.woocommerce-checkout .tpma-field-spacer select {
+  visibility: hidden;
+}
+

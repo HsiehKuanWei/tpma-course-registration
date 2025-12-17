@@ -523,19 +523,34 @@ class TPMA_CR_Woo_Service {
             'priority' => 60,
             'class'    => array('form-row-first'),
         );
+        // Spacer field to keep the right half of the first row empty.
+        $fields['billing']['tpma_postcode_spacer'] = array(
+            'type'     => 'text',
+            'required' => false,
+            'label'    => '',
+            'priority' => 65,
+            'class'    => array('form-row-last', 'tpma-field-spacer'),
+            'custom_attributes' => array(
+                'readonly'      => 'readonly',
+                'tabindex'      => '-1',
+                'autocomplete'  => 'off',
+                'aria-hidden'   => 'true',
+            ),
+        );
         $fields['billing']['tpma_state'] = array(
             'type'     => 'text',
             'required' => true,
             'label'    => '縣市',
             'priority' => 70,
-            'class'    => array('form-row-last'),
+            'class'    => array('form-row-first'),
+            'clear'    => true,
         );
         $fields['billing']['tpma_city'] = array(
             'type'     => 'text',
             'required' => true,
             'label'    => '行政區',
             'priority' => 80,
-            'class'    => array('form-row-first'),
+            'class'    => array('form-row-last'),
         );
         $fields['billing']['tpma_street'] = array(
             'type'     => 'text',
