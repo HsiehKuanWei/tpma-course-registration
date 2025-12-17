@@ -354,6 +354,11 @@ function showSummaryModal(courseInfo, form) {
   `;
   backdrop.appendChild(m);
   document.body.appendChild(backdrop);
+  // Trigger fade-in after insertion so CSS transitions run and the modal becomes visible.
+  requestAnimationFrame(() => {
+    backdrop.classList.add("open");
+    m.classList.add("open");
+  });
 
   return new Promise((resolve) => {
     m.querySelector(".tpma-cancel").onclick = () => {
