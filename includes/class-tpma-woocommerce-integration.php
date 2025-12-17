@@ -8,7 +8,9 @@ class TPMA_WooCommerce_Integration {
     public static function init() {
         // Frontend checkout/cart helpers
         add_action('woocommerce_before_calculate_totals', ['TPMA_CR_Woo_Service', 'apply_cart_price']);
-        add_action('woocommerce_checkout_before_order_review', ['TPMA_CR_Woo_Service', 'render_checkout_summary'], 5);
+        // Render inside #order_review (right column), but outside the fragments that Woo refreshes via AJAX
+        // (review-order table + payment). This prevents duplicate output when the order review is refreshed.
+        add_action('woocommerce_checkout_order_review', ['TPMA_CR_Woo_Service', 'render_checkout_summary'], 5);
         add_action('woocommerce_checkout_before_customer_details', ['TPMA_CR_Woo_Service', 'render_auto_fill_controls'], 1);
         add_action('woocommerce_checkout_process', ['TPMA_CR_Woo_Service', 'validate_checkout_fields']);
         add_action('woocommerce_checkout_create_order', ['TPMA_CR_Woo_Service', 'save_checkout_fields'], 10, 2);

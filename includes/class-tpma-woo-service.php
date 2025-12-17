@@ -409,7 +409,7 @@ class TPMA_CR_Woo_Service {
         }
 
         $date_str = self::format_class_datetime($draft['session_datetime'] ?? '', intval($draft['duration_minutes'] ?? 0));
-        echo '<div class="tpma-checkout-summary" style="margin-bottom:12px;padding:10px;border:1px solid #ddd;">';
+        echo '<div id="tpma-checkout-summary" class="tpma-checkout-summary" style="margin-bottom:12px;padding:10px;border:1px solid #ddd;box-sizing:border-box;max-width:100%;clear:both;">';
         echo '<strong>課程：</strong>' . esc_html($draft['course_name']) . '<br>';
         if ($date_str) {
             echo '<strong>上課時間：</strong>' . esc_html($date_str) . '<br>';
