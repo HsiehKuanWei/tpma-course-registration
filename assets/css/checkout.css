@@ -5,7 +5,7 @@
 }
 
 .woocommerce-checkout .tpma-field-spacer label {
-  display: none;
+  visibility: hidden;
 }
 
 .woocommerce-checkout .tpma-field-spacer input,

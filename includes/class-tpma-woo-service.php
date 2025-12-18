@@ -460,11 +460,11 @@ class TPMA_CR_Woo_Service {
         $fields['billing']['tpma_receipt_type'] = array(
             'type'     => 'select',
             'required' => true,
-            'label'    => '發票類型',
+            'label'    => '收據類型',
             'options'  => array(
                 ''            => '請選擇',
-                'electronic'  => '電子發票',
-                'paper'       => '紙本發票',
+                'electronic'  => '電子收據',
+                'paper'       => '紙本收據',
             ),
             'priority' => 100,
         );
@@ -527,7 +527,7 @@ class TPMA_CR_Woo_Service {
         $fields['billing']['tpma_postcode_spacer'] = array(
             'type'     => 'text',
             'required' => false,
-            'label'    => '',
+            'label'    => '佔位符',
             'priority' => 65,
             'class'    => array('form-row-last', 'tpma-field-spacer'),
             'custom_attributes' => array(
