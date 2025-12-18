@@ -23,7 +23,7 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
             <button type="button"
                     class="tpma-th-menu-btn"
                     data-menu-target="menu-time">
-              篩選/排序
+              ▼ 
             </button>
           </div>
           <div class="tpma-th-menu" id="menu-time">
@@ -46,7 +46,7 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
             <button type="button"
                     class="tpma-th-menu-btn"
                     data-menu-target="menu-name">
-              篩選/排序
+              ▼ 
             </button>
           </div>
           <div class="tpma-th-menu" id="menu-name">
@@ -69,7 +69,7 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
             <button type="button"
                     class="tpma-th-menu-btn"
                     data-menu-target="menu-lecturer">
-              篩選/排序
+              ▼ 
             </button>
           </div>
           <div class="tpma-th-menu" id="menu-lecturer">

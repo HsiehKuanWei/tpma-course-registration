@@ -30,7 +30,10 @@ function bootstrap(){
       selectAllHead: document.getElementById('tpma-select-all-head'),
       pagePrev: document.getElementById('tpma-page-prev'),
       pageNext: document.getElementById('tpma-page-next'),
-      pageInfo: document.getElementById('tpma-page-info')
+      pageInfo: document.getElementById('tpma-page-info'),
+      // Add references to header menu buttons and menus
+      menuButtons: document.querySelectorAll('.tpma-th-menu-btn'),
+      menus: document.querySelectorAll('.tpma-th-menu')
     },
     actions: {}
   };
@@ -46,6 +49,8 @@ function bootstrap(){
   ctx.actions.refresh = ()=> UI.refreshFromServer(ctx);
 
   UI.bind(ctx);
+  ctx.state.isLoading = true;
+  UI.applyFiltersAndRender(ctx); // Force initial render and state update
 
   (async function init(){
     await API.loadCourses(ctx);

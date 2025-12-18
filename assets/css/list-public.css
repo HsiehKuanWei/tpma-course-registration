@@ -21,13 +21,6 @@
     color: var(--tpma-secondary-color);
 }
 
-table.tpma-course-table {
-    table-layout: fixed;
-}
-table.tpma-course-table th,
-table.tpma-course-table td {
-    word-break: break-all;
-}
 
 .tpma-th-title {
     white-space: nowrap;

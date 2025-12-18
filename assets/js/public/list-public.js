@@ -207,13 +207,15 @@ function renderTableBody() {
 
     return `
       <tr>
-        <td>${escTime}</td>
-        <td>${escCourseName}</td>
-        <td>${escLecturer}</td>
+        <td><div class="tpma-cell-wrap">${escTime}</div></td>
+        <td><div class="tpma-cell-wrap">${escCourseName}</div></td>
+        <td><div class="tpma-cell-wrap">${escLecturer}</div></td>
         <td>
-          <a href="${regUrl}" target="_blank" rel="noopener" class="tpma-reg-link tpma-btn">
-            線上報名
-          </a>
+          <div class="tpma-cell-wrap">
+            <a href="${regUrl}" target="_blank" rel="noopener" class="tpma-reg-link tpma-btn">
+              線上報名
+            </a>
+          </div>
         </td>
       </tr>
     `;

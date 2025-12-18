@@ -525,12 +525,19 @@ R.renderTable = function renderTable(ctx){
   tbody.innerHTML = '';
   if (selectAllHead) selectAllHead.checked = false;
 
+  if (ctx.state && ctx.state.isLoading) {
+    tbody.innerHTML = '<tr><td colspan="9">載入中...</td></tr>';
+    ctx.actions.updateBatchButtonsEnabled();
+    ctx.actions.updatePaginationControls();
+    return;
+  }
+
   const total = list.length;
   const totalPages = Math.max(1, Math.ceil(total / ctx.state.pageSize));
   if (ctx.state.currentPage > totalPages) ctx.state.currentPage = totalPages;
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="10">查無符合條件的報名資料。</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9">查無符合條件的報名資料。</td></tr>';
     ctx.actions.updateBatchButtonsEnabled();
     ctx.actions.updatePaginationControls();
     return;
@@ -545,7 +552,7 @@ R.renderTable = function renderTable(ctx){
     tr.dataset.id = row.id || '';
 
     const tdSel = document.createElement('td');
-    tdSel.innerHTML = '<input type="checkbox" class="tpma-reg-select">';
+    tdSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
     tr.appendChild(tdSel);
 
     const tdSeq = document.createElement('td');
@@ -585,9 +592,9 @@ R.renderTable = function renderTable(ctx){
     tdDate.innerHTML = '<div class="tpma-cell-wrap">'+classHtml+'</div>';
     tr.appendChild(tdDate);
 
-    const tdRemit = document.createElement('td');
+    /*const tdRemit = document.createElement('td');
     tdRemit.innerHTML = '<div class="tpma-cell-wrap">'+U.esc((row.remit_paid_at || '').substring(0,10))+'</div>';
-    tr.appendChild(tdRemit);
+    tr.appendChild(tdRemit);*/
 
     const tdStu = document.createElement('td');
     tdStu.innerHTML = '<div class="tpma-cell-wrap">'+U.esc(U.display(row.student_name))+'</div>';
@@ -598,11 +605,11 @@ R.renderTable = function renderTable(ctx){
     tr.appendChild(tdComp);
 
     const tdStatus = document.createElement('td');
-    tdStatus.innerHTML = R.buildStatusIconsHtml(ctx, row);
+    tdStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
     tr.appendChild(tdStatus);
 
     const tdAct = document.createElement('td');
-    tdAct.innerHTML = '<button class="tpma-btn tpma-view-btn">詳細</button>';
+    tdAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
     tr.appendChild(tdAct);
 
     tbody.appendChild(tr);
@@ -613,7 +620,7 @@ R.renderTable = function renderTable(ctx){
     trDetail.dataset.id = row.id || '';
     const tdDetail = document.createElement('td');
     tdDetail.className = 'tpma-reg-detail-cell';
-    tdDetail.colSpan = 10;
+    tdDetail.colSpan = 9;
     trDetail.appendChild(tdDetail);
     tbody.appendChild(trDetail);
 

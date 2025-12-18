@@ -37,32 +37,41 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">課程代碼</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_code" data-menu-target="menu-course_code">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-course_code">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-course_code" data-menu-col="course_code">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="course_code" data-sort-dir="asc">升冪排序</label>
-                            <label class="tpma-menu-options" data-sort-field="course_code" data-sort-dir="desc">降冪排序</label>
-                            <label class="tpma-menu-options" data-sort-field="" data-sort-dir="">清除排序</label>
-                        </div>
+                <div class="tpma-th-menu" id="menu-course_code">
+                    <div class="tpma-menu-section">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_code-asc">代碼↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_code-desc">代碼↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="course_code">清除</button>
                     </div>
+                </div>
             </th>
 
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">課程名稱</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_name" data-menu-target="menu-course_name">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-course_name">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-course_name" data-menu-col="course_name">
-                    <div class="tpma-menu-section">
-                        <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="asc">升冪排序</label>
-                        <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="desc">降冪排序</label>
-                    </div>
-                    <div class="tpma-menu-section">
+                <div class="tpma-th-menu" id="menu-course_name">
+                    <label>
+                        課程名稱篩選：
                         <select id="tpma-filter-course">
                             <option value="">全部課程名稱</option>
                         </select>
-                        <label class="tpma-menu-options" id="tpma-btn-clear-course">清除篩選</label>
+                    </label>
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-asc">名稱↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-desc">名稱↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="course_name">清除</button>
                     </div>
                 </div>
             </th>
@@ -70,18 +79,23 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">講師</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="lecturer" data-menu-target="menu-lecturer">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-lecturer">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-lecturer" data-menu-col="lecturer">
-                    <div class="tpma-menu-section">
-                        <label class="tpma-menu-options" data-sort-field="lecturer_code" data-sort-dir="asc">升冪排序</label>
-                        <label class="tpma-menu-options" data-sort-field="lecturer_code" data-sort-dir="desc">降冪排序</label>
-                    </div>
-                    <div class="tpma-menu-section">
+                <div class="tpma-th-menu" id="menu-lecturer">
+                    <label>
+                        講師篩選：
                         <select id="tpma-filter-lecturer">
                             <option value="">全部講師</option>
                         </select>
-                        <label class="tpma-menu-options" id="tpma-btn-clear-lecturer">清除篩選</label>
+                    </label>
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-asc">講師↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-desc">講師↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="lecturer">清除</button>
                     </div>
                 </div>
             </th>
@@ -89,34 +103,39 @@ $restNonce = wp_create_nonce( 'wp_rest' );
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">課程類別</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="category" data-menu-target="menu-category">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-category">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-category" data-menu-col="category">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="asc">升冪排序</label>
-                            <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="desc">降冪排序</label>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <select id="tpma-filter-category">
-                                <option value="">全部類別</option>
-                                <optgroup label="核心課程">
-                                    <option value="A1">董事的法律義務與責任</option>
-                                    <option value="A2">董事會的架構與運作</option>
-                                    <option value="A3">提升董事會績效</option>
-                                    <option value="A4">財務、會計</option>
-                                    <option value="A5">永續發展</option>
-                                </optgroup>
-                                <optgroup label="專業課程">
-                                    <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
-                                    <option value="B2">董事與股東會事務</option>
-                                    <option value="B3">公司所屬產業之業務、商務</option>
-                                    <option value="B4">風險管理、內部控制、數位治理</option>
-                                    <option value="B5">其他</option>
-                                </optgroup>
-                            </select>
-                            <label class="tpma-menu-options" id="tpma-btn-clear-category">清除篩選</label>
-                        </div>
+                <div class="tpma-th-menu" id="menu-category">
+                    <label>
+                        類別篩選：
+                        <select id="tpma-filter-category">
+                            <option value="">全部類別</option>
+                            <optgroup label="核心課程">
+                                <option value="A1">董事的法律義務與責任</option>
+                                <option value="A2">董事會的架構與運作</option>
+                                <option value="A3">提升董事會績效</option>
+                                <option value="A4">財務、會計</option>
+                                <option value="A5">永續發展</option>
+                            </optgroup>
+                            <optgroup label="專業課程">
+                                <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
+                                <option value="B2">董事與股東會事務</option>
+                                <option value="B3">公司所屬產業之業務、商務</option>
+                                <option value="B4">風險管理、內部控制、數位治理</option>
+                                <option value="B5">其他</option>
+                            </optgroup>
+                        </select>
+                    </label>
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="category-asc">類別↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="category-desc">類別↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="category">清除</button>
                     </div>
+                </div>
             </th>
 
             <th>操作</th>

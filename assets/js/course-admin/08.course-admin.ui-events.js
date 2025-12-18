@@ -121,36 +121,72 @@
       });
     };
 
-    (header.menuButtons || []).forEach(btn => {
-      btn.addEventListener('click', (e) => {
+    // ===== 表頭選單：開關 / 排序 / 清除 =====
+    document.addEventListener('click', e => {
+      const btn = e.target;
+      // 開啟/關閉欄位篩選選單
+      const menuTarget = btn.getAttribute('data-menu-target');
+      if (menuTarget) {
         e.stopPropagation();
-        const key = btn.getAttribute('data-menu-toggle');
-        const menu = document.querySelector('.tpma-th-menu[data-menu-col="' + key + '"]');
+        const menu = document.getElementById(menuTarget);
         if (!menu) return;
-        const open = menu.classList.contains('open');
-        closeAllMenus();
-        if (!open) menu.classList.add('open');
+
+        // 關閉其他開啟中的 menu
+        document.querySelectorAll('.tpma-th-menu.open').forEach(m => {
+          if (m !== menu) m.classList.remove('open');
+        });
+
+        menu.classList.toggle('open');
+        return;
+      }
+
+      // 排序
+      const sortKey = btn.getAttribute('data-sort');
+      if (sortKey) {
+        const [field, dir] = sortKey.split('-');
+        state.sort.field = field || '';
+        state.sort.dir = dir || 'asc';
+        ns.applyFilters();
+        return;
+      }
+
+      // 清除篩選
+      const clearKey = btn.getAttribute('data-clear');
+      if (clearKey) {
+        if (clearKey === 'course_code') {
+          state.sort.field = '';
+          state.sort.dir = 'asc';
+        } else if (clearKey === 'course_name') {
+          filters.course.value = '';
+          state.sort.field = '';
+          state.sort.dir = 'asc';
+        } else if (clearKey === 'lecturer') {
+          filters.lec.value = '';
+          state.sort.field = '';
+          state.sort.dir = 'asc';
+        } else if (clearKey === 'category') {
+          filters.cat.value = '';
+          state.sort.field = '';
+          state.sort.dir = 'asc';
+        }
+        ns.applyFilters();
+        return;
+      }
+    });
+
+    // 點擊表格外關閉所有篩選選單
+    document.addEventListener('click', e => {
+      const menus = document.querySelectorAll('.tpma-th-menu.open');
+      menus.forEach(menu => {
+        if (!menu.contains(e.target) && !isFilterButton(e.target)) {
+          menu.classList.remove('open');
+        }
       });
     });
 
-    document.addEventListener('click', (e) => {
-      const el = e.target;
-      const insideMenu = el.closest && el.closest('.tpma-th-menu');
-      const isMenuBtn = el.closest && el.closest('.tpma-th-menu-btn');
-      if (!insideMenu && !isMenuBtn) closeAllMenus();
-    });
-
-    document.addEventListener('click', (e) => {
-      const opt = e.target.closest && e.target.closest('[data-sort-field][data-sort-dir]');
-      if (!opt) return;
-      state.sort.field = opt.getAttribute('data-sort-field') || '';
-      state.sort.dir = opt.getAttribute('data-sort-dir') || 'asc';
-      ns.applyFilters();
-    });
-
-    if (header.clearCategory && filters.cat) header.clearCategory.addEventListener('click', () => { filters.cat.value = ''; ns.applyFilters(); });
-    if (header.clearCourse && filters.course) header.clearCourse.addEventListener('click', () => { filters.course.value = ''; ns.applyFilters(); });
-    if (header.clearLecturer && filters.lec) header.clearLecturer.addEventListener('click', () => { filters.lec.value = ''; ns.applyFilters(); });
+    function isFilterButton(el) {
+      return el.classList && el.classList.contains('tpma-th-menu-btn');
+    }
 
     // Modal 按鈕事件
     const lecturerModalBackdrop = document.getElementById('tpma-lecturer-backdrop');

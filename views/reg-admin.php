@@ -3,6 +3,15 @@ if (!defined('ABSPATH')) { exit; }
 
 $apiBase   = esc_url_raw( untrailingslashit( rest_url('tpma/v1') ) );
 $restNonce = wp_create_nonce( 'wp_rest' );
+
+if (!function_exists('tpma_cr_asset_ver')) {
+    function tpma_cr_asset_ver($relativePath) {
+        $relativePath = ltrim((string)$relativePath, '/\\');
+        $fullPath = (defined('TPMA_CR_PATH') ? TPMA_CR_PATH : '') . $relativePath;
+        $mtime = (is_string($fullPath) && $fullPath !== '' && file_exists($fullPath)) ? (string)filemtime($fullPath) : (defined('TPMA_CR_VERSION') ? (string)TPMA_CR_VERSION : '1');
+        return (defined('TPMA_CR_VERSION') ? (string)TPMA_CR_VERSION : '1') . '.' . $mtime;
+    }
+}
 ?>
 
 <?php
@@ -31,7 +40,7 @@ include __DIR__ . '/mail-modal.php';
     <table class="tpma-course-table tpma-reg-table tpma-table-shared">
         <thead>
         <tr>
-            <th style="width:26px;">
+            <th style="width:35px;">
                 <input type="checkbox" id="tpma-select-all-head">
             </th>
             <th class="tpma-seq-col">序</th>
@@ -40,159 +49,168 @@ include __DIR__ . '/mail-modal.php';
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">報名時間</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="created_at" data-menu-target="menu-created_at">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-created_at">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-created_at" data-menu-col="created_at">
-						<div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="created_at" data-sort-dir="asc">升冪排列</label>
-                            <label class="tpma-menu-options" data-sort-field="created_at" data-sort-dir="desc">降冪排列</label>
-                        </div>						
-						<div class="tpma-menu-section">
-							<div>
-								<label class="tpma-menu-options">
-									<input type="checkbox" id="tpma-filter-created-range" style="display: none;">
-									<span>範圍搜索</span>
-								</label>
-							</div>
-							
-							<!-- 單日模式 -->
-							<div id="tpma-created-single">
-								<input type="date" id="tpma-filter-created-single" list="tpma-created-date-list">
-								<datalist id="tpma-created-date-list"></datalist>
-							</div>
-
-							<!-- 範圍模式 -->
-							<div id="tpma-created-range" style="display:none;">
-								<input type="date" id="tpma-filter-created-from" placeholder="起日">
-								<input type="date" id="tpma-filter-created-to" placeholder="訖日">
-							</div>
-							<div class="tpma-menu-section">
-								<label class="tpma-menu-options" id="tpma-btn-clear-created">清除篩選</label>
-							</div>
-						</div>
+                <div class="tpma-th-menu" id="menu-created_at">
+                    <label>
+                        範圍篩選：
+                        <input type="checkbox" id="tpma-filter-created-range">
+                    </label>
+                    <!-- 單日模式 -->
+                    <div id="tpma-created-single">
+                        <input type="date" id="tpma-filter-created-single" list="tpma-created-date-list">
+                        <datalist id="tpma-created-date-list"></datalist>
                     </div>
+                    <!-- 範圍模式 -->
+                    <div id="tpma-created-range" style="display:none;">
+                        <input type="date" id="tpma-filter-created-from" placeholder="起日">
+                        <input type="date" id="tpma-filter-created-to" placeholder="訖日">
+                    </div>
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="created_at-asc">時間↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="created_at-desc">時間↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="created_at">清除</button>
+                    </div>
+                </div>
             </th>
 
             <!-- 課程名稱（hover 顯示講師） -->
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">課程名稱</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="course" data-menu-target="menu-course">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-course">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-course" data-menu-col="course">
-						<div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="asc">升冪排列</label>
-                            <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="desc">降冪排列</label>
-                        </div>						
-						<div class="tpma-menu-section">
-							<select id="tpma-filter-course">
-								<option value="">全部課程</option>
-							</select>
-							<label class="tpma-menu-options" id="tpma-btn-clear-course">清除篩選</label>
-						</div>
-
+                <div class="tpma-th-menu" id="menu-course">
+                    <label>
+                        課程篩選：
+                        <select id="tpma-filter-course">
+                            <option value="">全部課程</option>
+                        </select>
+                    </label>
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-asc">名稱↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-desc">名稱↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="course">清除</button>
                     </div>
+                </div>
             </th>
 
             <!-- 授課日期時間（顯示日期＋起迄時間） -->
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">授課日期</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="class_date" data-menu-target="menu-class_date">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-class_date">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-class_date" data-menu-col="class_date">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="class_date" data-sort-dir="asc">升冪排列</label>
-                            <label class="tpma-menu-options" data-sort-field="class_date" data-sort-dir="desc">降冪排列</label>
-                        </div>						
-						<div class="tpma-menu-section">
-							<label class="tpma-menu-options">
-								<input type="checkbox" id="tpma-filter-class-range">
-								<span>範圍搜索</span>	
-							</label>
-							<!-- 單日模式 -->
-							<div id="tpma-class-single">
-								<input type="date" id="tpma-filter-class-single" list="tpma-class-date-list">
-								<datalist id="tpma-class-date-list"></datalist>
-							</div>
-							<!-- 範圍模式 -->
-							<div id="tpma-class-range" style="display:none;">
-								<input type="date" id="tpma-filter-class-from" placeholder="起日">
-								<input type="date" id="tpma-filter-class-to" placeholder="訖日">
-							</div>
-
-							<label class="tpma-menu-options" id="tpma-btn-clear-class-date">清除篩選</label>
-						</div>
-
+                <div class="tpma-th-menu" id="menu-class_date">
+                    <label>
+                        範圍篩選：
+                        <input type="checkbox" id="tpma-filter-class-range">
+                    </label>
+                    <!-- 單日模式 -->
+                    <div id="tpma-class-single">
+                        <input type="date" id="tpma-filter-class-single" list="tpma-class-date-list">
+                        <datalist id="tpma-class-date-list"></datalist>
                     </div>
+                    <!-- 範圍模式 -->
+                    <div id="tpma-class-range" style="display:none;">
+                        <input type="date" id="tpma-filter-class-from" placeholder="起日">
+                        <input type="date" id="tpma-filter-class-to" placeholder="訖日">
+                    </div>
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="class_date-asc">日期↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="class_date-desc">日期↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="class_date">清除</button>
+                    </div>
+                </div>
             </th>
 
-            <!-- 匯款日期 -->
+            <!-- 匯款日期 
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">匯款日期</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="remit_paid_at" data-menu-target="menu-remit_paid_at">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-remit_paid_at">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-remit_paid_at" data-menu-col="remit_paid_at">
-						<div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="remit_paid_at" data-sort-dir="asc">升冪排列</label>
-                            <label class="tpma-menu-options" data-sort-field="remit_paid_at" data-sort-dir="desc">降冪排列</label>
-                        </div>						
-						<div class="tpma-menu-section">
-							<label class="tpma-menu-options">
-								<input type="checkbox" id="tpma-filter-remit-range">
-								<span>範圍搜索</span>
-							</label>
-
-							<!-- 單日模式 -->
-							<div id="tpma-remit-single">
-								<input type="date" id="tpma-filter-remit-single" list="tpma-remit-date-list">
-								<datalist id="tpma-remit-date-list"></datalist>
-							</div>
-
-							<!-- 範圍模式 -->
-							<div id="tpma-remit-range" style="display:none;">
-								<input type="date" id="tpma-filter-remit-from" placeholder="起日">
-								<input type="date" id="tpma-filter-remit-to" placeholder="訖日">
-							</div>
-
-							<label class="tpma-menu-options" class="tpma-btn" id="tpma-btn-clear-remit">清除篩選</label>
-						</div>
-
-                        <div class="tpma-menu-section">
-                            <label>批次修改匯款日期</label>
-                            <input type="date" id="tpma-batch-remit-date" class="tpma-batch-input">
-                            <button class="tpma-btn tpma-batch-btn" data-batch-field="remit_paid_at">套用批次設定</button>
-                        </div>
+                <div class="tpma-th-menu" id="menu-remit_paid_at">
+                    <label>
+                        範圍篩選：
+                        <input type="checkbox" id="tpma-filter-remit-range">
+                    </label>
+                    <-- 單日模式 --
+                    <div id="tpma-remit-single">
+                        <input type="date" id="tpma-filter-remit-single" list="tpma-remit-date-list">
+                        <datalist id="tpma-remit-date-list"></datalist>
                     </div>
+                    <-- 範圍模式 --
+                    <div id="tpma-remit-range" style="display:none;">
+                        <input type="date" id="tpma-filter-remit-from" placeholder="起日">
+                        <input type="date" id="tpma-filter-remit-to" placeholder="訖日">
+                    </div>
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="remit_paid_at-asc">日期↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="remit_paid_at-desc">日期↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="remit_paid_at">清除</button>
+                    </div>
+                    <div class="tpma-menu-section">
+                        <label>批次修改匯款日期</label>
+                        <input type="date" id="tpma-batch-remit-date" class="tpma-batch-input">
+                        <button class="tpma-btn tpma-batch-btn" data-batch-field="remit_paid_at">套用批次設定</button>
+                    </div>
+                </div>
             </th>
+        -->
 
             <!-- 學員姓名 -->
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">學員姓名</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="student_name" data-menu-target="menu-student_name">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-student_name">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-student_name" data-menu-col="student_name">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="student_name" data-sort-dir="asc">升冪排列</label>
-                            <label class="tpma-menu-options" data-sort-field="student_name" data-sort-dir="desc">降冪排列</label>
-                        </div>
+                <div class="tpma-th-menu" id="menu-student_name">
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="student_name-asc">姓名↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="student_name-desc">姓名↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="student_name">清除</button>
                     </div>
+                </div>
             </th>
 
             <!-- 公司抬頭 -->
             <th>
                 <div class="tpma-th-inner">
                     <span class="tpma-th-title">公司抬頭</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="company_name" data-menu-target="menu-company_name">▾</button>
+                    <button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-company_name">
+                        ▼ 
+                    </button>
                 </div>
-                <div class="tpma-th-menu" id="menu-company_name" data-menu-col="company_name">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="company_name" data-sort-dir="asc">升冪排列</label>
-                            <label class="tpma-menu-options" data-sort-field="company_name" data-sort-dir="desc">降冪排列</label>
-                        </div>
+                <div class="tpma-th-menu" id="menu-company_name">
+                    <div class="tpma-th-menu-actions">
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="company_name-asc">公司↑</button>
+                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="company_name-desc">公司↓</button>
+                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="company_name">清除</button>
                     </div>
+                </div>
             </th>
 
             <!-- 付款狀態 (WooCommerce) -->
@@ -200,9 +218,13 @@ include __DIR__ . '/mail-modal.php';
 			<th>
 				<div class="tpma-th-inner">
 					<span class="tpma-th-title">狀態</span>
-					<button class="tpma-th-menu-btn" data-menu-toggle="status" data-menu-target="menu-status">▾</button>
+					<button type="button"
+                            class="tpma-th-menu-btn"
+                            data-menu-target="menu-status">
+                        ▼ 
+                    </button>
 				</div>
-					<div class="tpma-th-menu" id="menu-status" data-menu-col="status">
+					<div class="tpma-th-menu" id="menu-status">
 						<h4>狀態篩選</h4>
 
                         <div class="tpma-menu-section">
@@ -303,7 +325,7 @@ include __DIR__ . '/mail-modal.php';
         </tr>
         </thead>
         <tbody id="tpma-reg-tbody">
-        <tr><td colspan="10">載入中...</td></tr>
+        <tr><td colspan="9">載入中...</td></tr>
         </tbody>
     </table>
 
@@ -322,15 +344,14 @@ window.TPMARegAdminConfig = <?php echo wp_json_encode(array(
     'orderEditBase' => admin_url('post.php?post='),
 )); ?>;
 </script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/00.tpma-datetime.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/01.tpma-public.utils.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/02.tpma-public.api.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/01.reg-admin.utils.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/02.reg-admin.labels.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/03.reg-admin.api.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/04.reg-admin.state.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/05.reg-admin.render.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/06.reg-admin.ui-events.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/07.reg-admin.core.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/08.reg-admin-init.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
-<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin-init.js?ver=' . TPMA_CR_VERSION ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/00.tpma-datetime.js?ver=' . tpma_cr_asset_ver('assets/js/public/00.tpma-datetime.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/01.tpma-public.utils.js?ver=' . tpma_cr_asset_ver('assets/js/public/01.tpma-public.utils.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/02.tpma-public.api.js?ver=' . tpma_cr_asset_ver('assets/js/public/02.tpma-public.api.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/01.reg-admin.utils.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/01.reg-admin.utils.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/02.reg-admin.labels.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/02.reg-admin.labels.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/03.reg-admin.api.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/03.reg-admin.api.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/04.reg-admin.state.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/04.reg-admin.state.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/05.reg-admin.render.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/05.reg-admin.render.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/06.reg-admin.ui-events.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/06.reg-admin.ui-events.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/07.reg-admin.core.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/07.reg-admin.core.js') ); ?>"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/08.reg-admin-init.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/08.reg-admin-init.js') ); ?>"></script>

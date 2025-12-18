@@ -91,23 +91,23 @@
       tr.dataset.id = c.id || '';
 
       const tdCode = document.createElement('td');
-      tdCode.textContent = showText(c.course_code);
+      tdCode.innerHTML = '<div class="tpma-cell-wrap">' + showText(c.course_code) + '</div>';
       tr.appendChild(tdCode);
 
       const tdName = document.createElement('td');
-      tdName.textContent = showText(c.course_name);
+      tdName.innerHTML = '<div class="tpma-cell-wrap">' + showText(c.course_name) + '</div>';
       tr.appendChild(tdName);
 
       const tdLec = document.createElement('td');
-      tdLec.textContent = showText(lecLabel(c));
+      tdLec.innerHTML = '<div class="tpma-cell-wrap">' + showText(lecLabel(c)) + '</div>';
       tr.appendChild(tdLec);
 
       const tdCat = document.createElement('td');
-      tdCat.textContent = showText(catLabel(c));
+      tdCat.innerHTML = '<div class="tpma-cell-wrap">' + showText(catLabel(c)) + '</div>';
       tr.appendChild(tdCat);
 
       const tdAct = document.createElement('td');
-      tdAct.innerHTML = '<button type="button" class="tpma-btn tpma-view-btn">詳細</button>';
+      tdAct.innerHTML = '<div class="tpma-cell-wrap"><button type="button" class="tpma-btn tpma-view-btn">詳細</button></div>';
       tr.appendChild(tdAct);
 
       tbody.appendChild(tr);

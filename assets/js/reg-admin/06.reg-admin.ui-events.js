@@ -103,31 +103,30 @@ UI.updatePaginationControls = function updatePaginationControls(ctx){
 };
 
 UI.updateFilterButtonStates = function updateFilterButtonStates(ctx){
-  const btnCreated = document.querySelector('.tpma-th-menu-btn[data-menu-toggle="created_at"]');
-  const btnCourse  = document.querySelector('.tpma-th-menu-btn[data-menu-toggle="course"]');
-  const btnClass   = document.querySelector('.tpma-th-menu-btn[data-menu-toggle="class_date"]');
-  const btnRemit   = document.querySelector('.tpma-th-menu-btn[data-menu-toggle="remit_paid_at"]');
-  const btnStatus  = document.querySelector('.tpma-th-menu-btn[data-menu-toggle="status"]');
-  const btnReceipt = document.querySelector('.tpma-th-menu-btn[data-menu-toggle="receipt_status"]');
-  const btnPaymentWC = document.querySelector('.tpma-th-menu-btn[data-menu-toggle="payment_status"]');
-
   const f = ctx.state.filter;
   const hasCreated = !!(f.created_from || f.created_to);
   const hasCourse  = !!f.course_id;
-  const hasClass   = !!f.class_date;
+  const hasClass   = !!(f.class_date || f.class_date_from || f.class_date_to);
   const hasRemit   = !!(f.remit_from || f.remit_to);
   const hasStatus  = !!f.status;
   const hasReceipt = !!(f.receipt_status || f.receipt_type);
   const hasPaymentWC = !!f.payment_status;
   const hasTestState = !!f.test_state;
 
-  if (btnCreated) btnCreated.classList.toggle('tpma-filter-active', hasCreated);
-  if (btnCourse) btnCourse.classList.toggle('tpma-filter-active', hasCourse);
-  if (btnClass) btnClass.classList.toggle('tpma-filter-active', hasClass);
-  if (btnRemit) btnRemit.classList.toggle('tpma-filter-active', hasRemit);
-  if (btnStatus) btnStatus.classList.toggle('tpma-filter-active', hasStatus || hasReceipt || hasPaymentWC || hasTestState);
-  if (btnReceipt) btnReceipt.classList.toggle('tpma-filter-active', hasReceipt);
-  if (btnPaymentWC) btnPaymentWC.classList.toggle('tpma-filter-active', hasPaymentWC);
+  // Update menu button active states based on filters or sort
+  document.querySelectorAll('.tpma-th-menu-btn').forEach(btn => {
+    const menuTarget = btn.getAttribute('data-menu-target');
+    let isActive = false;
+    if (menuTarget === 'menu-created_at') isActive = hasCreated;
+    else if (menuTarget === 'menu-course') isActive = hasCourse || (ctx.state.sort.field === 'course_name');
+    else if (menuTarget === 'menu-class_date') isActive = hasClass || (ctx.state.sort.field === 'class_date');
+    else if (menuTarget === 'menu-remit_paid_at') isActive = hasRemit || (ctx.state.sort.field === 'remit_paid_at');
+    else if (menuTarget === 'menu-student_name') isActive = (ctx.state.sort.field === 'student_name');
+    else if (menuTarget === 'menu-company_name') isActive = (ctx.state.sort.field === 'company_name');
+    else if (menuTarget === 'menu-status') isActive = hasStatus || hasReceipt || hasPaymentWC || hasTestState || (ctx.state.sort.field === 'status'); // Assuming 'status' sort field if needed
+
+    btn.classList.toggle('tpma-filter-active', isActive);
+  });
 };
 
 UI.applyFiltersAndRender = function applyFiltersAndRender(ctx){
@@ -138,17 +137,27 @@ UI.applyFiltersAndRender = function applyFiltersAndRender(ctx){
 };
 
 UI.refreshFromServer = async function refreshFromServer(ctx){
-  ctx.dom.tbody.innerHTML = '<tr><td colspan="10">載入中...</td></tr>';
+  ctx.state.isLoading = true;
+  R.renderTable(ctx);
   try{
     const list = await API.loadRegistrations(ctx);
-    ctx.data.allRegs = list;
-    ctx.data.allRegs = Array.isArray(ctx.data.allRegs) ? ctx.data.allRegs : [];
+    ctx.data.allRegs = Array.isArray(list) ? list : [];
     ctx.state.currentPage = 1;
-    UI.applyFiltersAndRender(ctx);
   }catch(e){
     console.error(e);
-    ctx.dom.tbody.innerHTML = '<tr><td colspan="10">載入失敗</td></tr>';
+    ctx.data.allRegs = [];
+    ctx.data.currentRegs = [];
+    ctx.state.currentPage = 1;
+    ctx.state.isLoading = false;
+    ctx.dom.tbody.innerHTML = '<tr><td colspan="9">載入失敗</td></tr>';
+    ctx.actions.updateBatchButtonsEnabled();
+    ctx.actions.updatePaginationControls();
+    return;
+  }finally{
+    ctx.state.isLoading = false;
   }
+
+  UI.applyFiltersAndRender(ctx);
 };
 
 UI.applyBatch = async function applyBatch(ctx, field, value){
@@ -183,45 +192,132 @@ UI.applyBatch = async function applyBatch(ctx, field, value){
 };
 
 UI.bind = function bind(ctx){
-  // header menu toggle
-  let openMenuCol = null;
-  function closeAllMenus(){
-    document.querySelectorAll('.tpma-th-menu').forEach(m=> {
-      m.classList.remove('open');
-      m.style.display = 'none';
-    });
-    openMenuCol=null;
-  }
-  document.querySelectorAll('.tpma-th-menu-btn').forEach(btn=>{
-    btn.addEventListener('click', function(e){
-      e.stopPropagation();
-      const col = this.getAttribute('data-menu-toggle');
-      if (!col) return;
-      const menu = document.querySelector('.tpma-th-menu[data-menu-col="'+col+'"]');
-      if (!menu) return;
-      if (openMenuCol === col) {
+  // header menu toggle, sort, and clear filters
+  document.addEventListener('click', e => {
+    const btn = e.target.closest ? e.target.closest('.tpma-th-menu-btn, [data-sort], [data-clear]') : e.target;
+    // 開啟/關閉欄位篩選選單
+    const menuTarget = btn && btn.getAttribute ? btn.getAttribute('data-menu-target') : null;
+if (menuTarget) {
+  e.preventDefault();
+  e.stopImmediatePropagation(); // ← 原本是 e.stopPropagation()
+
+  const menu = document.getElementById(menuTarget);
+  if (!menu) return;
+
+  document.querySelectorAll('.tpma-th-menu.open').forEach(m => {
+    if (m !== menu) m.classList.remove('open');
+  });
+
+  menu.classList.toggle('open');
+  return;
+}
+
+    // 排序
+    const sortKey = btn && btn.getAttribute ? btn.getAttribute('data-sort') : null;
+    if (sortKey) {
+      const [field, dir] = sortKey.split('-');
+      ctx.state.sort.field = field || '';
+      ctx.state.sort.dir = dir || 'asc';
+      UI.applyFiltersAndRender(ctx);
+      return;
+    }
+
+    // 清除篩選
+    const clearKey = btn && btn.getAttribute ? btn.getAttribute('data-clear') : null;
+    if (clearKey) {
+      if (clearKey === 'created_at') {
+        ctx.state.filter.created_from = '';
+        ctx.state.filter.created_to = '';
+        const $createdSingle = document.getElementById('tpma-filter-created-single');
+        const $createdFrom = document.getElementById('tpma-filter-created-from');
+        const $createdTo = document.getElementById('tpma-filter-created-to');
+        const $createdRangeCheck = document.getElementById('tpma-filter-created-range');
+        const $createdSingleWrap = document.getElementById('tpma-created-single');
+        const $createdRangeWrap = document.getElementById('tpma-created-range');
+        if ($createdSingle) $createdSingle.value = '';
+        if ($createdFrom) $createdFrom.value = '';
+        if ($createdTo) $createdTo.value = '';
+        if ($createdRangeCheck) $createdRangeCheck.checked = false;
+        if ($createdSingleWrap) $createdSingleWrap.style.display = '';
+        if ($createdRangeWrap) $createdRangeWrap.style.display = 'none';
+      } else if (clearKey === 'course') {
+        ctx.state.filter.course_id = '';
+        const $course = document.getElementById('tpma-filter-course');
+        if ($course) $course.value = '';
+      } else if (clearKey === 'class_date') {
+        ctx.state.filter.class_date = '';
+        ctx.state.filter.class_date_from = '';
+        ctx.state.filter.class_date_to = '';
+        const $classSingle = document.getElementById('tpma-filter-class-single');
+        const $classFrom = document.getElementById('tpma-filter-class-from');
+        const $classTo = document.getElementById('tpma-filter-class-to');
+        const $classRangeCheck = document.getElementById('tpma-filter-class-range');
+        const $classSingleWrap = document.getElementById('tpma-class-single');
+        const $classRangeWrap = document.getElementById('tpma-class-range');
+        if ($classSingle) $classSingle.value = '';
+        if ($classFrom) $classFrom.value = '';
+        if ($classTo) $classTo.value = '';
+        if ($classRangeCheck) $classRangeCheck.checked = false;
+        if ($classSingleWrap) $classSingleWrap.style.display = '';
+        if ($classRangeWrap) $classRangeWrap.style.display = 'none';
+      } else if (clearKey === 'remit_paid_at') {
+        ctx.state.filter.remit_from = '';
+        ctx.state.filter.remit_to = '';
+        const $remitSingle = document.getElementById('tpma-filter-remit-single');
+        const $remitFrom = document.getElementById('tpma-filter-remit-from');
+        const $remitTo = document.getElementById('tpma-filter-remit-to');
+        const $remitRangeCheck = document.getElementById('tpma-filter-remit-range');
+        const $remitSingleWrap = document.getElementById('tpma-remit-single');
+        const $remitRangeWrap = document.getElementById('tpma-remit-range');
+        if ($remitSingle) $remitSingle.value = '';
+        if ($remitFrom) $remitFrom.value = '';
+        if ($remitTo) $remitTo.value = '';
+        if ($remitRangeCheck) $remitRangeCheck.checked = false;
+        if ($remitSingleWrap) $remitSingleWrap.style.display = '';
+        if ($remitRangeWrap) $remitRangeWrap.style.display = 'none';
+      } else if (clearKey === 'student_name') {
+        // No specific filter input for student_name, only sort
+        ctx.state.sort.field = '';
+        ctx.state.sort.dir = 'asc';
+      } else if (clearKey === 'company_name') {
+        // No specific filter input for company_name, only sort
+        ctx.state.sort.field = '';
+        ctx.state.sort.dir = 'asc';
+      } else if (clearKey === 'status') {
+        ctx.state.filter.status = '';
+        ctx.state.filter.receipt_status = '';
+        ctx.state.filter.receipt_type = '';
+        ctx.state.filter.payment_status = '';
+        ctx.state.filter.test_state = '';
+        const $status = document.getElementById('tpma-filter-status');
+        const $receiptStat = document.getElementById('tpma-filter-receipt-status');
+        const $receiptType = document.getElementById('tpma-filter-receipt-type');
+        const $paymentStatusEl = document.getElementById('tpma-filter-payment-status');
+        const $testFilter = document.getElementById('tpma-filter-test');
+        if ($status) $status.value = '';
+        if ($receiptStat) $receiptStat.value = '';
+        if ($receiptType) $receiptType.value = '';
+        if ($paymentStatusEl) $paymentStatusEl.value = '';
+        if ($testFilter) $testFilter.value = '';
+      }
+      UI.applyFiltersAndRender(ctx);
+      return;
+    }
+  });
+
+  // 點擊表格外關閉所有篩選選單
+  document.addEventListener('click', e => {
+    const isMenuBtn = !!(e.target.closest && e.target.closest('.tpma-th-menu-btn'));
+    document.querySelectorAll('.tpma-th-menu.open').forEach(menu => {
+      if (!menu.contains(e.target) && !isMenuBtn) {
         menu.classList.remove('open');
-        menu.style.display='none';
-        openMenuCol=null;
-      } else {
-        closeAllMenus();
-        menu.classList.add('open');
-        menu.style.display='block';
-        openMenuCol=col;
       }
     });
   });
-  document.addEventListener('click', function(e){
-    if (!e.target.closest('.tpma-th-menu') && !e.target.closest('.tpma-th-menu-btn')) closeAllMenus();
-  });
 
-  document.querySelectorAll('.tpma-th-menu [data-sort-field]').forEach(btn=>{
-    btn.addEventListener('click', function(){
-      ctx.state.sort.field = this.getAttribute('data-sort-field');
-      ctx.state.sort.dir = this.getAttribute('data-sort-dir');
-      UI.applyFiltersAndRender(ctx);
-    });
-  });
+  function isFilterButton(el) {
+    return Array.from(ctx.dom.menuButtons).some(btn => btn.contains(el));
+  }
 
   // keyword
   const $q = document.getElementById('tpma-filter-q');
@@ -237,12 +333,7 @@ UI.bind = function bind(ctx){
     ctx.state.filter.course_id = $course.value || '';
     UI.applyFiltersAndRender(ctx);
   });
-  const clearCourse = document.getElementById('tpma-btn-clear-course');
-  if (clearCourse) clearCourse.addEventListener('click', function(){
-    ctx.state.filter.course_id = '';
-    if ($course) $course.value='';
-    UI.applyFiltersAndRender(ctx);
-  });
+  // Clear button for course filter is now handled by data-clear="course"
 
   // created single/range
   const $createdSingle = document.getElementById('tpma-filter-created-single');
@@ -273,18 +364,7 @@ UI.bind = function bind(ctx){
     if ($createdRangeWrap) $createdRangeWrap.style.display = range ? '' : 'none';
     updateCreatedFilter();
   });
-  const clearCreated = document.getElementById('tpma-btn-clear-created');
-  if (clearCreated) clearCreated.addEventListener('click', function(){
-    ctx.state.filter.created_from='';
-    ctx.state.filter.created_to='';
-    if ($createdSingle) $createdSingle.value='';
-    if ($createdFrom) $createdFrom.value='';
-    if ($createdTo) $createdTo.value='';
-    if ($createdRangeCheck) $createdRangeCheck.checked=false;
-    if ($createdSingleWrap) $createdSingleWrap.style.display='';
-    if ($createdRangeWrap) $createdRangeWrap.style.display='none';
-    UI.applyFiltersAndRender(ctx);
-  });
+  // Clear button for created filter is now handled by data-clear="created_at"
 
   // remit single/range
   const $remitSingle = document.getElementById('tpma-filter-remit-single');
@@ -315,18 +395,7 @@ UI.bind = function bind(ctx){
     if ($remitRangeWrap) $remitRangeWrap.style.display = range ? '' : 'none';
     updateRemitFilter();
   });
-  const clearRemit = document.getElementById('tpma-btn-clear-remit');
-  if (clearRemit) clearRemit.addEventListener('click', function(){
-    ctx.state.filter.remit_from='';
-    ctx.state.filter.remit_to='';
-    if ($remitSingle) $remitSingle.value='';
-    if ($remitFrom) $remitFrom.value='';
-    if ($remitTo) $remitTo.value='';
-    if ($remitRangeCheck) $remitRangeCheck.checked=false;
-    if ($remitSingleWrap) $remitSingleWrap.style.display='';
-    if ($remitRangeWrap) $remitRangeWrap.style.display='none';
-    UI.applyFiltersAndRender(ctx);
-  });
+  // Clear button for remit filter is now handled by data-clear="remit_paid_at"
 
   // class date single/range
   const $classSingle = document.getElementById('tpma-filter-class-single');
@@ -359,19 +428,7 @@ UI.bind = function bind(ctx){
     if ($classRangeWrap) $classRangeWrap.style.display = range ? '' : 'none';
     updateClassDateFilter();
   });
-  const clearClass = document.getElementById('tpma-btn-clear-class-date');
-  if (clearClass) clearClass.addEventListener('click', function(){
-    ctx.state.filter.class_date='';
-    ctx.state.filter.class_date_from='';
-    ctx.state.filter.class_date_to='';
-    if ($classSingle) $classSingle.value='';
-    if ($classFrom) $classFrom.value='';
-    if ($classTo) $classTo.value='';
-    if ($classRangeCheck) $classRangeCheck.checked=false;
-    if ($classSingleWrap) $classSingleWrap.style.display='';
-    if ($classRangeWrap) $classRangeWrap.style.display='none';
-    UI.applyFiltersAndRender(ctx);
-  });
+  // Clear button for class date filter is now handled by data-clear="class_date"
 
   // status/receipt/payment/test filters
   const $status = document.getElementById('tpma-filter-status');
