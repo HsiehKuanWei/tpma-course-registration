@@ -261,6 +261,7 @@ body {
     border-radius:4px;
     cursor:pointer;
     transition:background-color 0.15s ease;
+    flex-wrap:wrap;
 }
 .tpma-th-menu label:hover { background:var(--tpma-light-gray); }
 .tpma-th-menu input[type="date"],
