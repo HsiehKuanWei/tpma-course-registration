@@ -186,7 +186,10 @@ UI.bind = function bind(ctx){
   // header menu toggle
   let openMenuCol = null;
   function closeAllMenus(){
-    document.querySelectorAll('.tpma-th-menu').forEach(m=> m.style.display='none');
+    document.querySelectorAll('.tpma-th-menu').forEach(m=> {
+      m.classList.remove('open');
+      m.style.display = 'none';
+    });
     openMenuCol=null;
   }
   document.querySelectorAll('.tpma-th-menu-btn').forEach(btn=>{
@@ -196,8 +199,16 @@ UI.bind = function bind(ctx){
       if (!col) return;
       const menu = document.querySelector('.tpma-th-menu[data-menu-col="'+col+'"]');
       if (!menu) return;
-      if (openMenuCol === col) { menu.style.display='none'; openMenuCol=null; }
-      else { closeAllMenus(); menu.style.display='block'; openMenuCol=col; }
+      if (openMenuCol === col) {
+        menu.classList.remove('open');
+        menu.style.display='none';
+        openMenuCol=null;
+      } else {
+        closeAllMenus();
+        menu.classList.add('open');
+        menu.style.display='block';
+        openMenuCol=col;
+      }
     });
   });
   document.addEventListener('click', function(e){

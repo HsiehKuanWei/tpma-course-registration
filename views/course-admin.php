@@ -31,66 +31,67 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         </span>
     </div>
 
-    <table class="tpma-course-table" id="tpma-course-table">
+    <table class="tpma-course-table tpma-table-shared" id="tpma-course-table">
         <thead>
         <tr>
             <th>
                 <div class="tpma-th-inner">
-                    <span>課程代碼</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_code">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="course_code">
+                    <span class="tpma-th-title">課程代碼</span>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_code" data-menu-target="menu-course_code">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-course_code" data-menu-col="course_code">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="course_code" data-sort-dir="asc">升冪排序</label>
                             <label class="tpma-menu-options" data-sort-field="course_code" data-sort-dir="desc">降冪排序</label>
                             <label class="tpma-menu-options" data-sort-field="" data-sort-dir="">清除排序</label>
                         </div>
                     </div>
-                </div>
             </th>
 
             <th>
                 <div class="tpma-th-inner">
-                    <span>課程名稱</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_name">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="course_name">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="asc">升冪排序</label>
-                            <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="desc">降冪排序</label>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <select id="tpma-filter-course">
-                                <option value="">全部課程名稱</option>
-                            </select>
-                            <label class="tpma-menu-options" id="tpma-btn-clear-course">清除篩選</label>
-                        </div>
+                    <span class="tpma-th-title">課程名稱</span>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="course_name" data-menu-target="menu-course_name">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-course_name" data-menu-col="course_name">
+                    <div class="tpma-menu-section">
+                        <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="asc">升冪排序</label>
+                        <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="desc">降冪排序</label>
+                    </div>
+                    <div class="tpma-menu-section">
+                        <select id="tpma-filter-course">
+                            <option value="">全部課程名稱</option>
+                        </select>
+                        <label class="tpma-menu-options" id="tpma-btn-clear-course">清除篩選</label>
                     </div>
                 </div>
             </th>
 
             <th>
                 <div class="tpma-th-inner">
-                    <span>講師</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="lecturer">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="lecturer">
-                        <div class="tpma-menu-section">
-                            <label class="tpma-menu-options" data-sort-field="lecturer_code" data-sort-dir="asc">升冪排序</label>
-                            <label class="tpma-menu-options" data-sort-field="lecturer_code" data-sort-dir="desc">降冪排序</label>
-                        </div>
-                        <div class="tpma-menu-section">
-                            <select id="tpma-filter-lecturer">
-                                <option value="">全部講師</option>
-                            </select>
-                            <label class="tpma-menu-options" id="tpma-btn-clear-lecturer">清除篩選</label>
-                        </div>
+                    <span class="tpma-th-title">講師</span>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="lecturer" data-menu-target="menu-lecturer">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-lecturer" data-menu-col="lecturer">
+                    <div class="tpma-menu-section">
+                        <label class="tpma-menu-options" data-sort-field="lecturer_code" data-sort-dir="asc">升冪排序</label>
+                        <label class="tpma-menu-options" data-sort-field="lecturer_code" data-sort-dir="desc">降冪排序</label>
+                    </div>
+                    <div class="tpma-menu-section">
+                        <select id="tpma-filter-lecturer">
+                            <option value="">全部講師</option>
+                        </select>
+                        <label class="tpma-menu-options" id="tpma-btn-clear-lecturer">清除篩選</label>
                     </div>
                 </div>
             </th>
             
             <th>
                 <div class="tpma-th-inner">
-                    <span>課程類別</span>
-                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="category">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="category">
+                    <span class="tpma-th-title">課程類別</span>
+                    <button class="tpma-th-menu-btn" type="button" data-menu-toggle="category" data-menu-target="menu-category">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-category" data-menu-col="category">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="asc">升冪排序</label>
                             <label class="tpma-menu-options" data-sort-field="category_code" data-sort-dir="desc">降冪排序</label>
@@ -116,7 +117,6 @@ $restNonce = wp_create_nonce( 'wp_rest' );
                             <label class="tpma-menu-options" id="tpma-btn-clear-category">清除篩選</label>
                         </div>
                     </div>
-                </div>
             </th>
 
             <th>操作</th>

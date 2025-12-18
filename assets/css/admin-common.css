@@ -154,6 +154,7 @@ body {
     text-align:left;
     text-transform:uppercase;
     font-size:13px;
+    position:relative; /* anchor header dropdowns */
 }
 .tpma-reg-table tbody tr:hover,
 .tpma-course-table tbody tr:hover {

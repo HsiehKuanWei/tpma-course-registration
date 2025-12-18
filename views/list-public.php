@@ -13,7 +13,7 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
     <div class="tpma-status" id="tpma-status">載入課程中...</div>
   </div>
 
-  <table class="tpma-course-table">
+  <table class="tpma-course-table tpma-table-shared">
     <thead>
       <tr>
         <!-- 授課時間 -->

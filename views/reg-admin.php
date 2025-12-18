@@ -28,7 +28,7 @@ include __DIR__ . '/mail-modal.php';
     信件模板設定
 </button>
 
-    <table class="tpma-reg-table">
+    <table class="tpma-course-table tpma-reg-table tpma-table-shared">
         <thead>
         <tr>
             <th style="width:26px;">
@@ -39,9 +39,10 @@ include __DIR__ . '/mail-modal.php';
             <!-- 報名時間 -->
             <th>
                 <div class="tpma-th-inner">
-                    <span>報名時間</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="created_at">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="created_at">
+                    <span class="tpma-th-title">報名時間</span>
+                    <button class="tpma-th-menu-btn" data-menu-toggle="created_at" data-menu-target="menu-created_at">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-created_at" data-menu-col="created_at">
 						<div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="created_at" data-sort-dir="asc">升冪排列</label>
                             <label class="tpma-menu-options" data-sort-field="created_at" data-sort-dir="desc">降冪排列</label>
@@ -70,15 +71,15 @@ include __DIR__ . '/mail-modal.php';
 							</div>
 						</div>
                     </div>
-                </div>
             </th>
 
             <!-- 課程名稱（hover 顯示講師） -->
             <th>
                 <div class="tpma-th-inner">
-                    <span>課程名稱</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="course">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="course">
+                    <span class="tpma-th-title">課程名稱</span>
+                    <button class="tpma-th-menu-btn" data-menu-toggle="course" data-menu-target="menu-course">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-course" data-menu-col="course">
 						<div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="asc">升冪排列</label>
                             <label class="tpma-menu-options" data-sort-field="course_name" data-sort-dir="desc">降冪排列</label>
@@ -91,15 +92,15 @@ include __DIR__ . '/mail-modal.php';
 						</div>
 
                     </div>
-                </div>
             </th>
 
             <!-- 授課日期時間（顯示日期＋起迄時間） -->
             <th>
                 <div class="tpma-th-inner">
-                    <span>授課日期</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="class_date">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="class_date">
+                    <span class="tpma-th-title">授課日期</span>
+                    <button class="tpma-th-menu-btn" data-menu-toggle="class_date" data-menu-target="menu-class_date">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-class_date" data-menu-col="class_date">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="class_date" data-sort-dir="asc">升冪排列</label>
                             <label class="tpma-menu-options" data-sort-field="class_date" data-sort-dir="desc">降冪排列</label>
@@ -124,15 +125,15 @@ include __DIR__ . '/mail-modal.php';
 						</div>
 
                     </div>
-                </div>
             </th>
 
             <!-- 匯款日期 -->
             <th>
                 <div class="tpma-th-inner">
-                    <span>匯款日期</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="remit_paid_at">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="remit_paid_at">
+                    <span class="tpma-th-title">匯款日期</span>
+                    <button class="tpma-th-menu-btn" data-menu-toggle="remit_paid_at" data-menu-target="menu-remit_paid_at">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-remit_paid_at" data-menu-col="remit_paid_at">
 						<div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="remit_paid_at" data-sort-dir="asc">升冪排列</label>
                             <label class="tpma-menu-options" data-sort-field="remit_paid_at" data-sort-dir="desc">降冪排列</label>
@@ -164,44 +165,44 @@ include __DIR__ . '/mail-modal.php';
                             <button class="tpma-btn tpma-batch-btn" data-batch-field="remit_paid_at">套用批次設定</button>
                         </div>
                     </div>
-                </div>
             </th>
 
             <!-- 學員姓名 -->
             <th>
                 <div class="tpma-th-inner">
-                    <span>學員姓名</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="student_name">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="student_name">
+                    <span class="tpma-th-title">學員姓名</span>
+                    <button class="tpma-th-menu-btn" data-menu-toggle="student_name" data-menu-target="menu-student_name">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-student_name" data-menu-col="student_name">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="student_name" data-sort-dir="asc">升冪排列</label>
                             <label class="tpma-menu-options" data-sort-field="student_name" data-sort-dir="desc">降冪排列</label>
                         </div>
                     </div>
-                </div>
             </th>
 
             <!-- 公司抬頭 -->
             <th>
                 <div class="tpma-th-inner">
-                    <span>公司抬頭</span>
-                    <button class="tpma-th-menu-btn" data-menu-toggle="company_name">▾</button>
-                    <div class="tpma-th-menu" data-menu-col="company_name">
+                    <span class="tpma-th-title">公司抬頭</span>
+                    <button class="tpma-th-menu-btn" data-menu-toggle="company_name" data-menu-target="menu-company_name">▾</button>
+                </div>
+                <div class="tpma-th-menu" id="menu-company_name" data-menu-col="company_name">
                         <div class="tpma-menu-section">
                             <label class="tpma-menu-options" data-sort-field="company_name" data-sort-dir="asc">升冪排列</label>
                             <label class="tpma-menu-options" data-sort-field="company_name" data-sort-dir="desc">降冪排列</label>
                         </div>
                     </div>
-                </div>
             </th>
 
             <!-- 付款狀態 (WooCommerce) -->
             <!-- 報名狀態 (整合所有狀態) -->
 			<th>
 				<div class="tpma-th-inner">
-					<span>狀態</span>
-					<button class="tpma-th-menu-btn" data-menu-toggle="status">▾</button>
-					<div class="tpma-th-menu" data-menu-col="status">
+					<span class="tpma-th-title">狀態</span>
+					<button class="tpma-th-menu-btn" data-menu-toggle="status" data-menu-target="menu-status">▾</button>
+				</div>
+					<div class="tpma-th-menu" id="menu-status" data-menu-col="status">
 						<h4>狀態篩選</h4>
 
                         <div class="tpma-menu-section">
@@ -294,7 +295,6 @@ include __DIR__ . '/mail-modal.php';
 							<button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_type">批次設定收據方式</button>
 						</div>
 					</div>
-				</div>
 			</th>
 
 
