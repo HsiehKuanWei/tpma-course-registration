@@ -58,6 +58,15 @@ function buildRegUrl(row) {
 // ===== 資料狀態 =====
 let allRows = [];     // 原始資料列（每一筆為一個「課程 x 場次」）
 let filteredRows = []; // 套用篩選/排序後的結果
+const pageState = {
+  pageSize: 10,
+  currentPage: 1
+};
+const paginationDom = {
+  prev: document.getElementById('tpma-page-prev'),
+  next: document.getElementById('tpma-page-next'),
+  info: document.getElementById('tpma-page-info')
+};
 
 const filters = {
   time: '',
@@ -123,6 +132,7 @@ async function loadCourseRows() {
 
     allRows = rows;
     filteredRows = [...allRows];
+    pageState.currentPage = 1;
     applyFilterAndSort();
     statusEl.textContent = `共 ${filteredRows.length} 筆課程場次`;
   } catch (e) {
@@ -131,6 +141,9 @@ async function loadCourseRows() {
     tbody.innerHTML = `
       <tr><td colspan="4" class="tpma-loading-row">課程載入失敗：${e.message}</td></tr>
     `;
+    filteredRows = [];
+    pageState.currentPage = 1;
+    updatePaginationControls();
   }
 }
 
@@ -184,7 +197,23 @@ function applyFilterAndSort() {
   }
 
   filteredRows = rows;
+  pageState.currentPage = 1;
   renderTableBody();
+}
+
+function updatePaginationControls() {
+  const total = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageState.pageSize));
+  if (pageState.currentPage > totalPages) pageState.currentPage = totalPages;
+
+  const start = total === 0 ? 0 : (pageState.currentPage - 1) * pageState.pageSize + 1;
+  const end = total === 0 ? 0 : Math.min(pageState.currentPage * pageState.pageSize, total);
+
+  if (paginationDom.info) {
+    paginationDom.info.textContent = `第 ${pageState.currentPage} / ${totalPages} 頁，顯示 ${start}-${end} 筆，共 ${total} 筆`;
+  }
+  if (paginationDom.prev) paginationDom.prev.disabled = pageState.currentPage <= 1;
+  if (paginationDom.next) paginationDom.next.disabled = pageState.currentPage >= totalPages;
 }
 
 function renderTableBody() {
@@ -196,10 +225,19 @@ function renderTableBody() {
         <td colspan="4" class="tpma-empty-row">目前沒有符合條件的課程場次</td>
       </tr>
     `;
+    updatePaginationControls();
     return;
   }
 
-  const html = filteredRows.map(r => {
+  const total = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageState.pageSize));
+  if (pageState.currentPage > totalPages) pageState.currentPage = totalPages;
+  const startIndex = (pageState.currentPage - 1) * pageState.pageSize;
+  const endIndex = Math.min(startIndex + pageState.pageSize, total);
+
+  const pageRows = filteredRows.slice(startIndex, endIndex);
+
+  const html = pageRows.map(r => {
     const regUrl = buildRegUrl(r);
     const escCourseName = Util.esc(r.course_name);
     const escLecturer = Util.esc(r.lecturer);
@@ -221,6 +259,7 @@ function renderTableBody() {
     `;
   }).join('');
   tbody.innerHTML = html;
+  updatePaginationControls();
 }
 
 // ===== 篩選輸入事件 =====
@@ -305,6 +344,25 @@ document.addEventListener('click', e => {
 
 function isFilterButton(el) {
   return el.classList && el.classList.contains('tpma-th-menu-btn');
+}
+
+// ===== 分頁按鈕 =====
+if (paginationDom.prev) {
+  paginationDom.prev.addEventListener('click', () => {
+    if (pageState.currentPage > 1) {
+      pageState.currentPage -= 1;
+      renderTableBody();
+    }
+  });
+}
+if (paginationDom.next) {
+  paginationDom.next.addEventListener('click', () => {
+    const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageState.pageSize));
+    if (pageState.currentPage < totalPages) {
+      pageState.currentPage += 1;
+      renderTableBody();
+    }
+  });
 }
 
 // ===== 初始化 =====

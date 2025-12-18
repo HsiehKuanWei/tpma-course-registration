@@ -123,10 +123,14 @@ function renderCourseInfo(course) {
   document.getElementById("course-name-display").textContent = course.course_name || "";
   document.getElementById("course-lecturer").textContent = course.lecturer || "";
   document.getElementById("course-duration").textContent = minutesToHoursString(course.duration_minutes || 0);
-  document.getElementById("course-intro").textContent = course.intro || "";
+
+  const introEl = document.getElementById("course-intro");
+  introEl.innerHTML = course.intro ? marked.parse(course.intro) : "";
+
   const outlineEl = document.getElementById("course-outline");
   outlineEl.innerHTML = course.outline ? marked.parse(course.outline) : "";
 }
+
 function onCourseChange() {
   const cid = document.getElementById("course-select").value;
   const course = coursesMap[cid];

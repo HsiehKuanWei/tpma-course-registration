@@ -95,6 +95,12 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
       </tr>
     </tbody>
   </table>
+
+  <div class="tpma-pagination">
+    <button class="tpma-btn" id="tpma-page-prev">上一頁</button>
+    <span class="tpma-pagination-info" id="tpma-page-info"></span>
+    <button class="tpma-btn" id="tpma-page-next">下一頁</button>
+  </div>
 </div>
 </div>
 
