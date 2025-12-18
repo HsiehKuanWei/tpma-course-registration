@@ -82,11 +82,11 @@ const sortState = {
 // ===== 載入課程資料 =====
 async function loadCourseRows() {
   const statusEl = document.getElementById('tpma-status');
-  const tbody = document.getElementById('tpma-course-tbody');
+  const listContainer = document.getElementById('tpma-course-list-container');
 
   statusEl.textContent = '載入課程中...';
-  tbody.innerHTML = `
-    <tr><td colspan="4" class="tpma-loading-row">載入課程中...</td></tr>
+  listContainer.innerHTML = `
+    <div class="tpma-loading-row">載入課程中...</div>
   `;
 
   try {
@@ -126,7 +126,10 @@ async function loadCourseRows() {
         start_raw: startRaw,
         duration_minutes: duration,
         start_ts: getStartTimestamp(startRaw),
-        display_time: formatClassTime(startRaw, duration)
+        display_time: formatClassTime(startRaw, duration),
+        category: row.category || '', // 新增課程分類
+        intro: row.intro || '',       // 新增課程簡介
+        outline: row.outline || ''    // 新增課程大綱
       });
     });
 
@@ -138,8 +141,8 @@ async function loadCourseRows() {
   } catch (e) {
     console.error(e);
     statusEl.textContent = `課程載入失敗：${e.message}。請稍後再試。`;
-    tbody.innerHTML = `
-      <tr><td colspan="4" class="tpma-loading-row">課程載入失敗：${e.message}</td></tr>
+    listContainer.innerHTML = `
+      <div class="tpma-loading-row">課程載入失敗：${e.message}</div>
     `;
     filteredRows = [];
     pageState.currentPage = 1;
@@ -149,8 +152,6 @@ async function loadCourseRows() {
 
 // ===== 篩選 + 排序 =====
 function applyFilterAndSort() {
-  const tbody = document.getElementById('tpma-course-tbody');
-
   // 篩選
   let rows = allRows.filter(r => {
     // time
@@ -198,7 +199,7 @@ function applyFilterAndSort() {
 
   filteredRows = rows;
   pageState.currentPage = 1;
-  renderTableBody();
+  renderCourseList(); // 改為呼叫 renderCourseList
 }
 
 function updatePaginationControls() {
@@ -216,14 +217,12 @@ function updatePaginationControls() {
   if (paginationDom.next) paginationDom.next.disabled = pageState.currentPage >= totalPages;
 }
 
-function renderTableBody() {
-  const tbody = document.getElementById('tpma-course-tbody');
+function renderCourseList() { // 函式名稱從 renderTableBody 改為 renderCourseList
+  const listContainer = document.getElementById('tpma-course-list-container');
 
   if (!filteredRows.length) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="4" class="tpma-empty-row">目前沒有符合條件的課程場次</td>
-      </tr>
+    listContainer.innerHTML = `
+      <div class="tpma-empty-row">目前沒有符合條件的課程場次</div>
     `;
     updatePaginationControls();
     return;
@@ -242,23 +241,54 @@ function renderTableBody() {
     const escCourseName = Util.esc(r.course_name);
     const escLecturer = Util.esc(r.lecturer);
     const escTime = Util.esc(r.display_time);
+    const escCategory = Util.esc(r.category);
+
+    // Markdown 渲染
+    const introHtml = r.intro ? marked.parse(r.intro) : '無';
+    const outlineHtml = r.outline ? marked.parse(r.outline) : '無';
 
     return `
-      <tr>
-        <td><div class="tpma-cell-wrap">${escTime}</div></td>
-        <td><div class="tpma-cell-wrap">${escCourseName}</div></td>
-        <td><div class="tpma-cell-wrap">${escLecturer}</div></td>
-        <td>
-          <div class="tpma-cell-wrap">
+      <div class="tpma-course-card" data-session-id="${r.session_id}">
+        <div class="tpma-card-summary tpma-grid-layout">
+          <div class="tpma-course-time">${escTime}</div>
+          <div class="tpma-course-name">${escCourseName}</div>
+          <div class="tpma-course-lecturer">${escLecturer}</div>
+          <div class="tpma-actions">
+            <button class="tpma-btn tpma-btn-reg" onclick="window.open('${regUrl}', '_blank');">
+              線上報名
+            </button>
+            <button class="tpma-btn tpma-btn-details" data-session-id="${r.session_id}">
+              詳細
+            </button>
+          </div>
+        </div>
+        <div class="tpma-card-details">
+          <div class="tpma-details-header">
+            <h3>${escCourseName}</h3>
+          </div>
+          <div class="tpma-details-meta">
+            <div><strong>課程分類:</strong> <span>${escCategory}</span></div>
+            <div><strong>授課講師:</strong> <span>${escLecturer}</span></div>
+            <div><strong>開課時段:</strong> <span>${escTime}</span></div>
+          </div>
+          <div class="tpma-details-section">
+            <h4>課程簡介</h4>
+            <div class="tpma-md-content">${introHtml}</div>
+          </div>
+          <div class="tpma-details-section">
+            <h4>課程大綱</h4>
+            <div class="tpma-md-content">${outlineHtml}</div>
+          </div>
+          <div class="tpma-details-actions">
             <button class="tpma-btn" onclick="window.open('${regUrl}', '_blank');">
               線上報名
             </button>
           </div>
-        </td>
-      </tr>
+        </div>
+      </div>
     `;
   }).join('');
-  tbody.innerHTML = html;
+  listContainer.innerHTML = html;
   updatePaginationControls();
 }
 
@@ -330,6 +360,17 @@ document.addEventListener('click', e => {
     menu.classList.toggle('open');
     return;
   }
+
+  // 詳細模式按鈕
+  if (btn.classList.contains('tpma-btn-details')) {
+    const sessionId = btn.getAttribute('data-session-id');
+    const courseCard = btn.closest('.tpma-course-card'); // 找到最近的卡片
+    if (courseCard) {
+      courseCard.classList.toggle('is-open');
+      btn.textContent = courseCard.classList.contains('is-open') ? '收合' : '詳細';
+    }
+    return;
+  }
 });
 
 // 點擊表格外關閉所有篩選選單
@@ -351,7 +392,7 @@ if (paginationDom.prev) {
   paginationDom.prev.addEventListener('click', () => {
     if (pageState.currentPage > 1) {
       pageState.currentPage -= 1;
-      renderTableBody();
+      renderCourseList(); // 改為呼叫 renderCourseList
     }
   });
 }
@@ -360,7 +401,7 @@ if (paginationDom.next) {
     const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageState.pageSize));
     if (pageState.currentPage < totalPages) {
       pageState.currentPage += 1;
-      renderTableBody();
+      renderCourseList(); // 改為呼叫 renderCourseList
     }
   });
 }

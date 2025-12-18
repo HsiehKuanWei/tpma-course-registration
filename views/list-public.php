@@ -6,6 +6,7 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
 ?>
 <link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/admin-common.css'); ?>">
 <link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/list-public.css'); ?>">
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <div class="tpma-course-list">
 <div class="tpma-course-list-wrap tpma-wrap">
   <div class="tpma-course-list-header">
@@ -13,88 +14,75 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
     <div class="tpma-status" id="tpma-status">載入課程中...</div>
   </div>
 
-  <table class="tpma-course-table tpma-table-shared">
-    <thead>
-      <tr>
-        <!-- 授課時間 -->
-        <th style="width: 28%;">
-          <div class="tpma-th-inner">
-            <span class="tpma-th-title">授課時間</span>
-            <button type="button"
-                    class="tpma-th-menu-btn"
-                    data-menu-target="menu-time">
-              ▼ 
-            </button>
-          </div>
-          <div class="tpma-th-menu" id="menu-time">
-            <label>
-              關鍵字篩選（日期、時間）：
-              <input type="text" id="filter-time" placeholder="例如 2025/03 或 09:00">
-            </label>
-            <div class="tpma-th-menu-actions">
-              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="time-asc">時間↑</button>
-              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="time-desc">時間↓</button>
-              <button type="button" class="tpma-btn tpma-btn-danger" data-clear="time">清除</button>
-            </div>
-          </div>
-        </th>
+  <div class="tpma-course-filters">
+    <div class="tpma-filter-item">
+      <div class="tpma-th-inner">
+        <span class="tpma-th-title">授課時間</span>
+        <button type="button" class="tpma-th-menu-btn" data-menu-target="menu-time">▼</button>
+      </div>
+      <div class="tpma-th-menu" id="menu-time">
+        <label>
+          關鍵字篩選（日期、時間）：
+          <input type="text" id="filter-time" placeholder="例如 2025/03 或 09:00">
+        </label>
+        <div class="tpma-th-menu-actions">
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="time-asc">時間↑</button>
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="time-desc">時間↓</button>
+          <button type="button" class="tpma-btn tpma-btn-danger" data-clear="time">清除</button>
+        </div>
+      </div>
+    </div>
 
-        <!-- 課程名稱 -->
-        <th style="width: 32%;">
-          <div class="tpma-th-inner">
-            <span class="tpma-th-title">課程名稱</span>
-            <button type="button"
-                    class="tpma-th-menu-btn"
-                    data-menu-target="menu-name">
-              ▼ 
-            </button>
-          </div>
-          <div class="tpma-th-menu" id="menu-name">
-            <label>
-              關鍵字篩選（課程名稱）：
-              <input type="text" id="filter-name" placeholder="輸入課程關鍵字">
-            </label>
-            <div class="tpma-th-menu-actions">
-              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="name-asc">名稱↑</button>
-              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="name-desc">名稱↓</button>
-              <button type="button" class="tpma-btn tpma-btn-danger" data-clear="name">清除</button>
-            </div>
-          </div>
-        </th>
+    <div class="tpma-filter-item">
+      <div class="tpma-th-inner">
+        <span class="tpma-th-title">課程名稱</span>
+        <button type="button" class="tpma-th-menu-btn" data-menu-target="menu-name">▼</button>
+      </div>
+      <div class="tpma-th-menu" id="menu-name">
+        <label>
+          關鍵字篩選（課程名稱）：
+          <input type="text" id="filter-name" placeholder="輸入課程關鍵字">
+        </label>
+        <div class="tpma-th-menu-actions">
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="name-asc">名稱↑</button>
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="name-desc">名稱↓</button>
+          <button type="button" class="tpma-btn tpma-btn-danger" data-clear="name">清除</button>
+        </div>
+      </div>
+    </div>
 
-        <!-- 授課講師 -->
-        <th style="width: 20%;">
-          <div class="tpma-th-inner">
-            <span class="tpma-th-title">授課講師</span>
-            <button type="button"
-                    class="tpma-th-menu-btn"
-                    data-menu-target="menu-lecturer">
-              ▼ 
-            </button>
-          </div>
-          <div class="tpma-th-menu" id="menu-lecturer">
-            <label>
-              關鍵字篩選（講師名字）：
-              <input type="text" id="filter-lecturer" placeholder="輸入講師姓名">
-            </label>
-            <div class="tpma-th-menu-actions">
-              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-asc">講師↑</button>
-              <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-desc">講師↓</button>
-              <button type="button" class="tpma-btn tpma-btn-danger" data-clear="lecturer">清除</button>
-            </div>
-          </div>
-        </th>
+    <div class="tpma-filter-item tpma-hide-on-mobile-block">
+      <div class="tpma-th-inner">
+        <span class="tpma-th-title">授課講師</span>
+        <button type="button" class="tpma-th-menu-btn" data-menu-target="menu-lecturer">▼</button>
+      </div>
+      <div class="tpma-th-menu" id="menu-lecturer">
+        <label>
+          關鍵字篩選（講師名字）：
+          <input type="text" id="filter-lecturer" placeholder="輸入講師姓名">
+        </label>
+        <div class="tpma-th-menu-actions">
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-asc">講師↑</button>
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-desc">講師↓</button>
+          <button type="button" class="tpma-btn tpma-btn-danger" data-clear="lecturer">清除</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        <!-- 報名網址 -->
-        <th style="width: 20%;">報名網址</th>
-      </tr>
-    </thead>
-    <tbody id="tpma-course-tbody">
-      <tr>
-        <td colspan="4" class="tpma-loading-row">載入課程中...</td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="tpma-list-header tpma-grid-layout">
+    <div class="tpma-list-header-item">
+        <span class="tpma-th-title">授課時間</span>
+        <button type="button" class="tpma-th-menu-btn" data-menu-target="menu-time">▼</button>  
+    </div>  
+    <div class="tpma-list-header-item">課程名稱</div>
+    <div class="tpma-list-header-item">授課講師</div>
+    <div class="tpma-list-header-item">操作</div>
+  </div>
+  <div id="tpma-course-list-container">
+    <!-- 課程卡片將由 JavaScript 渲染至此 -->
+    <div class="tpma-loading-row">載入課程中...</div>
+  </div>
 
   <div class="tpma-pagination">
     <button class="tpma-btn" id="tpma-page-prev">上一頁</button>

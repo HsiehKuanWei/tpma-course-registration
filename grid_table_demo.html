@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>課程列表表格化範例</title>
+    <style>
+        /* 引入 admin-common.css 中的變數 */
+        :root {
+            --tpma-primary-color: #007BFF;
+            --tpma-primary-hover-color: #0056b3;
+            --tpma-secondary-color: #6c757d;
+            --tpma-secondary-hover-color: #5a6268;
+            --tpma-success-color: #28a745;
+            --tpma-danger-color: #dc3545;
+            --tpma-danger-hover-color: #c82333;
+            --tpma-warning-color: #ffc107;
+            --tpma-info-color: #17a2b8;
+            --tpma-light-gray: #f8f9fa;
+            --tpma-medium-gray: #e9ecef;
+            --tpma-dark-gray: #343a40;
+            --tpma-border-color: #ced4da;
+        }
+
+        body {
+            background: #f4f6f9;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            padding: 20px;
+        }
+
+        /* 模擬 tpma-wrap 的容器樣式 */
+        .tpma-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            overflow: hidden; /* 確保圓角效果 */
+        }
+
+        /* 定義 Grid 欄位寬度比例 */
+        .tpma-grid-layout {
+            display: grid;
+            grid-template-columns: 1.5fr 3fr 1fr 1.2fr;
+            align-items: center;
+            gap: 0; /* 表格通常沒有 gap，靠 padding 撐開 */
+        }
+
+        /* 表頭樣式 - 參考 .tpma-course-table th */
+        .tpma-list-header {
+            background: var(--tpma-dark-gray);
+            color: #fff;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 13px;
+            padding: 12px 16px;
+        }
+
+        /* 卡片/列樣式 - 參考 .tpma-course-table td */
+        .tpma-course-card {
+            border-bottom: 1px solid var(--tpma-medium-gray);
+            transition: background-color 0.2s ease;
+        }
+
+        /* 偶數列變色 - 參考 nth-child(even) */
+        .tpma-course-card:nth-child(even) {
+            background: var(--tpma-light-gray);
+        }
+
+        /* 滑鼠懸停效果 - 參考 tr:hover */
+        .tpma-course-card:hover {
+            background: #e6f7ff;
+        }
+
+        .tpma-course-card:last-child {
+            border-bottom: none;
+        }
+
+        /* 內容區塊 */
+        .tpma-card-summary {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #333;
+        }
+
+        /* 按鈕樣式整合 - 參考 .tpma-btn */
+        .tpma-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .tpma-btn {
+            padding: 8px 16px;
+            font-size: 14px;
+            cursor: pointer;
+            border-radius: 8px;
+            border: 1px solid var(--tpma-primary-color);
+            background: var(--tpma-primary-color);
+            color: #fff;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .tpma-btn:hover {
+            background: var(--tpma-primary-hover-color);
+            border-color: var(--tpma-primary-hover-color);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+
+        /* 詳細按鈕改為次要顏色樣式 */
+        .tpma-btn-details {
+            background: var(--tpma-secondary-color);
+            border-color: var(--tpma-secondary-color);
+        }
+
+        .tpma-btn-details:hover {
+            background: var(--tpma-secondary-hover-color);
+            border-color: var(--tpma-secondary-hover-color);
+        }
+
+        /* 響應式處理 */
+        @media (max-width: 768px) {
+            .tpma-list-header {
+                display: none;
+            }
+
+            .tpma-card-summary {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                padding: 20px;
+            }
+
+            .tpma-course-card {
+                border: 1px solid var(--tpma-border-color);
+                margin: 10px;
+                border-radius: 8px !important;
+                background: #fff !important; /* 手機版不使用隔行變色 */
+            }
+
+            .tpma-course-name {
+                font-weight: bold;
+                font-size: 16px;
+                color: var(--tpma-primary-color);
+            }
+
+            /* 手機版加入標籤輔助閱讀 */
+            .tpma-course-time::before { content: "📅 "; }
+            .tpma-course-lecturer::before { content: "👤 講師："; font-weight: 600; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="tpma-container">
+        <!-- 表頭區塊 (Grid) -->
+        <div class="tpma-list-header tpma-grid-layout">
+            <div class="tpma-list-header-item">授課時間</div>
+            <div class="tpma-list-header-item">課程名稱</div>
+            <div class="tpma-list-header-item">授課講師</div>
+            <div class="tpma-list-header-item">操作</div>
+        </div>
+
+        <!-- 列表內容容器 -->
+        <div id="tpma-course-list-container">
+            
+            <div class="tpma-course-card" data-session-id="110">
+                <div class="tpma-card-summary tpma-grid-layout">
+                    <div class="tpma-course-time">2026/01/07（三）<br>09:00~12:00</div>
+                    <div class="tpma-course-name">董事會的組成與運作實務</div>
+                    <div class="tpma-course-lecturer">蔡國揚 博士</div>
+                    <div class="tpma-actions">
+                        <button class="tpma-btn">線上報名</button>
+                        <button class="tpma-btn tpma-btn-details">詳細</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tpma-course-card" data-session-id="111">
+                <div class="tpma-card-summary tpma-grid-layout">
+                    <div class="tpma-course-time">2026/01/08（四）<br>14:00~17:00</div>
+                    <div class="tpma-course-name">乃木坂46 歷史與經營學</div>
+                    <div class="tpma-course-lecturer">秋元康 先生</div>
+                    <div class="tpma-actions">
+                        <button class="tpma-btn">線上報名</button>
+                        <button class="tpma-btn tpma-btn-details">詳細</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tpma-course-card" data-session-id="112">
+                <div class="tpma-card-summary tpma-grid-layout">
+                    <div class="tpma-course-time">2026/01/09（五）<br>10:00~12:00</div>
+                    <div class="tpma-course-name">ESG 企業永續報告書實作</div>
+                    <div class="tpma-course-lecturer">生田繪梨花 博士</div>
+                    <div class="tpma-actions">
+                        <button class="tpma-btn">線上報名</button>
+                        <button class="tpma-btn tpma-btn-details">詳細</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</body>
+</html>

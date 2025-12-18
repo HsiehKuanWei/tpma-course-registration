@@ -1,3 +1,19 @@
+:root {
+    --tpma-primary-color: #007BFF;
+    --tpma-primary-hover-color: #0056b3;
+    --tpma-secondary-color: #6c757d;
+    --tpma-secondary-hover-color: #5a6268;
+    --tpma-success-color: #28a745;
+    --tpma-danger-color: #dc3545;
+    --tpma-danger-hover-color: #c82333;
+    --tpma-warning-color: #ffc107;
+    --tpma-info-color: #17a2b8;
+    --tpma-light-gray: #f8f9fa;
+    --tpma-medium-gray: #e9ecef;
+    --tpma-dark-gray: #343a40;
+    --tpma-border-color: #ced4da;
+}
+
 .tpma-course-list {
     background: var(--tpma-light-gray);
     padding: 20px;
@@ -21,16 +37,62 @@
     color: var(--tpma-secondary-color);
 }
 
-
+/* 篩選器樣式 */
+.tpma-course-filters {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap; /* 允許換行 */
+}
+.tpma-filter-item {
+    position: relative;
+    flex: 1;
+    min-width: 150px; /* 確保篩選器在小螢幕下不會太窄 */
+}
+.tpma-th-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background-color: #f0f0f0;
+    border: 1px solid var(--tpma-border-color);
+    border-radius: 4px;
+    cursor: pointer;
+}
 .tpma-th-title {
+    font-weight: bold;
     white-space: nowrap;
 }
-.tpma-th-indicator {
-    font-size: 11px;
-    color: var(--tpma-secondary-color);
+.tpma-th-menu-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--tpma-dark-gray);
+    padding: 0 5px;
 }
 .tpma-th-menu {
-    margin-top: 2px;
+    position: absolute;
+    background-color: #fff;
+    border: 1px solid var(--tpma-border-color);
+    border-radius: 4px;
+    padding: 10px;
+    z-index: 10;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    display: none;
+    top: 100%; /* 位於按鈕下方 */
+    left: 0;
+    right: 0;
+    min-width: 200px;
+}
+.tpma-th-menu.open {
+    display: block;
+}
+.tpma-th-menu label {
+    display: block;
+    margin-bottom: 5px;
+    font-size: 13px;
+    color: var(--tpma-text-color);
 }
 .tpma-th-menu input[type="text"] {
     width: 100%;
@@ -59,23 +121,271 @@
     margin: 0;
 }
 
+/* 定義 Grid 欄位寬度比例 */
+.tpma-grid-layout {
+    display: grid;
+    grid-template-columns: 1fr 3fr 1fr 1.2fr;
+    align-items: center;
+    gap: 0; /* 表格通常沒有 gap，靠 padding 撐開 */
+}
+
+/* 表頭樣式 - 參考 .tpma-course-table th */
+.tpma-list-header {
+    background: var(--tpma-dark-gray);
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 13px;
+    padding: 12px 16px;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.08); /* 參考 admin-common.css 的表格陰影 */
+}
+.tpma-list-header-item {
+    padding: 5px 0; /* 調整 padding */
+}
+
+/* 課程卡片列表容器 */
+#tpma-course-list-container {
+    display: grid; /* 保持 grid 佈局 */
+    gap: 0; /* 移除卡片間距，使其看起來像表格行 */
+    margin-bottom: 20px;
+    border-left: 1px solid var(--tpma-border-color); /* 模擬表格邊框 */
+    border-right: 1px solid var(--tpma-border-color);
+    border-bottom: 1px solid var(--tpma-border-color);
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    overflow: hidden; /* 確保圓角生效 */
+}
+
+/* 課程卡片樣式 (PC 版模擬表格行) */
+.tpma-course-card {
+    display: contents; /* 讓子元素直接參與父容器的 grid 佈局 */
+    background-color: #fff; /* 預設背景色 */
+    border-bottom: 1px solid var(--tpma-medium-gray); /* 模擬表格行分隔線 */
+    transition: background-color 0.2s ease;
+}
+.tpma-course-card:last-child {
+    border-bottom: none; /* 最後一項沒有底線 */
+}
+/* 偶數列變色 - 參考 nth-child(even) */
+.tpma-course-card:nth-child(even) .tpma-card-summary {
+    background: var(--tpma-light-gray);
+}
+/* 滑鼠懸停效果 - 參考 tr:hover */
+.tpma-course-card:hover .tpma-card-summary {
+    background: #e6f7ff;
+}
+
+
+/* 內容區塊 - 模擬表格 td */
+.tpma-card-summary {
+     padding: 12px 16px; /* 參考 admin-common.css 的 td padding */
+    font-size: 14px;
+    color: #333;
+}
+.tpma-card-summary > div {
+    padding: 0; /* 移除內部 div 的 padding，由父級統一控制 */
+}
+.tpma-card-summary .tpma-course-time {
+    font-weight: bold;
+    color: var(--tpma-primary-color);
+}
+.tpma-card-summary .tpma-course-name {
+    font-weight: bold;
+    font-size: 15px;
+    color: var(--tpma-dark-gray);
+}
+.tpma-card-summary .tpma-course-lecturer {
+    color: var(--tpma-secondary-color);
+}
+.tpma-card-summary .tpma-actions {
+    text-align: right;
+    display: flex; /* 讓按鈕水平排列 */
+    justify-content: flex-end;
+    gap: 8px;
+}
+.tpma-card-summary .tpma-btn {
+    margin: 0; /* 移除按鈕的 margin */
+}
+
+/* 詳細按鈕改為次要顏色樣式 */
+.tpma-btn-details {
+    background: var(--tpma-secondary-color);
+    border-color: var(--tpma-secondary-color);
+}
+.tpma-btn-details:hover {
+    background: var(--tpma-secondary-hover-color);
+    border-color: var(--tpma-secondary-hover-color);
+}
+
+
+/* 詳細內容區塊 */
+.tpma-card-details {
+    display: none; /* 預設隱藏 */
+    grid-column: 1 / -1; /* 讓詳細內容橫跨整個卡片網格 */
+    padding: 20px;
+    background-color: var(--tpma-light-gray);
+    border-top: 1px solid var(--tpma-border-color);
+}
+.tpma-course-card.is-open .tpma-card-details {
+    display: block; /* 展開時顯示 */
+}
+
+.tpma-details-header h3 {
+    font-size: 18px;
+    margin-top: 0;
+    margin-bottom: 15px;
+    color: var(--tpma-dark-gray);
+}
+.tpma-details-meta > div {
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: var(--tpma-text-color);
+}
+.tpma-details-meta strong {
+    color: var(--tpma-dark-gray);
+}
+.tpma-details-section {
+    margin-top: 20px;
+}
+.tpma-details-section h4 {
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: var(--tpma-dark-gray);
+    border-bottom: 1px solid var(--tpma-border-color);
+    padding-bottom: 5px;
+}
+.tpma-md-content {
+    background-color: #fff;
+    border: 1px solid var(--tpma-border-color);
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 10px;
+    margin-bottom: 15px;
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--tpma-text-color);
+}
+.tpma-md-content p:last-child {
+    margin-bottom: 0;
+}
+.tpma-details-actions {
+    text-align: right;
+    margin-top: 20px;
+}
+.tpma-details-actions .tpma-btn {
+    min-width: 120px;
+}
+
+/* 載入/無資料訊息 */
 .tpma-loading-row,
 .tpma-empty-row {
     text-align: center;
     color: var(--tpma-secondary-color);
     padding: 15px;
+    grid-column: 1 / -1; /* 讓它橫跨整個網格 */
 }
 
-.tpma-reg-link {
-    display: inline-block;
-    margin: 0;
-}
-
+/* RWD 調整 */
 @media (max-width: 768px) {
     .tpma-course-list { padding: 10px; }
-    table.tpma-course-table th,
-    table.tpma-course-table td {
-      font-size: 12px;
-      padding: 5px 6px;
+    .tpma-course-filters {
+        flex-direction: column; /* 篩選器在手機上垂直堆疊 */
     }
+    .tpma-filter-item {
+        min-width: unset;
+        width: 100%;
+    }
+    .tpma-hide-on-mobile-block {
+        display: none; /* 在手機上隱藏講師篩選器 */
+    }
+
+    /* 手機版隱藏模擬表格標頭 */
+    .tpma-list-header {
+        display: none;
+    }
+
+    /* 手機版卡片樣式 */
+    #tpma-course-list-container {
+        display: flex; /* 改回 flex 佈局 */
+        flex-direction: column;
+        gap: 20px; /* 恢復卡片間距 */
+        border: none; /* 移除容器邊框 */
+        border-radius: 0;
+    }
+    .tpma-course-card {
+        display: block; /* 恢復 block 佈局 */
+        border: 1px solid var(--tpma-border-color); /* 恢復卡片邊框 */
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05); /* 恢復卡片陰影 */
+        border-radius: 8px;
+        background: #fff !important; /* 手機版不使用隔行變色 */
+        border-bottom: 1px solid var(--tpma-border-color); /* 確保有底線 */
+    }
+    .tpma-course-card:last-child {
+        border-bottom: 1px solid var(--tpma-border-color); /* 最後一項也有底線 */
+    }
+
+    .tpma-card-summary {
+        display: flex; /* 改回 flex 佈局 */
+        flex-direction: column; /* 手機上單欄佈局 */
+        align-items: flex-start;
+        gap: 10px;
+        padding: 20px;
+        border-bottom: 1px solid var(--tpma-border-color); /* 摘要底部邊線 */
+    }
+    .tpma-card-summary > div {
+        padding: 0;
+    }
+    .tpma-card-summary .tpma-course-time {
+        order: 1; /* 調整顯示順序 */
+    }
+    .tpma-card-summary .tpma-course-name {
+        order: 2;
+        font-size: 16px;
+        color: var(--tpma-primary-color);
+    }
+    .tpma-card-summary .tpma-course-lecturer {
+        order: 3;
+        display: block; /* 講師在手機詳細中顯示 */
+    }
+    .tpma-card-summary .tpma-actions {
+        order: 4;
+        text-align: left; /* 按鈕靠左 */
+        margin-top: 10px;
+        width: 100%; /* 讓按鈕佔滿寬度 */
+        justify-content: flex-start;
+    }
+    .tpma-card-summary .tpma-btn-details {
+        margin-left: 0;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .tpma-card-summary .tpma-btn-reg { /* 報名按鈕在手機摘要中隱藏 */
+        display: none;
+    }
+
+    .tpma-card-details {
+        padding: 15px;
+    }
+    .tpma-details-header h3 {
+        font-size: 16px;
+    }
+    .tpma-details-section h4 {
+        font-size: 14px;
+    }
+    .tpma-md-content {
+        padding: 10px;
+        font-size: 13px;
+    }
+    .tpma-details-actions {
+        text-align: center; /* 詳細模式的報名按鈕置中 */
+    }
+    .tpma-details-actions .tpma-btn {
+        width: 100%;
+    }
+
+    /* 手機版加入標籤輔助閱讀 */
+    .tpma-course-time::before { content: "📅 "; }
+    .tpma-course-lecturer::before { content: "👤 講師："; font-weight: 600; }
 }
