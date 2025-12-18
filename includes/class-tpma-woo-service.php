@@ -605,6 +605,28 @@ class TPMA_CR_Woo_Service {
      * 儲存自訂欄位到訂單。
      */
     public static function save_checkout_fields($order, $data) {
+        // === 姓名合一：只保留 first_name，last_name 一律強制清空（避免會員既有資料被帶入） ===
+        $bf = trim((string) $order->get_billing_first_name());
+        if ($bf !== '') {
+            $order->set_billing_last_name('');
+        }
+
+        $sf = trim((string) $order->get_shipping_first_name());
+        if ($sf !== '') {
+            $order->set_shipping_last_name('');
+        } else if ($bf !== '') {
+            // 若 shipping 沒填名字，就用 billing 的 first_name
+            $order->set_shipping_first_name($bf);
+            $order->set_shipping_last_name('');
+        }
+
+        // === 把會員既有的 last_name 也清空，避免下次結帳又被 Woo 自動帶入 ===
+        $user_id = $order->get_user_id();
+        if ($user_id) {
+            update_user_meta($user_id, 'billing_last_name', '');
+            update_user_meta($user_id, 'shipping_last_name', '');
+        }
+
         if (!self::is_tpma_reg_cart()) {
             return;
         }

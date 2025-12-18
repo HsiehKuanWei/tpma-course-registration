@@ -91,13 +91,13 @@ public static function sync_order_to_registrations($order_id, $data, $order) {
         }
 
         // --- 3.3 組成 regs 需要的資料（注意：這條路徑是「純 Woo fallback」所以用 billing 資料當單一學員） ---
-        $student_name  = trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name());
+        $student_name  = trim((string) $order->get_billing_first_name());
         $student_email = $order->get_billing_email();
         $company_name  = $order->get_billing_company();
         $tax_id        = $order->get_meta('_billing_vat_id'); // 你原本的假設
         $phone         = $order->get_billing_phone();
         $address       = trim($order->get_billing_address_1() . ' ' . $order->get_billing_address_2());
-        $receiver      = trim($order->get_shipping_first_name() . ' ' . $order->get_shipping_last_name());
+        $receiver      = trim((string) $order->get_shipping_first_name());
 
         // --- 3.4 course_id 對應（先用商品 meta，沒有才用課程名稱 fallback） ---
         $course_id = $product->get_meta('_tpma_course_id', true);
