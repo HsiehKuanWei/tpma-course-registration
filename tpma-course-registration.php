@@ -55,7 +55,6 @@ if (!defined('TPMA_CR_URL')) {
  */
 
 require_once TPMA_CR_PATH . 'includes/class-tpma-db.php';
-require_once TPMA_CR_PATH . 'includes/class-tpma-datetime.php';
 
 require_once TPMA_CR_PATH . 'includes/class-tpma-rest-public.php';
 
