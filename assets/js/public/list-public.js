@@ -250,9 +250,9 @@ function renderTableBody() {
         <td><div class="tpma-cell-wrap">${escLecturer}</div></td>
         <td>
           <div class="tpma-cell-wrap">
-            <a href="${regUrl}" target="_blank" rel="noopener" class="tpma-reg-link tpma-btn">
+            <button class="tpma-btn" onclick="window.open('${regUrl}', '_blank');">
               線上報名
-            </a>
+            </button>
           </div>
         </td>
       </tr>
