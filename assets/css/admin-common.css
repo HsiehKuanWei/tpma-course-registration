@@ -381,7 +381,8 @@ body{ background:#f4f6f9; }
  * - scope 限定在 .tpma-course-grid / .tpma-reg-grid
  * ========================================================= */
 .tpma-course-grid,
-.tpma-reg-grid{
+.tpma-reg-grid,
+.tpma-list-grid{
   width:100%;
   margin-top:20px;
   border-radius:8px;
@@ -391,10 +392,11 @@ body{ background:#f4f6f9; }
 }
 
 .tpma-course-grid-header,
-.tpma-reg-grid-header{
+.tpma-reg-grid-header,
+.tpma-reg-list-header{
   background:var(--tpma-dark-gray);
   color:#fff;
-  font-size:13px;
+  font-size:16px;
   font-weight:600;
   text-transform:uppercase;
   border-bottom:1px solid var(--tpma-medium-gray);
@@ -404,16 +406,21 @@ body{ background:#f4f6f9; }
 
 /* th/cell */
 .tpma-course-grid .tpma-course-grid-th,
-.tpma-reg-grid .tpma-reg-grid-th{
+.tpma-reg-grid .tpma-reg-grid-th,
+.tpma-list-grid .tpma-list-grid-th{
   padding:10px 8px;
   border-right:1px solid rgba(255,255,255,0.08);
   position:relative;
   display:flex;
   align-items:center;
   min-height:44px;
+  justify-content:space-between;
 }
 .tpma-course-grid .tpma-course-grid-th:last-child,
-.tpma-reg-grid .tpma-reg-grid-th:last-child{ border-right:none; }
+.tpma-reg-grid .tpma-reg-grid-th:last-child,
+.tpma-list-grid .tpma-list-grid-th:last-child{ 
+  border-right:none;
+ }
 
 .tpma-course-grid .tpma-course-grid-body,
 .tpma-reg-grid .tpma-reg-grid-body{ background:#fff; }
@@ -455,7 +462,8 @@ body{ background:#f4f6f9; }
 /* RWD (admin grid) */
 @media (max-width: 900px){
   .tpma-course-grid-header,
-  .tpma-reg-grid-header{ display:none; }
+  .tpma-reg-grid-header,
+  .tpma-reg-list-header{ display:none; }
 
   .tpma-course-grid .tpma-course-card-summary,
   .tpma-reg-grid .tpma-reg-card-summary{

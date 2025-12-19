@@ -249,7 +249,7 @@ function renderCourseList() { // 函式名稱從 renderTableBody 改為 renderCo
 
     return `
       <div class="tpma-course-card" data-session-id="${r.session_id}">
-        <div class="tpma-card-summary tpma-grid-layout">
+        <div class="tpma-card-summary tpma-list-grid-layout">
           <div class="tpma-course-time">${escTime}</div>
           <div class="tpma-course-name">${escCourseName}</div>
           <div class="tpma-course-lecturer">${escLecturer}</div>

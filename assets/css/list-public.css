@@ -39,7 +39,7 @@
 }
 
 /* list grid 欄位比例（list 專用，不跟 admin grid 混用） */
-.tpma-grid-layout{
+.tpma-list-grid-layout{
   display:grid;
   grid-template-columns: 1fr 3fr 1fr 1.2fr;
   align-items:center;
