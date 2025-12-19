@@ -1,1 +1,77 @@
+/* ===== reg-admin grid table (div + css grid) ===== */
+
+.tpma-reg-grid{
+  width: 100%;
+  margin-top: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+  overflow: hidden; /* 讓 header 圓角有效 */
+  background: #fff;
+}
+
+.tpma-reg-grid-layout{
+  display: grid;
+  grid-template-columns: 35px 40px 110px 1.6fr 1.2fr 1fr 1.4fr 1.2fr 90px; /* 9 欄：對齊你原本 colspan=9 */
+  column-gap: 0;
+}
+
+.tpma-reg-grid-header{
+  background: var(--tpma-dark-gray);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--tpma-medium-gray);
+}
+
+.tpma-reg-grid-th{
+  padding: 10px 8px;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  position: relative; /* 讓 .tpma-th-menu 能用 absolute */
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.tpma-reg-grid-th:last-child{ border-right: none; }
+
+.tpma-reg-grid-body{
+  background: #fff;
+}
+
+/* 每筆資料卡片（summary 是一列 grid，details 是展開區） */
+.tpma-reg-card{
+  border-bottom: 1px solid var(--tpma-medium-gray);
+}
+.tpma-reg-card:nth-child(even) .tpma-reg-card-summary{
+  background: var(--tpma-light-gray);
+}
+.tpma-reg-card:hover .tpma-reg-card-summary{
+  background: #e6f7ff;
+}
+
+.tpma-reg-card-summary{
+  padding: 0; /* cell 自己有 padding */
+}
+
+.tpma-reg-cell{
+  padding: 10px 8px;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* 明細展開 */
+.tpma-reg-card-details{
+  display: none;
+  padding: 12px 10px 16px;
+  background: #fff;
+}
+.tpma-reg-card-details.open{
+  display: block;
+}
+
+/* 讓你原本的 tpma-cell-wrap 在 div cell 裡也照用 */
+.tpma-reg-cell .tpma-cell-wrap{
+  width: 100%;
+}
 

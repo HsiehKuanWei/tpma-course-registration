@@ -149,7 +149,7 @@ UI.refreshFromServer = async function refreshFromServer(ctx){
     ctx.data.currentRegs = [];
     ctx.state.currentPage = 1;
     ctx.state.isLoading = false;
-    ctx.dom.tbody.innerHTML = '<tr><td colspan="9">載入失敗</td></tr>';
+    ctx.dom.tbody.innerHTML = '<div class="tpma-empty-row">載入失敗</div>';
     ctx.actions.updateBatchButtonsEnabled();
     ctx.actions.updatePaginationControls();
     return;
@@ -170,9 +170,9 @@ UI.applyBatch = async function applyBatch(ctx, field, value){
 
   try{
     for (const cb of checked) {
-      const tr = cb.closest('tr');
-      if (!tr) continue;
-      const id = parseInt(tr.dataset.id, 10) || 0;
+      const card = cb.closest('.tpma-reg-card');
+      if (!card) continue;
+      const id = card.dataset.id;
       if (!id) continue;
 
       const payload = { id };

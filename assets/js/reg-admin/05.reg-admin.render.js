@@ -515,18 +515,16 @@ R.saveDetail = async function saveDetail(ctx, container, id){
 };
 
 R.renderTable = function renderTable(ctx){
-  const tbody = ctx.dom.tbody;
-  const pageInfo = ctx.dom.pageInfo;
-  const pagePrev = ctx.dom.pagePrev;
-  const pageNext = ctx.dom.pageNext;
+  const tbody = ctx.dom.tbody;              // 這裡現在是 <div id="tpma-reg-tbody">
   const selectAllHead = ctx.dom.selectAllHead;
 
   const list = ctx.data.currentRegs || [];
   tbody.innerHTML = '';
   if (selectAllHead) selectAllHead.checked = false;
 
+  // loading
   if (ctx.state && ctx.state.isLoading) {
-    tbody.innerHTML = '<tr><td colspan="9">載入中...</td></tr>';
+    tbody.innerHTML = '<div class="tpma-loading-row">載入中.</div>';
     ctx.actions.updateBatchButtonsEnabled();
     ctx.actions.updatePaginationControls();
     return;
@@ -537,7 +535,7 @@ R.renderTable = function renderTable(ctx){
   if (ctx.state.currentPage > totalPages) ctx.state.currentPage = totalPages;
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="9">查無符合條件的報名資料。</td></tr>';
+    tbody.innerHTML = '<div class="tpma-empty-row">查無符合條件的報名資料。</div>';
     ctx.actions.updateBatchButtonsEnabled();
     ctx.actions.updatePaginationControls();
     return;
@@ -548,19 +546,29 @@ R.renderTable = function renderTable(ctx){
   const pageItems = list.slice(startIndex, endIndex);
 
   pageItems.forEach((row, idx)=>{
-    const tr = document.createElement('tr');
-    tr.dataset.id = row.id || '';
+    const card = document.createElement('div');
+    card.className = 'tpma-reg-card';
+    card.dataset.id = row.id || '';
 
-    const tdSel = document.createElement('td');
-    tdSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
-    tr.appendChild(tdSel);
+    // summary row (grid)
+    const summary = document.createElement('div');
+    summary.className = 'tpma-reg-card-summary tpma-reg-grid-layout';
 
-    const tdSeq = document.createElement('td');
-    tdSeq.className = 'tpma-seq-col';
-    tdSeq.textContent = idx + 1;
-    tr.appendChild(tdSeq);
+    // 1) checkbox
+    const cSel = document.createElement('div');
+    cSel.className = 'tpma-reg-cell';
+    cSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
+    summary.appendChild(cSel);
 
-    const tdCreated = document.createElement('td');
+    // 2) seq
+    const cSeq = document.createElement('div');
+    cSeq.className = 'tpma-reg-cell tpma-seq-col';
+    cSeq.textContent = idx + 1;
+    summary.appendChild(cSeq);
+
+    // 3) created_at
+    const cCreated = document.createElement('div');
+    cCreated.className = 'tpma-reg-cell';
     const createdText = U.trimToMinute(row.created_at);
     let createdHtml = '';
     if (createdText && createdText.length >= 16) {
@@ -568,17 +576,21 @@ R.renderTable = function renderTable(ctx){
       const timePart = createdText.substring(11,16);
       createdHtml = U.esc(datePart) + '<br>' + U.esc(timePart);
     } else createdHtml = U.esc(createdText);
-    tdCreated.innerHTML = '<div class="tpma-cell-wrap">'+createdHtml+'</div>';
-    tr.appendChild(tdCreated);
+    cCreated.innerHTML = '<div class="tpma-cell-wrap">'+createdHtml+'</div>';
+    summary.appendChild(cCreated);
 
-    const tdCourse = document.createElement('td');
+    // 4) course
+    const cCourse = document.createElement('div');
+    cCourse.className = 'tpma-reg-cell';
     const cname = U.display(row.course_name);
-    const lect = U.display(row.lecturer);
+    const lect = U.display(row.lecturer_name);
     const titleAttr = lect ? ' title="講師：' + U.esc(lect) + '"' : '';
-    tdCourse.innerHTML = '<div class="tpma-cell-wrap"><span'+titleAttr+'>' + U.esc(cname) + '</span></div>';
-    tr.appendChild(tdCourse);
+    cCourse.innerHTML = '<div class="tpma-cell-wrap"><span'+titleAttr+'>' + U.esc(cname) + '</span></div>';
+    summary.appendChild(cCourse);
 
-    const tdDate = document.createElement('td');
+    // 5) class date range
+    const cDate = document.createElement('div');
+    cDate.className = 'tpma-reg-cell';
     const classText = R.buildClassDateRangeHtml(ctx, row);
     let classHtml = '';
     if (classText) {
@@ -589,54 +601,65 @@ R.renderTable = function renderTable(ctx){
         classHtml = U.esc(datePart) + '<br>' + U.esc(timePart);
       } else classHtml = U.esc(classText);
     }
-    tdDate.innerHTML = '<div class="tpma-cell-wrap">'+classHtml+'</div>';
-    tr.appendChild(tdDate);
+    cDate.innerHTML = '<div class="tpma-cell-wrap">'+classHtml+'</div>';
+    summary.appendChild(cDate);
 
-    /*const tdRemit = document.createElement('td');
-    tdRemit.innerHTML = '<div class="tpma-cell-wrap">'+U.esc((row.remit_paid_at || '').substring(0,10))+'</div>';
-    tr.appendChild(tdRemit);*/
+    // 6) student
+    const cStu = document.createElement('div');
+    cStu.className = 'tpma-reg-cell';
+    cStu.innerHTML = '<div class="tpma-cell-wrap">'+U.esc(U.display(row.student_name))+'</div>';
+    summary.appendChild(cStu);
 
-    const tdStu = document.createElement('td');
-    tdStu.innerHTML = '<div class="tpma-cell-wrap">'+U.esc(U.display(row.student_name))+'</div>';
-    tr.appendChild(tdStu);
+    // 7) company
+    const cComp = document.createElement('div');
+    cComp.className = 'tpma-reg-cell';
+    cComp.innerHTML = '<div class="tpma-cell-wrap">'+U.esc(U.display(row.company_name))+'</div>';
+    summary.appendChild(cComp);
 
-    const tdComp = document.createElement('td');
-    tdComp.innerHTML = '<div class="tpma-cell-wrap">'+U.esc(U.display(row.company_name))+'</div>';
-    tr.appendChild(tdComp);
+    // 8) status
+    const cStatus = document.createElement('div');
+    cStatus.className = 'tpma-reg-cell';
+    cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
+    summary.appendChild(cStatus);
 
-    const tdStatus = document.createElement('td');
-    tdStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
-    tr.appendChild(tdStatus);
+    // 9) actions
+    const cAct = document.createElement('div');
+    cAct.className = 'tpma-reg-cell';
+    cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
+    summary.appendChild(cAct);
 
-    const tdAct = document.createElement('td');
-    tdAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
-    tr.appendChild(tdAct);
+    card.appendChild(summary);
 
-    tbody.appendChild(tr);
+    // details block
+    const details = document.createElement('div');
+    details.className = 'tpma-reg-card-details';
+    details.dataset.id = row.id || '';
+    card.appendChild(details);
 
-    const trDetail = document.createElement('tr');
-    trDetail.className = 'tpma-reg-detail-row';
-    trDetail.style.display = 'none';
-    trDetail.dataset.id = row.id || '';
-    const tdDetail = document.createElement('td');
-    tdDetail.className = 'tpma-reg-detail-cell';
-    tdDetail.colSpan = 9;
-    trDetail.appendChild(tdDetail);
-    tbody.appendChild(trDetail);
+    // 直接沿用你原本的 detail render（container 變成 div）
+    R.renderDetailView(ctx, details, row);
 
-    R.renderDetailView(ctx, tdDetail, row);
-
-    tdAct.querySelector('.tpma-view-btn').addEventListener('click', function(){
-      const isVisible = trDetail.style.display !== 'none';
-      if (isVisible) { trDetail.style.display = 'none'; this.textContent = '詳細'; }
-      else { trDetail.style.display = ''; this.textContent = '收合'; }
+    // toggle details
+    cAct.querySelector('.tpma-view-btn').addEventListener('click', function(){
+      const isOpen = details.classList.contains('open');
+      if (isOpen) {
+        details.classList.remove('open');
+        this.textContent = '詳細';
+      } else {
+        details.classList.add('open');
+        this.textContent = '收合';
+      }
     });
 
-    tdSel.querySelector('.tpma-reg-select').addEventListener('change', ctx.actions.updateBatchButtonsEnabled);
+    // selection change
+    cSel.querySelector('.tpma-reg-select').addEventListener('change', ctx.actions.updateBatchButtonsEnabled);
+
+    tbody.appendChild(card);
   });
 
   ctx.actions.updateBatchButtonsEnabled();
   ctx.actions.updatePaginationControls();
 };
+
 
 })(window);
