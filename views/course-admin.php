@@ -31,120 +31,136 @@ $restNonce = wp_create_nonce( 'wp_rest' );
         </span>
     </div>
 
-    <table class="tpma-course-table tpma-table-shared" id="tpma-course-table">
-        <thead>
-        <tr>
-            <th>
-                <div class="tpma-th-inner">
-                    <span class="tpma-th-title">課程代碼</span>
-                    <button type="button"
-                            class="tpma-th-menu-btn"
-                            data-menu-target="menu-course_code">
-                        ▼ 
-                    </button>
-                </div>
-                <div class="tpma-th-menu" id="menu-course_code">
-                    <div class="tpma-menu-section">
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_code-asc">代碼↑</button>
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_code-desc">代碼↓</button>
-                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="course_code">清除</button>
-                    </div>
-                </div>
-            </th>
+<div class="tpma-course-grid tpma-table-shared" id="tpma-course-table">
 
-            <th>
-                <div class="tpma-th-inner">
-                    <span class="tpma-th-title">課程名稱</span>
-                    <button type="button"
-                            class="tpma-th-menu-btn"
-                            data-menu-target="menu-course_name">
-                        ▼ 
-                    </button>
-                </div>
-                <div class="tpma-th-menu" id="menu-course_name">
-                    <label>
-                        課程名稱篩選：
-                        <select id="tpma-filter-course">
-                            <option value="">全部課程名稱</option>
-                        </select>
-                    </label>
-                    <div class="tpma-th-menu-actions">
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-asc">名稱↑</button>
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-desc">名稱↓</button>
-                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="course_name">清除</button>
-                    </div>
-                </div>
-            </th>
+  <!-- Header（grid 模擬 thead/tr/th） -->
+  <div class="tpma-course-grid-header tpma-course-grid-layout">
 
-            <th>
-                <div class="tpma-th-inner">
-                    <span class="tpma-th-title">講師</span>
-                    <button type="button"
-                            class="tpma-th-menu-btn"
-                            data-menu-target="menu-lecturer">
-                        ▼ 
-                    </button>
-                </div>
-                <div class="tpma-th-menu" id="menu-lecturer">
-                    <label>
-                        講師篩選：
-                        <select id="tpma-filter-lecturer">
-                            <option value="">全部講師</option>
-                        </select>
-                    </label>
-                    <div class="tpma-th-menu-actions">
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-asc">講師↑</button>
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-desc">講師↓</button>
-                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="lecturer">清除</button>
-                    </div>
-                </div>
-            </th>
-            
-            <th>
-                <div class="tpma-th-inner">
-                    <span class="tpma-th-title">課程類別</span>
-                    <button type="button"
-                            class="tpma-th-menu-btn"
-                            data-menu-target="menu-category">
-                        ▼ 
-                    </button>
-                </div>
-                <div class="tpma-th-menu" id="menu-category">
-                    <label>
-                        類別篩選：
-                        <select id="tpma-filter-category">
-                            <option value="">全部類別</option>
-                            <optgroup label="核心課程">
-                                <option value="A1">董事的法律義務與責任</option>
-                                <option value="A2">董事會的架構與運作</option>
-                                <option value="A3">提升董事會績效</option>
-                                <option value="A4">財務、會計</option>
-                                <option value="A5">永續發展</option>
-                            </optgroup>
-                            <optgroup label="專業課程">
-                                <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
-                                <option value="B2">董事與股東會事務</option>
-                                <option value="B3">公司所屬產業之業務、商務</option>
-                                <option value="B4">風險管理、內部控制、數位治理</option>
-                                <option value="B5">其他</option>
-                            </optgroup>
-                        </select>
-                    </label>
-                    <div class="tpma-th-menu-actions">
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="category-asc">類別↑</button>
-                        <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="category-desc">類別↓</button>
-                        <button type="button" class="tpma-btn tpma-btn-danger" data-clear="category">清除</button>
-                    </div>
-                </div>
-            </th>
+    <!-- 課程代碼 -->
+    <div class="tpma-course-grid-th">
+      <div class="tpma-th-inner">
+        <span class="tpma-th-title">課程代碼</span>
+        <button type="button"
+                class="tpma-th-menu-btn"
+                data-menu-target="menu-course_code">▼</button>
+      </div>
+      <div class="tpma-th-menu" id="menu-course_code">
+        <div class="tpma-menu-section">
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_code-asc">代碼↑</button>
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_code-desc">代碼↓</button>
+          <button type="button" class="tpma-btn tpma-btn-danger" data-clear="course_code">清除</button>
+        </div>
+      </div>
+    </div>
 
-            <th>操作</th>
-        </tr>
-        </thead>
-        <tbody id="tpma-course-tbody">
-        <tr><td colspan="5">載入中...</td></tr>
-        </tbody>
-    </table>
+    <!-- 課程名稱 -->
+    <div class="tpma-course-grid-th">
+      <div class="tpma-th-inner">
+        <span class="tpma-th-title">課程名稱</span>
+        <button type="button"
+                class="tpma-th-menu-btn"
+                data-menu-target="menu-course_name">▼</button>
+      </div>
+      <div class="tpma-th-menu" id="menu-course_name">
+        <label>
+          課程名稱篩選：
+          <select id="tpma-filter-course">
+            <option value="">全部課程名稱</option>
+          </select>
+        </label>
+        <div class="tpma-th-menu-actions">
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-asc">名稱↑</button>
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="course_name-desc">名稱↓</button>
+          <button type="button" class="tpma-btn tpma-btn-danger" data-clear="course_name">清除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 講師 -->
+    <div class="tpma-course-grid-th">
+      <div class="tpma-th-inner">
+        <span class="tpma-th-title">講師</span>
+        <button type="button"
+                class="tpma-th-menu-btn"
+                data-menu-target="menu-lecturer">▼</button>
+      </div>
+      <div class="tpma-th-menu" id="menu-lecturer">
+        <label>
+          講師篩選：
+          <select id="tpma-filter-lecturer">
+            <option value="">全部講師</option>
+          </select>
+        </label>
+        <div class="tpma-th-menu-actions">
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-asc">講師↑</button>
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="lecturer-desc">講師↓</button>
+          <button type="button" class="tpma-btn tpma-btn-danger" data-clear="lecturer">清除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 課程類別 -->
+    <div class="tpma-course-grid-th">
+      <div class="tpma-th-inner">
+        <span class="tpma-th-title">課程類別</span>
+        <button type="button"
+                class="tpma-th-menu-btn"
+                data-menu-target="menu-category">▼</button>
+      </div>
+      <div class="tpma-th-menu" id="menu-category">
+        <label>
+          類別篩選：
+          <select id="tpma-filter-category">
+            <option value="">全部類別</option>
+
+            <optgroup label="核心課程">
+              <option value="A1">董事的法律義務與責任</option>
+              <option value="A2">董事會的架構與運作</option>
+              <option value="A3">提升董事會績效</option>
+              <option value="A4">財務、會計</option>
+              <option value="A5">永續發展</option>
+            </optgroup>
+
+            <optgroup label="專業課程">
+              <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
+              <option value="B2">獨立董事及審計委員會</option>
+              <option value="B3">公司治理與內部控制</option>
+              <option value="B4">資訊安全與數位治理</option>
+              <option value="B5">風險管理與危機處理</option>
+              <option value="B6">企業併購、投資與策略聯盟</option>
+              <option value="B7">ESG、永續治理、氣候風險</option>
+              <option value="B8">國際法令、跨境合規與洗錢防制</option>
+            </optgroup>
+
+            <optgroup label="延伸課程">
+              <option value="C1">專案管理（含 IPMA）</option>
+              <option value="C2">領導與溝通</option>
+              <option value="C3">策略規劃與轉型</option>
+            </optgroup>
+          </select>
+        </label>
+
+        <div class="tpma-th-menu-actions">
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="category-asc">類別↑</button>
+          <button type="button" class="tpma-btn tpma-btn-secondary" data-sort="category-desc">類別↓</button>
+          <button type="button" class="tpma-btn tpma-btn-danger" data-clear="category">清除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 操作 -->
+    <div class="tpma-course-grid-th">操作</div>
+  </div>
+
+  <!-- Body（grid 模擬 tbody；JS 塞卡片列；id 必須維持原本） -->
+  <div id="tpma-course-tbody" class="tpma-course-grid-body">
+    <div class="tpma-loading-row">載入中...</div>
+  </div>
+
+</div>
+
+
+    
 </div>
 
 <!-- 新增講師 Modal -->

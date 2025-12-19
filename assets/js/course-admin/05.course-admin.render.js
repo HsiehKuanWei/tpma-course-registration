@@ -71,88 +71,91 @@
    * 渲染課程卡片列表
    * @param {Array<object>} list
    */
-  ns.renderCourses = function renderCourses(list) {
-    const tbody = dom.courseList;
-    if (!tbody) return;
-    tbody.innerHTML = '';
+ns.renderCourses = function renderCourses(list){
+  const body = dom.courseList; // 這裡現在是 <div id="tpma-course-tbody">
+  if (!body) return;
+  body.innerHTML = '';
 
-    if (!list || list.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5">沒有符合條件的課程</td></tr>';
-      return;
+  if (!list || list.length === 0) {
+    body.innerHTML = '<div class="tpma-empty-row">沒有符合條件的課程</div>';
+    return;
+  }
+
+  const catLabel = (c) => c.category || util.catCodeToLabel(c.category_code || '');
+  const lecLabel = (c) => util.lecturerLabelByCode(c.lecturer_code || '') || c.lecturer || '';
+  const showText = (v) => (v == null || v === '' ? '-' : String(v));
+
+  list.forEach(c => {
+    const card = document.createElement('div');
+    card.className = 'tpma-course-card';
+    card.dataset.id = c.id || '';
+
+    // summary（grid 一列）
+    const summary = document.createElement('div');
+    summary.className = 'tpma-course-card-summary tpma-course-grid-layout';
+
+    const cCode = document.createElement('div');
+    cCode.className = 'tpma-course-cell';
+    cCode.innerHTML = '<div class="tpma-cell-wrap">' + util.esc(showText(c.course_code)) + '</div>';
+    summary.appendChild(cCode);
+
+    const cName = document.createElement('div');
+    cName.className = 'tpma-course-cell';
+    cName.innerHTML = '<div class="tpma-cell-wrap">' + util.esc(showText(c.course_name)) + '</div>';
+    summary.appendChild(cName);
+
+    const cLec = document.createElement('div');
+    cLec.className = 'tpma-course-cell';
+    cLec.innerHTML = '<div class="tpma-cell-wrap">' + util.esc(showText(lecLabel(c))) + '</div>';
+    summary.appendChild(cLec);
+
+    const cCat = document.createElement('div');
+    cCat.className = 'tpma-course-cell';
+    cCat.innerHTML = '<div class="tpma-cell-wrap">' + util.esc(showText(catLabel(c))) + '</div>';
+    summary.appendChild(cCat);
+
+    const cAct = document.createElement('div');
+    cAct.className = 'tpma-course-cell';
+    cAct.innerHTML = '<div class="tpma-cell-wrap"><button type="button" class="tpma-btn tpma-view-btn">詳細</button></div>';
+    summary.appendChild(cAct);
+
+    card.appendChild(summary);
+
+    // details（展開區）
+    const details = document.createElement('div');
+    details.className = 'tpma-course-card-details';
+    details.dataset.id = c.id || '';
+    card.appendChild(details);
+
+    // 沿用你原本的 detailDiv（renderCourseView / renderCourseEdit 依賴 div._data）
+    const detailDiv = document.createElement('div');
+    detailDiv.className = 'tpma-course-item';
+    detailDiv.dataset.id = c.id || '';
+    detailDiv._data = c;
+    details.appendChild(detailDiv);
+
+    ns.renderCourseView(detailDiv, false);
+
+    const viewBtn = cAct.querySelector('.tpma-view-btn');
+
+    const setExpanded = (expanded) => {
+      if (expanded) details.classList.add('open');
+      else details.classList.remove('open');
+      if (viewBtn) viewBtn.textContent = expanded ? '收合' : '詳細';
+    };
+
+    if (viewBtn) {
+      viewBtn.addEventListener('click', () => {
+        const expanded = !details.classList.contains('open');
+        if (expanded) ns.renderCourseView(detailDiv, false);
+        setExpanded(expanded);
+      });
     }
 
-    const catLabel = (c) => c.category || util.catCodeToLabel(c.category_code || '');
-    const lecLabel = (c) => util.lecturerLabelByCode(c.lecturer_code || '') || c.lecturer || '';
-    const showText = (v) => (v == null || v === '' ? '-' : String(v));
+    body.appendChild(card);
+  });
+};
 
-    list.forEach(c => {
-      const tr = document.createElement('tr');
-      tr.className = 'tpma-course-row';
-      tr.dataset.id = c.id || '';
-
-      const tdCode = document.createElement('td');
-      tdCode.innerHTML = '<div class="tpma-cell-wrap">' + showText(c.course_code) + '</div>';
-      tr.appendChild(tdCode);
-
-      const tdName = document.createElement('td');
-      tdName.innerHTML = '<div class="tpma-cell-wrap">' + showText(c.course_name) + '</div>';
-      tr.appendChild(tdName);
-
-      const tdLec = document.createElement('td');
-      tdLec.innerHTML = '<div class="tpma-cell-wrap">' + showText(lecLabel(c)) + '</div>';
-      tr.appendChild(tdLec);
-
-      const tdCat = document.createElement('td');
-      tdCat.innerHTML = '<div class="tpma-cell-wrap">' + showText(catLabel(c)) + '</div>';
-      tr.appendChild(tdCat);
-
-      const tdAct = document.createElement('td');
-      tdAct.innerHTML = '<div class="tpma-cell-wrap"><button type="button" class="tpma-btn tpma-view-btn">詳細</button></div>';
-      tr.appendChild(tdAct);
-
-      tbody.appendChild(tr);
-
-      const trDetail = document.createElement('tr');
-      trDetail.className = 'tpma-course-detail-row';
-      trDetail.style.display = 'none';
-      trDetail.dataset.id = c.id || '';
-      const tdDetail = document.createElement('td');
-      tdDetail.className = 'tpma-course-detail-cell';
-      tdDetail.colSpan = 5;
-      trDetail.appendChild(tdDetail);
-      tbody.appendChild(trDetail);
-
-      const detailDiv = document.createElement('div');
-      detailDiv.className = 'tpma-course-item';
-      detailDiv.dataset.id = c.id || '';
-      detailDiv._data = c;
-      tdDetail.appendChild(detailDiv);
-      ns.renderCourseView(detailDiv, false);
-
-      const viewBtn = tdAct.querySelector('.tpma-view-btn');
-      const editBtn = tdAct.querySelector('.tpma-edit-btn');
-
-      const setExpanded = (expanded) => {
-        trDetail.style.display = expanded ? '' : 'none';
-        if (viewBtn) viewBtn.textContent = expanded ? '收合' : '詳細';
-      };
-
-      if (viewBtn) {
-        viewBtn.addEventListener('click', () => {
-          const expanded = trDetail.style.display === 'none';
-          if (expanded) ns.renderCourseView(detailDiv, false);
-          setExpanded(expanded);
-        });
-      }
-
-      if (editBtn) {
-        editBtn.addEventListener('click', () => {
-          setExpanded(true);
-          ns.renderCourseEdit(detailDiv);
-        });
-      }
-    });
-  };
 
   /**
    * 單一課程：檢視模式

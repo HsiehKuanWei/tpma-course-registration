@@ -15,3 +15,72 @@
 #section-course-content{
     grid-template-columns:1fr;
 }
+
+/* ===== course-admin grid table (div + css grid) ===== */
+
+.tpma-course-grid{
+  width: 100%;
+  margin-top: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.08);
+  overflow: hidden;
+  background: #fff;
+}
+
+.tpma-course-grid-layout{
+  display: grid;
+  grid-template-columns: 140px 1.9fr 1.2fr 1fr 90px; /* 5 欄：對齊原本 colspan=5 */
+}
+
+.tpma-course-grid-header{
+  background: var(--tpma-dark-gray);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--tpma-medium-gray);
+}
+
+.tpma-course-grid-th{
+  padding: 10px 8px;
+  border-right: 1px solid rgba(255,255,255,0.08);
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+.tpma-course-grid-th:last-child{ border-right: none; }
+
+.tpma-course-grid-body{ background:#fff; }
+
+.tpma-course-card{
+  border-bottom: 1px solid var(--tpma-medium-gray);
+}
+.tpma-course-card:nth-child(even) .tpma-course-card-summary{
+  background: var(--tpma-light-gray);
+}
+.tpma-course-card:hover .tpma-course-card-summary{
+  background: #e6f7ff;
+}
+
+.tpma-course-card-summary{ padding:0; }
+
+.tpma-course-cell{
+  padding: 10px 8px;
+  display:flex;
+  align-items:center;
+  min-height:44px;
+}
+
+.tpma-course-cell .tpma-cell-wrap{
+  width: 100%;
+}
+
+.tpma-course-card-details{
+  display:none;
+  padding: 12px 10px 16px;
+  background:#fff;
+}
+.tpma-course-card-details.open{ display:block; }
+
+.tpma-course-grid-th{ position: relative; }
+.tpma-course-grid{ overflow: visible; }
