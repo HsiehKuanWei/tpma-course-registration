@@ -249,7 +249,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
 
   // 操作按鈕
   const actionsDiv = document.createElement('div');
-  actionsDiv.className = 'flex justify-end mt-4 gap-3';
+  actionsDiv.className = 'tpma-reg-detail-actions';
 /*  actionsDiv.innerHTML = `
     <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-${row.id}">編輯詳情</button>
     <button class="tpma-btn tpma-btn-danger" id="tpma-btn-delete-${row.id}">刪除報名記錄</button>    
@@ -472,7 +472,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
 
   // 操作按鈕
   const actionsDiv = document.createElement('div');
-  actionsDiv.className = 'flex justify-end mt-4 gap-3';
+  actionsDiv.className = 'tpma-reg-detail-actions';
   actionsDiv.innerHTML = `
     <button class="tpma-btn" id="tpma-btn-save-detail-${row.id}">儲存變更</button>
     <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit-${row.id}">取消編輯</button>

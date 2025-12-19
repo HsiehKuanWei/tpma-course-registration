@@ -43,73 +43,71 @@
     }
 
     // 新增課程（建立空白資料，prepend 一張卡片並進入編輯）
-    if (dom.buttons.addCourse && dom.courseList) {
+ // 核心修正：「新增課程」按鈕邏輯
+// 新增課程按鈕事件 (Grid 修正版)
+    if (dom.buttons.addCourse) {
       dom.buttons.addCourse.addEventListener('click', () => {
-        const empty = {
+        // 重要：在 Grid 模式下，dom.courseList 通常是 #tpma-course-tbody (雖然叫 tbody 但它現在是 div)
+        const body = dom.courseList; 
+        if (!body) {
+          console.error('找不到課程列表容器 (dom.courseList)');
+          return;
+        }
+
+        // 1. 建立外層 Card 容器 (div)
+        const card = document.createElement('div');
+        card.className = 'tpma-course-card';
+        
+        // 2. 建立摘要列 (Summary Grid)
+        const summary = document.createElement('div');
+        summary.className = 'tpma-course-card-summary tpma-course-grid-layout';
+        summary.innerHTML = `
+          <div class="tpma-course-cell">-</div>
+          <div class="tpma-course-cell">-</div>
+          <div class="tpma-course-cell">（新課程）</div>
+          <div class="tpma-course-cell">-</div>
+          <div class="tpma-course-cell">
+            <div class="tpma-cell-wrap">
+              <button type="button" class="tpma-btn tpma-view-btn">收合</button>
+            </div>
+          </div>
+        `;
+        card.appendChild(summary);
+
+        // 3. 建立詳情區塊容器 (Details)
+        const details = document.createElement('div');
+        details.className = 'tpma-course-card-details open'; // 預設打開編輯
+        card.appendChild(details);
+
+        // 4. 建立內部渲染目標 div
+        const detailDiv = document.createElement('div');
+        detailDiv.className = 'tpma-course-item';
+        
+        // 初始化空白資料 (對應 renderCourseEdit 所需的資料格式)
+        detailDiv._data = {
           id: '',
           course_code: '',
           course_name: '',
-          category: '',
           category_code: '',
-          lecturer: '',
           lecturer_code: '',
-          intro: '',
-          outline: '',
-          updated_at: '',
-          is_active: 1,
           duration_minutes: 180,
-          sessions: [],
-          _all_sessions: [],
-          _visible_sessions: []
+          is_active: 1,
+          sessions: []
         };
-        const tbody = dom.courseList;
-        const tr = document.createElement('tr');
-        tr.className = 'tpma-course-row';
-        tr.dataset.id = '';
-        tr.innerHTML = `
-          <td>-</td>
-          <td>-</td>
-          <td>（新課程）</td>
-          <td>-</td>
-          <td>
-            <button type="button" class="tpma-btn tpma-view-btn">收合</button>
-            <button type="button" class="tpma-btn tpma-edit-btn">編輯</button>
-          </td>
-        `;
+        details.appendChild(detailDiv);
 
-        const trDetail = document.createElement('tr');
-        trDetail.className = 'tpma-course-detail-row';
-        trDetail.style.display = '';
-        trDetail.dataset.id = '';
-        const tdDetail = document.createElement('td');
-        tdDetail.className = 'tpma-course-detail-cell';
-        tdDetail.colSpan = 5;
-        trDetail.appendChild(tdDetail);
+        // 5. 將卡片插入到列表的最上方 (firstChild)
+        body.insertBefore(card, body.firstChild);
 
-        const detailDiv = document.createElement('div');
-        detailDiv.className = 'tpma-course-item';
-        detailDiv.dataset.id = '';
-        detailDiv._data = empty;
-        tdDetail.appendChild(detailDiv);
-
-        if (tbody.firstChild) {
-          tbody.insertBefore(tr, tbody.firstChild);
-          tbody.insertBefore(trDetail, tr.nextSibling);
+        // 6. 呼叫渲染函數，把編輯表單畫進去
+        if (ns.renderCourseEdit) {
+          ns.renderCourseEdit(detailDiv);
         } else {
-          tbody.appendChild(tr);
-          tbody.appendChild(trDetail);
+          console.error('找不到 ns.renderCourseEdit 函數');
         }
 
-        const viewBtn = tr.querySelector('.tpma-view-btn');
-        if (viewBtn) {
-          viewBtn.addEventListener('click', () => {
-            const expanded = trDetail.style.display === 'none';
-            trDetail.style.display = expanded ? '' : 'none';
-            viewBtn.textContent = expanded ? '收合' : '詳細';
-          });
-        }
-
-        ns.renderCourseEdit(detailDiv);
+        // 7. 平滑滾動到新增的位置
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     }
 

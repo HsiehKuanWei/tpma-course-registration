@@ -251,7 +251,7 @@ ns.renderCourses = function renderCourses(list){
           </div>
         </div>
 
-        <div class="flex justify-end mt-4 gap-3">
+        <div class="tpma-reg-detail-actions">
           <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-course-${c.id}">編輯課程</button>
         </div>
       </div>
@@ -294,6 +294,12 @@ ns.renderCourses = function renderCourses(list){
    * - 綁定「新增講師」「儲存」「取消」「批次套用場次」等事件
    * @param {HTMLElement} div
    */
+/**
+   * 單一課程：編輯模式 (修正後的 Grid 版本)
+   * - 會生成表單欄位
+   * - 綁定「新增講師」「儲存」「取消」「批次套用場次」等事件
+   * @param {HTMLElement} div 
+   */
   ns.renderCourseEdit = function renderCourseEdit(div) {
     const c = div._data;
     const sessions = c._all_sessions || c.sessions || [];
@@ -303,7 +309,6 @@ ns.renderCourses = function renderCourses(list){
       <div class="tpma-reg-detail-container">
         <h2 class="text-xl font-semibold mb-4 border-b pb-2">課程代碼：<span id="detail-course-code">${util.esc(c.course_code || 'N/A')}</span> 編輯資料</h2>
 
-        <!-- 區塊 1: 課程基本資料 -->
         <div class="tpma-reg-detail-section edit-mode" id="section-course-basic">
           <div class="tpma-detail-field">
             <label>課程代碼（可用講師代碼 + 分類代碼）</label>
@@ -346,7 +351,6 @@ ns.renderCourses = function renderCourses(list){
           </div>
         </div>
 
-        <!-- 區塊 2: 課程簡介與大綱 -->
         <div class="tpma-reg-detail-section edit-mode" id="section-course-content">
           <div class="tpma-detail-field col-span-full">
             <label>課程簡介</label>
@@ -358,7 +362,6 @@ ns.renderCourses = function renderCourses(list){
           </div>
         </div>
 
-        <!-- 區塊 3: 上課時段 -->
         <div class="tpma-reg-detail-section edit-mode" id="section-course-sessions">
           <div class="tpma-detail-field col-span-full">
             <label>上課時段</label>
@@ -371,7 +374,7 @@ ns.renderCourses = function renderCourses(list){
           </div>
         </div>
 
-        <div class="flex justify-end mt-4 gap-3">
+        <div class="tpma-reg-detail-actions">
           <button class="tpma-btn" id="tpma-btn-save-course-${c.id}">儲存變更</button>
           <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-course-edit-${c.id}">取消編輯</button>
         </div>
@@ -379,18 +382,18 @@ ns.renderCourses = function renderCourses(list){
       </div>
     `;
 
-    // 反填分類
+    // 1) 反填分類
     const catSel = div.querySelector('[data-field="category_code"]');
     if (catSel && c.category_code) catSel.value = c.category_code;
 
-    // 反填講師 + 綁新增講師 modal
+    // 2) 反填講師 + 綁新增講師 modal
     const lecSel = div.querySelector('[data-field="lecturer_code"]');
     if (lecSel) {
       ns.rebuildLecturerSelect(lecSel);
       if (c.lecturer_code) lecSel.value = c.lecturer_code;
     }
 
-    // 場次列表
+    // 3) 場次列表
     const datesWrap = div.querySelector('.tpma-course-dates[data-field="sessions"]');
     if (datesWrap) {
       if (sessions.length) {
@@ -400,7 +403,7 @@ ns.renderCourses = function renderCourses(list){
       }
     }
 
-    // 批次貼上場次
+    // 4) 批次貼上場次
     const bulkArea = div.querySelector('.tpma-bulk-input');
     const bulkBtn = div.querySelector('.tpma-bulk-apply');
     if (bulkBtn && bulkArea && datesWrap) {
@@ -414,25 +417,30 @@ ns.renderCourses = function renderCourses(list){
       };
     }
 
+    // 5) 新增講師按鈕
     const addLectBtn = div.querySelector('.tpma-add-lecturer');
     if (addLectBtn && lecSel) {
       addLectBtn.onclick = () => ns.openLecturerModal(lecSel);
     }
 
-    // 儲存 / 取消
+    // 6) 儲存事件
     const saveBtn = div.querySelector(`#tpma-btn-save-course-${c.id}`);
-    const cancelBtn = div.querySelector(`#tpma-btn-cancel-course-edit-${c.id}`);
     if (saveBtn) saveBtn.onclick = () => ns.saveCourse(div);
-    if (cancelBtn) cancelBtn.onclick = () => {
-      if (!div.dataset.id) {
-        const trDetail = div.closest && div.closest('tr.tpma-course-detail-row');
-        const tr = trDetail ? trDetail.previousElementSibling : null;
-        if (tr && tr.classList && tr.classList.contains('tpma-course-row')) tr.remove();
-        if (trDetail) trDetail.remove();
-        return;
-      }
-      ns.renderCourseView(div, false);
-    };
+
+    // 7) 取消事件 (核心修正點：尋找 .tpma-course-card 而非 tr)
+    const cancelBtn = div.querySelector(`#tpma-btn-cancel-course-edit-${c.id}`);
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        // 如果是「新增課程」產生的臨時卡片 (id 為空或是字串 "undefined")
+        if (!c.id || c.id === "undefined") {
+          const card = div.closest('.tpma-course-card');
+          if (card) card.remove();
+        } else {
+          // 一般編輯則回歸檢視模式
+          ns.renderCourseView(div, false);
+        }
+      };
+    }
   };
 
 })(window);
