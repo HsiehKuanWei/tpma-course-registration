@@ -54,6 +54,25 @@ class TPMA_CR_REST_Admin
         return current_user_can('manage_options');
     }
 
+    /**
+     * Normalize currency/amount input to integer (rounding floats) or null when empty.
+     */
+    private static function normalize_amount($value)
+    {
+        if ($value === null) {
+            return null;
+        }
+        $raw = is_string($value) ? trim($value) : $value;
+        if ($raw === '') {
+            return null;
+        }
+        $clean = preg_replace('/[^\d\.\-]/', '', (string)$raw);
+        if ($clean === '' || $clean === '-' || $clean === '.') {
+            return null;
+        }
+        return (int) round((float)$clean);
+    }
+
     /* ---------- Shortcodes ---------- */
 
     public static function shortcode_reg_admin()
@@ -252,6 +271,23 @@ public static function admin_update_reg($request)
 
     $order_id = !empty($row['woocommerce_order_id']) ? (int) $row['woocommerce_order_id'] : 0;
     $order = $order_id ? wc_get_order($order_id) : null;
+
+    // Detect remit_amount change; skip Woo sync if unchanged to avoid locked-order errors.
+    if (array_key_exists('remit_amount', $d)) {
+        $raw_remit_amount     = is_string($d['remit_amount']) ? trim($d['remit_amount']) : $d['remit_amount'];
+        $incoming_remit_amount = self::normalize_amount($raw_remit_amount);
+        $current_remit_amount  = ($row['remit_amount'] === null || $row['remit_amount'] === '') ? null : (int) $row['remit_amount'];
+
+        $is_same_amount =
+            ($incoming_remit_amount === null && $current_remit_amount === null) ||
+            ($incoming_remit_amount !== null && $current_remit_amount !== null && $incoming_remit_amount === $current_remit_amount);
+
+        if ($is_same_amount || $raw_remit_amount === '' || $raw_remit_amount === null) {
+            unset($d['remit_amount']);
+        } else {
+            $d['remit_amount'] = $incoming_remit_amount;
+        }
+    }
 
     // TPMA-only 欄位（不含 Woo 專責欄位、金額另行處理）
     $tpma_fields = array(

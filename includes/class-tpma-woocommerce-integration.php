@@ -24,6 +24,11 @@ class TPMA_WooCommerce_Integration {
 
         // Order status updates
         add_action('woocommerce_order_status_changed', [self::class, 'update_registration_payment_status'], 10, 4);
+
+        // Force BACS orders to start at "pending" instead of "on-hold".
+        add_filter('woocommerce_bacs_process_payment_order_status', function($status, $order) {
+            return 'pending';
+        }, 10, 2);
     }
 
     /**
