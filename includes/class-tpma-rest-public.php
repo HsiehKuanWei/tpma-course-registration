@@ -380,25 +380,6 @@ class TPMA_CR_REST_Public
                 }
                 $recipients = array_values(array_unique($recipients));
 
-                if ($recipients && class_exists('TPMA_Mailer')) {
-                    TPMA_Mailer::send_template(
-                        'registration_notice',
-                        $recipients,
-                        [
-                            'reg_context'   => $insert, // Use the last inserted learner's context for email, or create a summary
-                            'extra_context' => [
-                                'class_date'      => $email_class_date,
-                                'class_date_raw'  => $class_date,
-                                'course_name'     => $course->course_name ?? '',
-                                'course_hours'    => $course_hours,
-                                'lecturer_name'   => $lecturer_name,
-                                'remit_amount'    => $total_order_amount, // Total amount for email
-                                'reg_no'          => $reg_no,
-                                'woocommerce_order_id' => $woocommerce_order_id,
-                            ],
-                        ]
-                    );
-                }
 
             } catch (Exception $e) {
                 error_log('[TPMA Mailer] registration_notice error: ' . $e->getMessage());
@@ -707,6 +688,12 @@ class TPMA_CR_REST_Public
         if (is_wp_error($draft)) {
             return $draft;
         }
+
+        // ★ NEW：由 REST 決定模板 key，但 REST 不寄信
+        $draft['mail_templates'] = [
+            'student' => 'registration_student_notice', // 學員資料信（寄到 form 填的信箱）
+            'order'   => 'registration_order_notice',   // 訂單資料信（寄到 woo 結帳信箱）
+        ];
 
         $checkout_url = TPMA_CR_Woo_Service::add_to_cart_from_draft($draft);
         if (is_wp_error($checkout_url)) {

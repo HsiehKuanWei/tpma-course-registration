@@ -19,8 +19,20 @@ class TPMA_WooCommerce_Integration {
         add_filter('woocommerce_checkout_registration_required', ['TPMA_CR_Woo_Service', 'allow_guest_checkout_for_tpma'], 10, 1);
 
         // Order creation hooks
+        // ★ NEW：先把 draft 存進 order meta（避免後續 session 被清掉拿不到）
+        add_action('woocommerce_checkout_order_processed', [self::class, 'stash_draft_to_order_meta'], 8, 1);
+
         add_action('woocommerce_checkout_order_processed', ['TPMA_CR_Woo_Service', 'process_order_from_draft'], 9, 1);
         add_action('woocommerce_checkout_order_processed', [self::class, 'sync_order_to_registrations'], 10, 3);
+
+        // ★ NEW：建單完成後寄兩種信（學員資料信 / 訂單資料信）
+        add_action('woocommerce_checkout_order_processed', [self::class, 'send_tpma_mails_after_order_created'], 12, 1);
+
+        // ★ NEW：只針對 TPMA 報名單，關閉 Woo 內建寄信（避免重複寄）
+        add_filter('woocommerce_email_enabled_new_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
+        add_filter('woocommerce_email_enabled_customer_on_hold_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
+        add_filter('woocommerce_email_enabled_customer_processing_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
+        add_filter('woocommerce_email_enabled_customer_completed_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
 
         // Order status updates
         add_action('woocommerce_order_status_changed', [self::class, 'update_registration_payment_status'], 10, 4);
@@ -178,6 +190,59 @@ public static function sync_order_to_registrations($order_id, $data, $order) {
 
         $order->save();
     }
+}
+
+/**
+ * ★ NEW：把 tpma_reg_draft 先存到 order meta，避免後續 session 被清掉拿不到
+ */
+public static function stash_draft_to_order_meta($order_id) {
+    $order = wc_get_order($order_id);
+    if (!$order) return;
+
+    // 已存過就不重複存
+    $existing = $order->get_meta('_tpma_reg_draft_json', true);
+    if ($existing) return;
+
+    // 從 session 取 draft
+    $draft = (WC()->session) ? WC()->session->get('tpma_reg_draft') : null;
+    if (!is_array($draft) || empty($draft)) return;
+
+    $order->update_meta_data('_tpma_reg_draft_json', wp_json_encode($draft, JSON_UNESCAPED_UNICODE));
+    $order->save();
+}
+
+/**
+ * ★ NEW：Woo 建單後寄信（依 order meta 的 draft + order）
+ */
+public static function send_tpma_mails_after_order_created($order_id) {
+    $order = wc_get_order($order_id);
+    if (!$order) return;
+
+    // 防重複
+    if ($order->get_meta('_tpma_mail_sent', true) === 'yes') return;
+
+    $draft_json = $order->get_meta('_tpma_reg_draft_json', true);
+    $draft = $draft_json ? json_decode($draft_json, true) : null;
+    if (!is_array($draft)) $draft = [];
+
+    if (class_exists('TPMA_CR_Mail_Dispatcher')) {
+        TPMA_CR_Mail_Dispatcher::send_after_order_created($order, $draft);
+    }
+}
+
+/**
+ * ★ NEW：只針對 TPMA 報名單關閉 Woo 內建寄信（避免重複寄）
+ */
+public static function maybe_disable_woo_emails_for_tpma($enabled, $order) {
+    if (!$order instanceof WC_Order) return $enabled;
+
+    // 判斷是否 TPMA 報名單：有 draft json 或你 draft 流程寫入的 reg_no 都算
+    $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+           || (bool)$order->get_meta('_tpma_reg_no', true);
+
+    if ($is_tpma) return false;
+
+    return $enabled;
 }
 
 
