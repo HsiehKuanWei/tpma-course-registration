@@ -52,7 +52,6 @@ class TPMA_CR_Thankyou_View
         $session_dt  = $draft['session_datetime'] ?? ($draft['session']['session_datetime'] ?? '');
 
         // ★ 這裡輸出你要的整段 UI（等於替換掉原本 thankyou 顯示）
-        echo '<div style="padding:8px;border:2px solid red;margin:10px 0;">TPMA 自訂 thankyou 已啟用</div>';
         echo '<div class="tpma-thankyou-root">';
 
         echo '<div class="tpma-thankyou-card">';
@@ -63,7 +62,7 @@ class TPMA_CR_Thankyou_View
         if ($class_date)  echo '<div><strong>上課日期：</strong>' . esc_html($class_date) . '</div>';
         if ($session_dt)  echo '<div><strong>場次時間：</strong>' . esc_html($session_dt) . '</div>';
         echo '<div><strong>訂單編號：</strong>' . esc_html($order->get_order_number()) . '</div>';
-        echo '<div><strong>狀態：</strong>' . esc_html(wc_get_order_status_name($order->get_status())) . '</div>';
+        echo '<div><strong>狀態：</strong>' . esc_html(self::label_for_woo_status($order->get_status())) . '</div>';
         echo '</div>';
 
         echo '<h3 class="tpma-thankyou-subtitle">學員名單</h3>';
@@ -98,7 +97,7 @@ class TPMA_CR_Thankyou_View
         }
 
         // 你也可以在這裡加：匯款資訊 / 匯款回報表單 / 下載收據等
-        echo '<div>測試資訊</div>'; // card
+        echo '<div></div>'; // card
         echo '</div>'; // root
     }
 
@@ -115,4 +114,21 @@ class TPMA_CR_Thankyou_View
         $draft = json_decode($draft_json, true);
         return is_array($draft) ? $draft : [];
     }
+
+    private static function label_for_woo_status(string $status): string
+    {
+        $status = (string)$status;
+
+        if ($status === 'on-hold') {
+            return '尚未付款';
+        }
+        if ($status === 'processing') {
+            return '待核帳';
+        }
+
+        return function_exists('wc_get_order_status_name')
+            ? wc_get_order_status_name($status)
+            : $status;
+    }
+
 }

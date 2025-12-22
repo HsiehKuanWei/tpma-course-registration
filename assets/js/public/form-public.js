@@ -352,8 +352,8 @@ function showSummaryModal(courseInfo, form) {
       </tbody>
     </table>
     <div class="tpma-summary-actions">
-      <button type="button" class="tpma-btn tpma-cancel">返回修改</button>
       <button type="button" class="tpma-btn tpma-confirm">確認送出</button>
+      <button type="button" class="tpma-btn tpma-cancel">返回修改</button>
     </div>
   `;
   backdrop.appendChild(m);

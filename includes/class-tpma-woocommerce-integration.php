@@ -102,7 +102,7 @@ class TPMA_WooCommerce_Integration {
             $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
                 || (bool)$order->get_meta('_tpma_reg_no', true);
 
-            return $is_tpma ? 'pending' : $status;
+            return $is_tpma ? 'on-hold' : $status;
         }, 10, 2);
 
         // ★ NEW：TPMA thankyou 視圖（獨立檔案，只初始化一次）

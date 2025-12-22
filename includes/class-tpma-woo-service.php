@@ -628,6 +628,19 @@ class TPMA_CR_Woo_Service {
         }
 
         if (!self::is_tpma_reg_cart()) {
+            $order->set_billing_postcode('');
+            $order->set_billing_state('');
+            $order->set_billing_city('');
+            $order->set_billing_address_1('');
+            $order->set_billing_address_2('');
+            $order->set_billing_country('');
+
+            $order->set_shipping_postcode('');
+            $order->set_shipping_state('');
+            $order->set_shipping_city('');
+            $order->set_shipping_address_1('');
+            $order->set_shipping_address_2('');
+            $order->set_shipping_country('');            
             return;
         }
         $receipt_type = sanitize_text_field($_POST['tpma_receipt_type'] ?? '');

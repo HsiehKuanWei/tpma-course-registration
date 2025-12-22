@@ -16,10 +16,13 @@ if (empty($restNonce)) {
             <button type="button" class="tpma-modal-close-btn" id="tpma-mail-btn-close">×</button>
         </div>
         <div class="tpma-modal-content">
-            <label>模板選擇</label>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <label style="margin-bottom:0;">模板選擇</label>
+                <button type="button" class="tpma-btn secondary" id="tpma-mail-btn-add-template">新增模板</button>
+            </div>
             <select id="tpma-mail-template-select"></select>
 
-            <label>寄件人名稱 (from_name)</label>
+            <label style="margin-top:15px;">寄件人名稱 (from_name)</label>
             <input type="text" id="tpma-mail-from-name">
 
             <label>寄件人信箱 (from_email)</label>
@@ -82,6 +85,7 @@ if (empty($restNonce)) {
     const elModal = document.getElementById('tpma-mail-backdrop').querySelector('.tpma-modal'); // Select the modal inside the backdrop
     const elKey = document.getElementById('tpma-mail-current-key');
     const elSelect = elModal.querySelector('#tpma-mail-template-select');
+    const elBtnAddTemplate = elModal.querySelector('#tpma-mail-btn-add-template');
     const elFromName = elModal.querySelector('#tpma-mail-from-name');
     const elFromMail = elModal.querySelector('#tpma-mail-from-email');
     const elDefCc = elModal.querySelector('#tpma-mail-default-cc');
@@ -167,39 +171,43 @@ if (empty($restNonce)) {
     }
 
     function renderVarsHint() {
-        // 實際變數集合你可以依照模板內容 / context 自行調整，這裡先列出常用
+        // 實際變數集合與後端 build_context 提供的變數一致
         const keys = [
-            'reg_no',
-            'created_at',
             'course_id',
+            'session_id',
             'course_name',
-            'class_date', // 漂亮版：YYYY/MM/DD（週） HH:MM~HH:MM
-            'class_date_raw', // 原始日期：YYYY-MM-DD
-            'course_hours',
-            'lecturer_name',
-            'student_name',
-            'job_title',
-            'company_name',
-            'tax_id',
-            'department',
-            'phone',
-            'mobile',
-            'emails',
-            'receiver',
-            'address',
-            'receipt_type',
+            'class_date',
+            'session_datetime',
+            'learners', // 注意：此為陣列，直接顯示可能不美觀，需在模板中自行處理
+            'learner_count',
+            'remit_amount_per_learner',
+            'total_order_amount',
             'source',
             'note',
-            'contact_name',
-            'contact_email',
-            'remit_paid_at',
-            'remit_amount',
-            'status',
+            'order_id',
+            'order_number',
+            'order_status',
+            'order_total',
+            'currency',
+            'payment_method',
+            'payment_method_title',
+            'billing_name',
+            'billing_email',
+            'billing_phone',
+            'shipping_name',
+            'shipping_address_1',
+            'shipping_address_2',
+            'shipping_city',
+            'shipping_postcode',
+            'view_order_url',
+            'order_received_url',
+            'pay_url',
+            // extra_context 暫時留空，若有新增變數可在此處添加
         ];
         elVars.innerHTML = '';
         keys.forEach(k => {
             const span = document.createElement('span');
-            span.className = 'tpma-mail-tag'; // Keep original class for now, can be updated later if needed
+            span.className = 'tpma-mail-tag';
             span.textContent = '{{' + k + '}}';
             elVars.appendChild(span);
         });
@@ -309,6 +317,26 @@ if (empty($restNonce)) {
     });
     elSelect.addEventListener('change', () => {
         fillFormByKey(elSelect.value);
+    });
+    elBtnAddTemplate.addEventListener('click', () => {
+        const newKey = window.prompt('請輸入新模板的名稱 (英文小寫，例如：new_template)：');
+        if (newKey) {
+            if (state.templates[newKey]) {
+                alert('模板名稱已存在，請使用其他名稱。');
+                return;
+            }
+            state.templates[newKey] = { subject: '', body_html: '' };
+            if (!state.config.templates) state.config.templates = {};
+            state.config.templates[newKey] = {
+                default_cc: [],
+                default_bcc: [],
+                use_ad: false,
+                ad_key: '',
+            };
+            renderTemplateOptions();
+            state.currentKey = newKey;
+            fillFormByKey(newKey);
+        }
     });
     document.getElementById('tpma-mail-btn-refresh-preview').addEventListener('click', () => {
         refreshPreview().catch(e => alert(e.message));

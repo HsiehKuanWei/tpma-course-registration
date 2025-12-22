@@ -513,7 +513,7 @@ class TPMA_CR_REST_Public
         // ★ NEW：由 REST 決定模板 key，但 REST 不寄信
         $draft['mail_templates'] = [
             'student' => 'registration_notice', // 學員資料信（寄到 form 填的信箱）
-            'order'   => 'registration_notice',   // 訂單資料信（寄到 woo 結帳信箱）
+            'order'   => 'registration_order',   // 訂單資料信（寄到 woo 結帳信箱）
         ];
 
         $checkout_url = TPMA_CR_Woo_Service::add_to_cart_from_draft($draft);
