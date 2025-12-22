@@ -11,12 +11,66 @@ class TPMA_WooCommerce_Integration {
         // Render inside #order_review (right column), but outside the fragments that Woo refreshes via AJAX
         // (review-order table + payment). This prevents duplicate output when the order review is refreshed.
         add_action('woocommerce_checkout_order_review', ['TPMA_CR_Woo_Service', 'render_checkout_summary'], 5);
+
+        // =========================
+        // ★ TPMA 報名單：改成「提交訂單（待匯款）」而不是線上結帳付款
+        // =========================
+
+        // 1) 只保留離線付款方式（BACS），避免導去線上付款
+        add_filter('woocommerce_available_payment_gateways', function($gateways){
+            if (!is_checkout() || is_wc_endpoint_url()) return $gateways;
+            if (!WC()->cart) return $gateways;
+
+            $has_tpma = false;
+            foreach (WC()->cart->get_cart() as $item) {
+                if (!empty($item['tpma_reg_draft'])) { $has_tpma = true; break; }
+            }
+            if (!$has_tpma) return $gateways;
+
+            // 只保留 bacs（銀行轉帳）
+            foreach ($gateways as $id => $gw) {
+                if ($id !== 'bacs') unset($gateways[$id]);
+            }
+            return $gateways;
+        }, 20);
+
+        // 2) 預設使用 bacs（Woo 對 bacs 通常會把訂單設為 on-hold）
+        add_filter('woocommerce_default_gateway', function($default){
+            if (!WC()->cart) return $default;
+            foreach (WC()->cart->get_cart() as $item) {
+                if (!empty($item['tpma_reg_draft'])) return 'bacs';
+            }
+            return $default;
+        });
+
+        // 3) 把下單按鈕改成「提交訂單」
+        add_filter('woocommerce_order_button_text', function($text){
+            if (!WC()->cart) return $text;
+            foreach (WC()->cart->get_cart() as $item) {
+                if (!empty($item['tpma_reg_draft'])) return '提交訂單';
+            }
+            return $text;
+        });
+        
         add_action('woocommerce_checkout_before_customer_details', ['TPMA_CR_Woo_Service', 'render_auto_fill_controls'], 1);
         add_action('woocommerce_checkout_process', ['TPMA_CR_Woo_Service', 'validate_checkout_fields']);
         add_action('woocommerce_checkout_create_order', ['TPMA_CR_Woo_Service', 'save_checkout_fields'], 10, 2);
         add_filter('woocommerce_checkout_fields', ['TPMA_CR_Woo_Service', 'add_checkout_fields']);
         add_filter('woocommerce_is_purchasable', ['TPMA_CR_Woo_Service', 'force_tpma_product_purchasable'], 10, 2);
         add_filter('woocommerce_checkout_registration_required', ['TPMA_CR_Woo_Service', 'allow_guest_checkout_for_tpma'], 10, 1);
+
+        /* 4) 保險：TPMA 報名單建單後強制狀態 on-hold（待匯款）
+        add_action('woocommerce_checkout_order_processed', function($order_id){
+            $order = wc_get_order($order_id);
+            if (!$order) return;
+
+            $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+                || (bool)$order->get_meta('_tpma_reg_no', true);
+
+            if ($is_tpma && $order->get_status() !== 'on-hold') {
+                $order->update_status('on-hold', 'TPMA：提交訂單（待匯款）', true);
+            }
+        }, 11);*/
 
         // Order creation hooks
         // ★ NEW：先把 draft 存進 order meta（避免後續 session 被清掉拿不到）
@@ -35,14 +89,32 @@ class TPMA_WooCommerce_Integration {
         add_filter('woocommerce_email_enabled_customer_completed_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
 
         // Order status updates
-        add_action('woocommerce_order_status_changed', [self::class, 'update_registration_payment_status'], 10, 4);
-
-        // Force BACS orders to start at "pending" instead of "on-hold".
+        add_action(
+            'woocommerce_order_status_changed',
+            [self::class, 'update_registration_payment_status'],
+            10,
+            4
+        );
+        // ★ TPMA 報名單：BACS 建單時狀態改為 pending（待付款）
         add_filter('woocommerce_bacs_process_payment_order_status', function($status, $order) {
-            return 'pending';
+            if (!$order instanceof WC_Order) return $status;
+
+            $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+                || (bool)$order->get_meta('_tpma_reg_no', true);
+
+            return $is_tpma ? 'pending' : $status;
         }, 10, 2);
+
+        // ★ NEW：TPMA thankyou 視圖（獨立檔案，只初始化一次）
+        if (class_exists('TPMA_CR_Thankyou_View')) {
+            TPMA_CR_Thankyou_View::init();
+        }
+
+
+        
     }
 
+   
     /**
      * Sync WooCommerce order items to TPMA registrations table if they are course products.
      *

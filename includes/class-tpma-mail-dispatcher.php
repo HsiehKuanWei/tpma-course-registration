@@ -122,6 +122,8 @@ class TPMA_CR_Mail_Dispatcher
                 'shipping_postcode'  => $order->get_shipping_postcode(),
 
                 'view_order_url' => $order->get_view_order_url(),
+                'order_received_url' => $order->get_checkout_order_received_url(),
+                'pay_url' => $order->get_checkout_payment_url(),
             ],
 
             // 你模板系統若還有 extra_context，也可以一起給

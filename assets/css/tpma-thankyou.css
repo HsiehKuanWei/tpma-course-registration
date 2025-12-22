@@ -1,0 +1,38 @@
+/* 1) 隱藏 Woo 原生 thankyou 內容（替換式呈現） */
+.woocommerce-order .woocommerce-notice,
+.woocommerce-order ul.order_details,
+.woocommerce-order .woocommerce-order-details,
+.woocommerce-order .woocommerce-customer-details {
+  display: none !important;
+}
+
+/* 2) 你的自訂內容樣式 */
+.tpma-thankyou-root { margin: 18px 0; }
+.tpma-thankyou-card {
+  padding: 16px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+}
+.tpma-thankyou-title { margin: 0 0 10px; font-size: 18px; }
+.tpma-thankyou-subtitle { margin: 14px 0 8px; font-size: 16px; }
+
+.tpma-thankyou-meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 14px;
+  margin: 8px 0 10px;
+}
+
+.tpma-thankyou-tablewrap { overflow: auto; }
+.tpma-thankyou-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.tpma-thankyou-table th, .tpma-thankyou-table td {
+  border: 1px solid #e5e5e5;
+  padding: 8px;
+  font-size: 13px;
+}
+.tpma-thankyou-table th { background: #f8f8f8; text-align: left; }
+
+@media (max-width: 640px) {
+  .tpma-thankyou-meta { grid-template-columns: 1fr; }
+}
