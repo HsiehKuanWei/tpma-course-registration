@@ -75,43 +75,7 @@ class TPMA_CR_REST_Public
 
         ));
 
-		// 信件模板與設定：限管理員使用
-		register_rest_route($ns, '/mail/templates', array(
-			'methods'  => 'GET',
-			'callback' => array(__CLASS__, 'get_mail_templates'),
-			'permission_callback' => function(){
-				return current_user_can('manage_options');
-			},
-		));
-
-		register_rest_route($ns, '/mail/templates', array(
-			'methods'  => 'POST',
-			'callback' => array(__CLASS__, 'save_mail_templates'),
-			'permission_callback' => function(){
-				return current_user_can('manage_options');
-			},
-		));
-
-		register_rest_route($ns, '/mail/preview', array(
-			'methods'  => 'POST',
-			'callback' => array(__CLASS__, 'preview_mail_template'),
-			'permission_callback' => function(){
-				return current_user_can('manage_options');
-			},
-		));
-
-		register_rest_route($ns, '/mail/send-test', array(
-			'methods'  => 'POST',
-			'callback' => array(__CLASS__, 'send_test_mail'),
-			'permission_callback' => function(){
-				return current_user_can('manage_options');
-			},
-		));
-
-	
 	}
-	
-	
 	
 
 
@@ -363,27 +327,6 @@ class TPMA_CR_REST_Public
                 }
             }
 
-            try {
-                $student_email = sanitize_email($learners[0]['emails'] ?? ''); // Use first learner's email for notification
-                $contact_email = sanitize_email($shared['contact_email'] ?? '');
-
-                $notify_contact = isset($shared['notify_contact'])
-                    ? (bool) $shared['notify_contact']
-                    : true;
-
-                $recipients = [];
-                if ($student_email !== '') {
-                    $recipients[] = $student_email;
-                }
-                if ($notify_contact && $contact_email !== '' && $contact_email !== $student_email) {
-                    $recipients[] = $contact_email;
-                }
-                $recipients = array_values(array_unique($recipients));
-
-
-            } catch (Exception $e) {
-                error_log('[TPMA Mailer] registration_notice error: ' . $e->getMessage());
-            }
 
             return rest_ensure_response(array(
                 'success' => true,
@@ -548,126 +491,6 @@ class TPMA_CR_REST_Public
 
     }
 	
-	public static function get_mail_templates($request) {
-		if (!class_exists('TPMA_CR_Mail_Templates') || !class_exists('TPMA_CR_Mail_Config')) {
-			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
-		}
-
-		$templates = TPMA_CR_Mail_Templates::get_all();
-		$config    = TPMA_CR_Mail_Config::get_config();
-
-		return rest_ensure_response(array(
-			'templates' => $templates,
-			'config'    => $config,
-		));
-	}
-
-	public static function save_mail_templates($request) {
-		if (!class_exists('TPMA_CR_Mail_Templates') || !class_exists('TPMA_CR_Mail_Config')) {
-			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
-		}
-
-		$d = $request->get_json_params();
-
-		$templates = isset($d['templates']) && is_array($d['templates']) ? $d['templates'] : array();
-		$config    = isset($d['config']) && is_array($d['config']) ? $d['config'] : array();
-
-		TPMA_CR_Mail_Templates::update_all($templates);
-		TPMA_CR_Mail_Config::update_config($config);
-
-		return rest_ensure_response(array(
-			'success'   => true,
-			'templates' => $templates,
-			'config'    => $config,
-		));
-	}
-
-	public static function preview_mail_template($request) {
-		if (!class_exists('TPMA_CR_Mail_Templates') || !class_exists('TPMA_CR_Mail_Config')) {
-			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
-		}
-
-		$d = $request->get_json_params();
-
-		$template_key = sanitize_text_field($d['template_key'] ?? '');
-		$subject_raw  = (string) ($d['subject'] ?? '');
-		$body_raw     = (string) ($d['body_html'] ?? '');
-		$context      = is_array($d['context'] ?? null) ? $d['context'] : array();
-
-		if (!$template_key) {
-			return new WP_Error('invalid_template_key', '缺少 template_key', array('status' => 400));
-		}
-
-		// 簡單版變數替換，模仿 TPMA_CR_Mail_Templates::replace_vars()
-		$replace = array();
-		foreach ($context as $k => $v) {
-			$replace['{{' . $k . '}}'] = esc_html($v);
-		}
-
-		$subject = strtr($subject_raw, $replace);
-		$body    = strtr($body_raw, $replace);
-
-		// 套用廣告與共通尾巴，模仿 render() 裡的邏輯
-		$config  = TPMA_CR_Mail_Config::get_config();
-		$tpl_cfg = $config['templates'][$template_key] ?? array();
-
-		// 廣告
-		if (!empty($tpl_cfg['use_ad']) && !empty($tpl_cfg['ad_key'])) {
-			$ads   = $config['ads'] ?? array();
-			$adKey = $tpl_cfg['ad_key'];
-			if (!empty($ads[$adKey]['enabled']) && !empty($ads[$adKey]['html'])) {
-				$body .= "\n\n" . $ads[$adKey]['html'];
-			}
-		}
-
-		// 共通尾巴
-		if (!empty($config['common_footer_html'])) {
-			$body .= "\n\n" . $config['common_footer_html'];
-		}
-
-		return rest_ensure_response(array(
-			'subject'   => $subject,
-			'body_html' => $body,
-		));
-	}
-
-	public static function send_test_mail($request) {
-		if (!class_exists('TPMA_CR_Mail_Service')) {
-			return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
-		}
-
-		$d = $request->get_json_params();
-		$to = sanitize_email($d['to'] ?? '');
-		$template_key = sanitize_text_field($d['template_key'] ?? 'registration_notice');
-
-		if (!$to) {
-			return new WP_Error('invalid_email', '缺少測試收件人', array('status' => 400));
-		}
-
-		// 給一組假的 context
-		$reg_context = array(
-			'id'           => 0,
-			'reg_no'       => 'TEST-0001',
-			'course_id'    => 0,
-			'course_name'  => '測試課程',
-			'class_date'   => current_time('mysql'),
-			'student_name' => '測試學員',
-			'company_name' => '測試公司',
-		);
-
-		try {
-			TPMA_CR_Mail_Service::send($template_key, array(
-				'reg_context' => $reg_context,
-				'to'          => $to,
-			));
-		} catch (Exception $e) {
-			return new WP_Error('send_failed', $e->getMessage(), array('status' => 500));
-		}
-
-		return rest_ensure_response(array(
-			'success' => true,
-		));
-	}
 
     /**
      * checkout-init：暫存學員資料到 Woo session、加車並回傳 checkout URL
