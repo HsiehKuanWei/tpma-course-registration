@@ -22,6 +22,44 @@ include __DIR__ . '/mail-modal.php';
 <link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/admin-common.css?ver=' . TPMA_CR_VERSION ); ?>">
 <link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/reg-admin.css?ver=' . TPMA_CR_VERSION ); ?>">
 
+<?php
+// === TPMA：統一選項來源（只改這裡就好）======================
+
+// Woo 訂單狀態：後台顯示用（你要的對應）
+$TPMA_WC_STATUS_OPTIONS = [
+  ''            => '全部',
+  'on-hold'     => '尚未付款 (WC)',  // Woo on-hold → 尚未付款
+  'processing'  => '待核帳 (WC)',    // Woo processing → 待核帳
+  'completed'   => '已完成 (WC)',
+  'cancelled'   => '已取消 (WC)',
+  'refunded'    => '已退款 (WC)',
+  'failed'      => '失敗 (WC)',
+  'checkout-draft' => '草稿 (WC)',
+];
+
+// 報名狀態：你說「原本報名狀態只保留待發證/已結訓」
+$TPMA_REG_STATUS_OPTIONS = [
+  ''             => '全部',
+  'cert_pending' => '待發證',
+  'completed'    => '已結訓',
+];
+
+// 給 JS 用（編輯模式的 select 也走同一份）
+$TPMA_OPTIONS_FOR_JS = [
+  'wcStatus'  => array_map(
+    fn($label, $value) => ['value' => $value, 'label' => $label],
+    $TPMA_WC_STATUS_OPTIONS,
+    array_keys($TPMA_WC_STATUS_OPTIONS)
+  ),
+  'regStatus' => array_map(
+    fn($label, $value) => ['value' => $value, 'label' => $label],
+    $TPMA_REG_STATUS_OPTIONS,
+    array_keys($TPMA_REG_STATUS_OPTIONS)
+  ),
+];
+?>
+
+
 <div id="tpma-reg-admin" class="tpma-wrap">
 
     <!-- 上方關鍵字搜尋列 -->
@@ -166,17 +204,11 @@ include __DIR__ . '/mail-modal.php';
 
       <div class="tpma-menu-section">
         <label><strong>付款狀態 (WC)</strong></label>
-        <select id="tpma-filter-payment-status">
-          <option value="">全部</option>
-          <option value="pending">待付款 (WC)</option>
-          <option value="processing">處理中 (WC)</option>
-          <option value="on-hold">保留中 (WC)</option>
-          <option value="completed">已完成 (WC)</option>
-          <option value="cancelled">已取消 (WC)</option>
-          <option value="refunded">已退款 (WC)</option>
-          <option value="failed">失敗 (WC)</option>
-          <option value="checkout-draft">草稿 (WC)</option>
-        </select>
+          <select id="tpma-filter-payment-status">
+            <?php foreach ($TPMA_WC_STATUS_OPTIONS as $v => $label): ?>
+              <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+            <?php endforeach; ?>
+          </select>
       </div>
       <div class="tpma-menu-section">
         <button class="tpma-btn" id="tpma-btn-clear-payment-status">清除付款篩選</button>
@@ -184,15 +216,11 @@ include __DIR__ . '/mail-modal.php';
 
       <div class="tpma-menu-section">
         <label><strong>報名狀態</strong></label>
-        <select id="tpma-filter-status">
-          <option value="">全部</option>
-          <option value="pending">待付款</option>
-          <option value="verifying">待核帳</option>
-          <option value="paid">已付款</option>
-          <option value="cert_pending">待發證</option>
-          <option value="completed">已結訓</option>
-          <option value="cancelled">已取消</option>
-        </select>
+          <select id="tpma-filter-status">
+            <?php foreach ($TPMA_REG_STATUS_OPTIONS as $v => $label): ?>
+              <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+            <?php endforeach; ?>
+          </select>
       </div>
 
       <div class="tpma-menu-section">
@@ -289,9 +317,40 @@ window.TPMARegAdminConfig = <?php echo wp_json_encode(array(
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/02.tpma-public.api.js?ver=' . tpma_cr_asset_ver('assets/js/public/02.tpma-public.api.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/01.reg-admin.utils.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/01.reg-admin.utils.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/02.reg-admin.labels.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/02.reg-admin.labels.js') ); ?>"></script>
+<script>
+window.TPMARegAdmin = window.TPMARegAdmin || {};
+window.TPMARegAdmin.options = window.TPMARegAdmin.options || {};
+window.TPMARegAdmin.options.wcStatus = <?php echo wp_json_encode(array_values(array_filter(array_map(function($label, $value){
+    return ['value' => $value, 'label' => $label];
+}, $TPMA_WC_STATUS_OPTIONS, array_keys($TPMA_WC_STATUS_OPTIONS)), fn($x)=>$x['value']!=='' )), JSON_UNESCAPED_UNICODE); ?>;
+
+window.TPMARegAdmin.options.regStatus = <?php echo wp_json_encode(array_values(array_filter(array_map(function($label, $value){
+    return ['value' => $value, 'label' => $label];
+}, $TPMA_REG_STATUS_OPTIONS, array_keys($TPMA_REG_STATUS_OPTIONS)), fn($x)=>$x['value']!=='' )), JSON_UNESCAPED_UNICODE); ?>;
+</script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/03.reg-admin.api.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/03.reg-admin.api.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/04.reg-admin.state.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/04.reg-admin.state.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/05.reg-admin.render.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/05.reg-admin.render.js') ); ?>"></script>
+<select id="tpma-filter-status">
+  <?php foreach ($TPMA_REG_STATUS_OPTIONS as $v => $label): ?>
+    <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+  <?php endforeach; ?>
+</select>
+
+
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/06.reg-admin.ui-events.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/06.reg-admin.ui-events.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/07.reg-admin.core.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/07.reg-admin.core.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/08.reg-admin-init.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/08.reg-admin-init.js') ); ?>"></script>
+<script>
+(function(){
+  const L = window.TPMARegAdmin && window.TPMARegAdmin.labels;
+  if (!L) return;
+
+  const old = L.paymentStatusLabel;
+  L.paymentStatusLabel = function(code){
+    if (code === 'on-hold') return '尚未付款';
+    if (code === 'processing') return '待核帳';
+    return old ? old(code) : code;
+  };
+})();
+</script>

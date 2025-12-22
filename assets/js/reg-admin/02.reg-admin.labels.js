@@ -7,18 +7,14 @@ global.TPMARegAdmin = global.TPMARegAdmin || {};
 const L = global.TPMARegAdmin.labels = global.TPMARegAdmin.labels || {};
 
 L.STATUS_LABELS = {
-  pending:      '待付款',
-  verifying:    '待核帳',
-  paid:         '已付款',
   cert_pending: '待發證',
   completed:    '已結訓',
-  cancelled:    '已取消'
 };
 
 L.PAYMENT_STATUS_LABELS = {
   'pending':        '待付款 (WC)',
-  'processing':     '處理中 (WC)',
-  'on-hold':        '保留中 (WC)',
+  'processing':     '待核帳 (WC)',
+  'on-hold':        '尚未付款 (WC)',
   'completed':      '已完成 (WC)',
   'cancelled':      '已取消 (WC)',
   'refunded':       '已退款 (WC)',

@@ -472,11 +472,9 @@ class TPMA_CR_REST_Public
             array(
 
                 'remit_account' => sanitize_text_field($p['remit_account'] ?? ''),
-
                 'remit_date'    => sanitize_text_field($p['remit_date'] ?? ''),
-
+                'remit_paid_at' => sanitize_text_field($p['remit_date'] ?? null),
                 'remit_amount'  => floatval($p['remit_amount'] ?? 0),
-
                 'status'        => 'submitted',
 
             ),

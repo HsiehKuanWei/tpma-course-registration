@@ -76,6 +76,8 @@ class TPMA_CR_Admin_Woo_Service
                 $r['remit_amount_total'] = $o['remit_amount_total'];
                 $r['remit_paid_at']      = $o['remit_paid_at'] ?: $r['remit_paid_at'];
                 $r['remit_account']      = $o['remit_account'] ?: $r['remit_account'];
+                $r['payment_status_label'] = self::admin_label_for_woo_status($o['status']);
+                $r['order_status_label']   = $r['payment_status_label'];
             }
         }
         unset($r);
@@ -206,6 +208,28 @@ class TPMA_CR_Admin_Woo_Service
         $field_result = self::update_order_fields($order, $payload);
         $has_change = $has_change || !empty($field_result['has_change']);
 
+        // ★ NEW：允許後台更新 Woo 訂單狀態（payload 送 payment_status）
+        if (isset($payload['payment_status'])) {
+            $new_status = sanitize_key($payload['payment_status']);
+
+            // 驗證是否為 Woo 合法狀態（keys 是 wc-pending / wc-on-hold ...）
+            $allowed = array();
+            if (function_exists('wc_get_order_statuses')) {
+                foreach (array_keys(wc_get_order_statuses()) as $k) {
+                    $allowed[] = str_replace('wc-', '', $k);
+                }
+            }
+
+            if (!empty($allowed) && !in_array($new_status, $allowed, true)) {
+                return new WP_Error('invalid_status', '不支援的 Woo 狀態：' . $new_status, array('status' => 400));
+            }
+
+            if ($order->get_status() !== $new_status) {
+                $order->update_status($new_status, 'TPMA reg-admin 更新訂單狀態', true);
+                $has_change = true;
+            }
+        }
+
         // remit_amount 特別處理：同步 regs 並重算 Woo 總額
         if (isset($payload['remit_amount'])) {
             $sync = self::sync_remit_amount($order, $regs_table, (int) sanitize_text_field($payload['remit_amount']));
@@ -216,5 +240,23 @@ class TPMA_CR_Admin_Woo_Service
         }
 
         return array('has_change' => $has_change);
+    }
+    private static function admin_label_for_woo_status($status)
+    {
+        $status = (string)$status;
+
+        if ($status === 'on-hold') {
+            return '尚未付款';
+        }
+        if ($status === 'processing') {
+            return '待核帳';
+        }
+
+        // 其餘維持 Woo 原來的（例如 已取消/已退款...）
+        if (function_exists('wc_get_order_status_name')) {
+            return wc_get_order_status_name($status);
+        }
+
+        return $status;
     }
 }

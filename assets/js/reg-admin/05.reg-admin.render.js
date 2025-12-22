@@ -9,6 +9,7 @@ const U = global.TPMARegAdmin.utils;
 const L = global.TPMARegAdmin.labels;
 const S = global.TPMARegAdmin.state;
 const API = global.TPMARegAdmin.api;
+const O = global.TPMARegAdmin.options || {};
 
 R.getCourseHoursForRow = function getCourseHoursForRow(ctx, row){
   const tryParse = (v)=>{ const n=parseFloat(v); return isNaN(n)?0:n; };
@@ -405,8 +406,8 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
     appendEditField(basicSection, 'WooCommerce 訂單 ID', 'woocommerce_order_id', 'text', linkHtml, [], true);
   }
-  appendEditField(basicSection, '付款狀態 (WC)', 'payment_status', 'text', L.paymentStatusLabel(row.payment_status), [], true);
-  detailContainer.appendChild(basicSection);
+  appendEditField(basicSection, '付款狀態 (WC)', 'payment_status', 'select', row.payment_status, (O.wcStatus || []));
+  detailContainer.appendChild(basicSection); 
 
   // 區塊 2: 學員資訊
   const studentSection = document.createElement('div');
@@ -457,14 +458,18 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   const otherSection = document.createElement('div');
   otherSection.className = 'tpma-reg-detail-section edit-mode';
   otherSection.id = 'section-other';
-  appendEditField(otherSection, '報名狀態', 'status', 'select', row.status, [
-    { value: 'pending', label: '待付款' },
-    { value: 'verifying', label: '待核帳' },
-    { value: 'paid', label: '已付款' },
-    { value: 'cert_pending', label: '待發證' },
-    { value: 'completed', label: '已結訓' },
-    { value: 'cancelled', label: '已取消' }
-  ]);
+  appendEditField(
+    otherSection,
+    '報名狀態',
+    'status',
+    'select',
+    row.status,
+    (O.regStatus || [
+      { value: '', label: '全部' },
+      { value: 'cert_pending', label: '待發證' },
+      { value: 'completed', label: '已結訓' }
+    ]).filter(x => x.value !== '') // 編輯不需要「全部」
+  );
   appendEditField(otherSection, '測驗成績', 'test_score', 'text', row.test_score);
   appendEditField(otherSection, '證書編號', 'certificate_id', 'text', row.certificate_id);
   appendEditField(otherSection, '備註', 'note', 'textarea', row.note);
