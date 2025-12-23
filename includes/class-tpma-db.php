@@ -196,7 +196,7 @@ class TPMA_CR_DB
 			remit_account VARCHAR(100) DEFAULT NULL,
 			remit_paid_at DATE DEFAULT NULL,    
 			remit_amount INT DEFAULT NULL,
-			status VARCHAR(20) NOT NULL DEFAULT 'pending',
+			status VARCHAR(20) NOT NULL DEFAULT 'cert_pending',
 			test_score VARCHAR(30) DEFAULT NULL,
 			certificate_id VARCHAR(30) DEFAULT NULL,
             woocommerce_order_id BIGINT UNSIGNED DEFAULT NULL,

@@ -238,8 +238,8 @@ class TPMA_CR_REST_Public
                     'source'        => sanitize_text_field($shared['source'] ?? ''),
                     'note'          => sanitize_textarea_field($shared['note'] ?? ''),
                     'remit_amount'  => $remit_amount_per_learner, // Amount per learner
-                    'status'        => 'pending', // Initial TPMA status
-                    'payment_status' => 'pending', // Initial WC payment status
+                    'status'        => 'cert_pending', // Initial TPMA status
+                    'payment_status' => 'on-hold', // Initial WC payment status
                 );
 
                 $wpdb->insert($regs_table, $insert);
