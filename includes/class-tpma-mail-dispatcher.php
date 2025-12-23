@@ -270,6 +270,7 @@ class TPMA_CR_Mail_Dispatcher
                 'shipping_address_2'    => $order->get_shipping_address_2(),
                 'shipping_city'         => $order->get_shipping_city(),
                 'shipping_postcode'     => $order->get_shipping_postcode(),
+                'order_public_url' => $order->get_checkout_order_received_url(),
             )
         );
 

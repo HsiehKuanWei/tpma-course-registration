@@ -682,81 +682,125 @@ class TPMA_CR_Woo_Service {
         }
     }
 
-    /**
-     * 根據草稿寫入 regs 與訂單 meta。
-     */
-    public static function process_order_from_draft($order_id) {
-        error_log("TPMA Debug: process_order_from_draft called for order ID: {$order_id}");
+/**
+ * 根據草稿寫入 regs 與訂單 meta。
+ * 規則：
+ * - regs.status：TPMA 報名/發證狀態（不與 Woo 同步）
+ * - regs.payment_status：Woo 付款狀態（會隨 Woo 狀態變更而更新）
+ * - 同一張訂單只能寫入一次 regs（防止重複觸發）
+ */
+public static function process_order_from_draft($order_id) {
+    error_log("TPMA Debug: process_order_from_draft called for order ID: {$order_id}");
 
-        if (!$order_id || !function_exists('WC')) {
-            error_log("TPMA Debug: process_order_from_draft - Invalid order ID or WC not loaded.");
-            return;
-        }
-        $order = wc_get_order($order_id);
-        if (!$order) {
-            error_log("TPMA Debug: process_order_from_draft - Order object not found for ID: {$order_id}");
-            return;
-        }
+    if (!$order_id || !function_exists('WC')) {
+        error_log("TPMA Debug: process_order_from_draft - Invalid order ID or WC not loaded.");
+        return;
+    }
 
-        $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
-        if (empty($draft) || empty($draft['course_id']) || empty($draft['learners'])) {
-            error_log("TPMA Debug: process_order_from_draft - Draft data missing or incomplete. Draft: " . print_r($draft, true));
-            return;
-        }
-        error_log("TPMA Debug: process_order_from_draft - Draft data found: " . print_r($draft, true));
+    $order = wc_get_order($order_id);
+    if (!$order) {
+        error_log("TPMA Debug: process_order_from_draft - Order object not found for ID: {$order_id}");
+        return;
+    }
 
-        global $wpdb;
-        $regs_table = TPMA_CR_DB::table('regs');
-        $reg_no = TPMA_CR_DB::generate_reg_no('A');
-        $class_date = sanitize_text_field($draft['class_date'] ?? '');
-        $course_id  = intval($draft['course_id']);
-        $session_datetime = $draft['session_datetime'] ?? '';
+    global $wpdb;
+    $regs_table = TPMA_CR_DB::table('regs');
 
-        foreach ($draft['learners'] as $learner) {
-            $insert = array(
-                'reg_no'        => $reg_no,
-                'created_at'    => current_time('mysql'),
-                'course_id'     => $course_id,
-                'class_date'    => $class_date,
-                'student_name'  => sanitize_text_field($learner['student_name'] ?? ''),
-                'department'    => sanitize_text_field($learner['department'] ?? ''),
-                'job_title'     => sanitize_text_field($learner['job_title'] ?? ''),
-                'mobile'        => sanitize_text_field($learner['mobile'] ?? ''),
-                'emails'        => sanitize_email($learner['emails'] ?? ''),
-                'contact_name'  => $order->get_billing_first_name(),
-                'contact_email' => $order->get_billing_email(),
-                'company_name'  => $order->get_billing_company(),
-                'tax_id'        => $order->get_meta('_billing_vat_id', true),
-                'phone'         => $order->get_billing_phone(),
-                'receipt_type'  => $order->get_meta('_tpma_receipt_type', true) ?: 'electronic',
-                'address'       => $order->get_shipping_address_1(),
-                'receiver'      => $order->get_shipping_first_name(),
-                'source'        => $draft['source'] ?? '',
-                'note'          => $draft['note'] ?? '',
-                'remit_amount'  => intval($draft['remit_amount_per_learner'] ?? 0),
-                'status'        => 'pending',
-                'payment_status'=> $order->get_status(),
-                'woocommerce_order_id' => $order_id,
-            );
-            $wpdb->insert($regs_table, $insert);
-
-            if (!$wpdb->insert_id) {
-                error_log("TPMA Debug: process_order_from_draft - INSERT FAILED for reg_no {$reg_no}: " . $wpdb->last_error);
-            } else {
-                error_log("TPMA Debug: process_order_from_draft - Inserted registration ID: {$wpdb->insert_id} for reg_no {$reg_no}");
+    // === 防重：同一張 Woo 訂單若已寫入 regs，就不要再重複插入 ===
+    $already = (int) $wpdb->get_var(
+        $wpdb->prepare("SELECT COUNT(1) FROM {$regs_table} WHERE woocommerce_order_id = %d", (int)$order_id)
+    );
+    if ($already > 0) {
+        error_log("TPMA Debug: process_order_from_draft - regs already exist for order {$order_id}, skip.");
+        // 仍可確保 order meta 有寫入（如果你希望）
+        if (!$order->get_meta('_tpma_reg_no', true)) {
+            // 若當初意外沒寫 meta，補寫一次（不影響 regs）
+            $draft_reg_no = $order->get_meta('_tpma_reg_no', true);
+            if (!$draft_reg_no) {
+                // 不產生新 reg_no，避免與現有 regs 不一致
+                // 這裡只做保守處理：不補寫 reg_no
             }
         }
-
-        $order->update_meta_data('_tpma_reg_no', $reg_no);
-        $order->update_meta_data('_tpma_course_id', $course_id);
-        $order->update_meta_data('_tpma_session_datetime', $session_datetime);
-        $order->update_meta_data('_tpma_learner_count', intval($draft['total_learners'] ?? 0));
-        $order->save();
-        error_log("TPMA Debug: process_order_from_draft - Order meta updated for order ID: {$order_id}");
-
-        WC()->session->set('tpma_reg_draft', null);
-        error_log("TPMA Debug: process_order_from_draft - Cleared tpma_reg_draft from session.");
+        return;
     }
+
+    // === 取 draft（優先 session；若你有 stash 到 order meta，也可自行改為讀 meta） ===
+    $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
+    if (empty($draft) || empty($draft['course_id']) || empty($draft['learners'])) {
+        error_log("TPMA Debug: process_order_from_draft - Draft data missing or incomplete. Draft: " . print_r($draft, true));
+        return;
+    }
+    error_log("TPMA Debug: process_order_from_draft - Draft data found: " . print_r($draft, true));
+
+    // === 組共用欄位 ===
+    $reg_no           = TPMA_CR_DB::generate_reg_no('A');
+    $class_date       = sanitize_text_field($draft['class_date'] ?? '');
+    $course_id        = intval($draft['course_id']);
+    $session_datetime = $draft['session_datetime'] ?? '';
+
+    foreach ($draft['learners'] as $learner) {
+
+        $insert = array(
+            'reg_no'               => $reg_no,
+            'created_at'           => current_time('mysql'),
+            'course_id'            => $course_id,
+            'class_date'           => $class_date,
+
+            'student_name'         => sanitize_text_field($learner['student_name'] ?? ''),
+            'department'           => sanitize_text_field($learner['department'] ?? ''),
+            'job_title'            => sanitize_text_field($learner['job_title'] ?? ''),
+            'mobile'               => sanitize_text_field($learner['mobile'] ?? ''),
+            'emails'               => sanitize_email($learner['emails'] ?? ''),
+
+            'contact_name'         => $order->get_billing_first_name(),
+            'contact_email'        => $order->get_billing_email(),
+            'company_name'         => $order->get_billing_company(),
+            'tax_id'               => $order->get_meta('_billing_vat_id', true),
+            'phone'                => $order->get_billing_phone(),
+            'receipt_type'         => $order->get_meta('_tpma_receipt_type', true) ?: 'electronic',
+
+            'address'              => $order->get_shipping_address_1(),
+            'receiver'             => $order->get_shipping_first_name(),
+
+            'source'               => $draft['source'] ?? '',
+            'note'                 => $draft['note'] ?? '',
+            'remit_amount'         => intval($draft['remit_amount_per_learner'] ?? 0),
+
+            // ✅ TPMA 報名狀態（不與 Woo 同步）
+            'status'               => 'cert_pending',
+
+            // ✅ Woo 付款狀態只寫這欄
+            'payment_status'       => $order->get_status(),
+            'woocommerce_order_id' => (int) $order_id,
+        );
+
+        $wpdb->insert($regs_table, $insert);
+
+        if (!$wpdb->insert_id) {
+            error_log("TPMA Debug: process_order_from_draft - INSERT FAILED for reg_no {$reg_no}: " . $wpdb->last_error);
+        } else {
+            error_log("TPMA Debug: process_order_from_draft - Inserted registration ID: {$wpdb->insert_id} for reg_no {$reg_no}");
+        }
+    }
+
+    // === order meta（代表已由 draft 流程寫入 regs）===
+    $order->update_meta_data('_tpma_reg_no', $reg_no);
+    $order->update_meta_data('_tpma_course_id', $course_id);
+    $order->update_meta_data('_tpma_session_datetime', $session_datetime);
+    $order->update_meta_data('_tpma_learner_count', intval($draft['total_learners'] ?? 0));
+    // 共用層旗標（避免其他路徑再「雙寫」）
+    $order->update_meta_data('_tpma_regs_written', 'draft');
+    $order->save();
+
+    error_log("TPMA Debug: process_order_from_draft - Order meta updated for order ID: {$order_id}");
+
+    // 清掉 session draft
+    if (WC()->session) {
+        WC()->session->set('tpma_reg_draft', null);
+    }
+    error_log("TPMA Debug: process_order_from_draft - Cleared tpma_reg_draft from session.");
+}
+
 
     /**
      * 課程商品保持可購買狀態。
