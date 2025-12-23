@@ -432,17 +432,13 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   const receiptSection = document.createElement('div');
   receiptSection.className = 'tpma-reg-detail-section edit-mode';
   receiptSection.id = 'section-receipt';
-  appendEditField(receiptSection, '收據方式', 'receipt_type', 'select', row.receipt_type, [
+    appendEditField(receiptSection, '收據方式', 'receipt_type', 'select', row.receipt_type, [
     { value: '', label: '請選擇' },
-    { value: 'electronic', label: '電子' },
-    { value: 'paper', label: '紙本' }
+    ...(O.receiptType || [])
   ]);
-  appendEditField(receiptSection, '收據狀態', 'receipt_status', 'select', row.receipt_status, [
+    appendEditField(receiptSection, '收據狀態', 'receipt_status', 'select', row.receipt_status, [
     { value: '', label: '請選擇' },
-    { value: 'pending', label: '待開立' },
-    { value: 'auto', label: '已開立待寄（自動）' },
-    { value: 'manual', label: '已開立待寄（手動）' },
-    { value: 'sent', label: '已寄出' }
+    ...(O.receiptStatus || [])
   ]);
   appendEditField(receiptSection, '匯款金額（元）', 'remit_amount', 'text', U.formatAmount(row.remit_amount));
   appendEditField(receiptSection, '匯款日期', 'remit_paid_at', 'date', row.remit_paid_at);

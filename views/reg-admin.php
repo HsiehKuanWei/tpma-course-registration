@@ -23,40 +23,72 @@ include __DIR__ . '/mail-modal.php';
 <?php
 // === TPMA：統一選項來源（只改這裡就好）======================
 
-// Woo 訂單狀態：後台顯示用（你要的對應）
-//（篩選用含「全部」，編輯用會自動去掉空值）
-$TPMA_WC_STATUS_OPTIONS = [
-  ''               => '全部',
-  'on-hold'        => '尚未付款 (WC)',  // Woo on-hold → 尚未付款
-  'processing'     => '待核帳 (WC)',    // Woo processing → 待核帳
-  'completed'      => '已完成 (WC)',
-  'cancelled'      => '已取消 (WC)',
-  'refunded'       => '已退款 (WC)',
-  'failed'         => '失敗 (WC)',
-  'checkout-draft' => '草稿 (WC)',
+/**
+ * 唯一權威 ENUM（真值）
+ * - 任何狀態文字/增刪，只改這裡
+ * - 篩選 / 批次 / 編輯：全部由這份 ENUM 衍生，避免分散與不一致
+ */
+$TPMA_ENUM = [
+  // 報名狀態
+  'regStatus' => [
+    'pending'      => '待付款',
+    'verifying'    => '待核帳',
+    'paid'         => '已付款',
+    'cert_pending' => '待發證',
+    'completed'    => '已結訓',
+    'cancelled'    => '已取消',
+  ],
+
+  // Woo 訂單狀態（付款狀態）
+  'wcStatus' => [
+    'on-hold'        => '尚未付款 (WC)',  // Woo on-hold → 尚未付款
+    'processing'     => '待核帳 (WC)',    // Woo processing → 待核帳
+    'completed'      => '已完成 (WC)',
+    'cancelled'      => '已取消 (WC)',
+    'refunded'       => '已退款 (WC)',
+    'failed'         => '失敗 (WC)',
+    'checkout-draft' => '草稿 (WC)',
+  ],
+
+  // 收據狀態
+  'receiptStatus' => [
+    'pending' => '待開立',
+    'auto'    => '已開立待寄（自動）',
+    'manual'  => '已開立待寄（手動）',
+    'sent'    => '已寄出',
+  ],
+
+  // 收據方式
+  'receiptType' => [
+    'electronic' => '電子',
+    'paper'      => '紙本',
+  ],
 ];
 
-// 報名狀態：篩選選單（你說只保留待發證/已結訓）
-$TPMA_REG_STATUS_FILTER_OPTIONS = [
-  ''             => '全部',
-  'cert_pending' => '待發證',
-  'completed'    => '已結訓',
-];
+// enum -> [{value,label}, ...]
+function tpma_enum_to_options(array $enum){
+  $out = [];
+  foreach ($enum as $value => $label) {
+    $out[] = ['value' => (string)$value, 'label' => (string)$label];
+  }
+  return $out;
+}
 
+// === 篩選用選項（含「全部」）— 仍由 ENUM 組出來 ====================
+$TPMA_WC_STATUS_OPTIONS = ['' => '全部'] + $TPMA_ENUM['wcStatus'];
+$TPMA_REG_STATUS_FILTER_OPTIONS = ['' => '全部'] + $TPMA_ENUM['regStatus'];
+$TPMA_RECEIPT_STATUS_FILTER_OPTIONS = ['' => '全部'] + $TPMA_ENUM['receiptStatus'];
+$TPMA_RECEIPT_TYPE_FILTER_OPTIONS   = ['' => '全部'] + $TPMA_ENUM['receiptType'];
 
-// 給 JS 用（編輯模式的 select 也走同一份）
+// === 給 JS 用（編輯模式的 select 也走同一份）========================
+// 注意：JS 端的下拉「提示 option」(例如：請選擇) 由前端自行加上；這裡只提供真值列表
 $TPMA_OPTIONS_FOR_JS = [
-  'wcStatus'  => array_values(array_filter(array_map(
-    fn($label, $value) => ['value' => $value, 'label' => $label],
-    $TPMA_WC_STATUS_OPTIONS,
-    array_keys($TPMA_WC_STATUS_OPTIONS)
-  ), fn($x)=>$x['value']!=='')),
-  'regStatus' => array_values(array_map(
-    fn($label, $value) => ['value' => $value, 'label' => $label],
-    $TPMA_REG_STATUS_FILTER_OPTIONS,
-    array_keys($TPMA_REG_STATUS_FILTER_OPTIONS)
-  )),
+  'wcStatus'      => tpma_enum_to_options($TPMA_ENUM['wcStatus']),
+  'regStatus'     => tpma_enum_to_options($TPMA_ENUM['regStatus']),
+  'receiptStatus' => tpma_enum_to_options($TPMA_ENUM['receiptStatus']),
+  'receiptType'   => tpma_enum_to_options($TPMA_ENUM['receiptType']),
 ];
+
 ?>
 
 <div id="tpma-reg-admin" class="tpma-wrap">
@@ -215,13 +247,23 @@ $TPMA_OPTIONS_FOR_JS = [
       <div class="tpma-menu-section">
         <label><strong>收據狀態</strong></label>
         <select id="tpma-filter-receipt-status">
-          <option value="">全部</option>
-          <option value="pending">待開立</option>
-          <option value="auto">已開立待寄（自動）</option>
-          <option value="manual">已開立待寄（手動）</option>
-          <option value="sent">已寄出</option>
+          <?php foreach ($TPMA_RECEIPT_STATUS_FILTER_OPTIONS as $v => $label): ?>
+            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+          <?php endforeach; ?>
         </select>
       </div>
+      <div class="tpma-menu-section">
+        <label><strong>收據方式</strong></label>
+        <select id="tpma-filter-receipt-type">
+          <?php foreach ($TPMA_RECEIPT_TYPE_FILTER_OPTIONS as $v => $label): ?>
+            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <div class="tpma-menu-section">
+        <button class="tpma-btn" id="tpma-btn-clear-receipt-filter">清除收據篩選</button>
+      </div>
+
 
       <div class="tpma-menu-section">
         <label><strong>測驗狀態</strong></label>
@@ -240,33 +282,30 @@ $TPMA_OPTIONS_FOR_JS = [
         <div style="font-weight:bold; margin-bottom:2px;">批次修改（第二層）</div>
 
         <label>批次修改報名狀態</label>
-        <select id="tpma-batch-status" class="tpma-batch-select">
+        
           <option value="">請選擇狀態</option>
-          <option value="pending">待付款</option>
-          <option value="verifying">待核帳</option>
-          <option value="paid">已付款</option>
-          <option value="cert_pending">待發證</option>
-          <option value="completed">已結訓</option>
-          <option value="cancelled">已取消</option>
-        </select>
+          <?php foreach ($TPMA_ENUM['regStatus'] as $v => $label): ?>
+            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+          <?php endforeach; ?>
+
         <button class="tpma-btn tpma-batch-btn" data-batch-field="status">批次設定報名狀態</button>
 
         <label style="margin-top:4px;">批次修改收據狀態</label>
-        <select id="tpma-batch-receipt-status" class="tpma-batch-select">
+        
           <option value="">請選擇狀態</option>
-          <option value="pending">待開立</option>
-          <option value="auto">已開立待寄（自動）</option>
-          <option value="manual">已開立待寄（手動）</option>
-          <option value="sent">已寄出</option>
-        </select>
+          <?php foreach ($TPMA_ENUM['receiptStatus'] as $v => $label): ?>
+            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+          <?php endforeach; ?>
+
         <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_status">批次設定收據狀態</button>
 
         <label style="margin-top:4px;">批次修改收據方式</label>
-        <select id="tpma-batch-receipt-type" class="tpma-batch-select">
+        
           <option value="">請選擇方式</option>
-          <option value="electronic">電子</option>
-          <option value="paper">紙本</option>
-        </select>
+          <?php foreach ($TPMA_ENUM['receiptType'] as $v => $label): ?>
+            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+          <?php endforeach; ?>
+
         <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_type">批次設定收據方式</button>
       </div>
     </div>
@@ -305,9 +344,11 @@ window.TPMARegAdminConfig = <?php echo wp_json_encode(array(
 <script>
 window.TPMARegAdmin = window.TPMARegAdmin || {};
 window.TPMARegAdmin.options = window.TPMARegAdmin.options || {};
-window.TPMARegAdmin.options.wcStatus = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['wcStatus'], JSON_UNESCAPED_UNICODE); ?>;
 
-window.TPMARegAdmin.options.regStatus = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['regStatus'], JSON_UNESCAPED_UNICODE); ?>;
+window.TPMARegAdmin.options.wcStatus      = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['wcStatus'], JSON_UNESCAPED_UNICODE); ?>;
+window.TPMARegAdmin.options.regStatus     = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['regStatus'], JSON_UNESCAPED_UNICODE); ?>;
+window.TPMARegAdmin.options.receiptStatus = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['receiptStatus'], JSON_UNESCAPED_UNICODE); ?>;
+window.TPMARegAdmin.options.receiptType   = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['receiptType'], JSON_UNESCAPED_UNICODE); ?>;
 </script>
 
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/03.reg-admin.api.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/03.reg-admin.api.js') ); ?>"></script>
