@@ -251,11 +251,6 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   // 操作按鈕
   const actionsDiv = document.createElement('div');
   actionsDiv.className = 'tpma-reg-detail-actions';
-/*  actionsDiv.innerHTML = `
-    <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-${row.id}">編輯詳情</button>
-    <button class="tpma-btn tpma-btn-danger" id="tpma-btn-delete-${row.id}">刪除報名記錄</button>    
-  `;
-*/
   actionsDiv.innerHTML = `
     <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-${row.id}">編輯詳情</button>
   `;
@@ -268,13 +263,6 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   actionsDiv.querySelector(`#tpma-btn-edit-${row.id}`).addEventListener('click', function(){
     R.renderDetailEdit(ctx, container, row);
   });
-  // 綁定刪除按鈕事件 (這裡只是模擬，實際需要實作刪除邏輯)
-/*  actionsDiv.querySelector(`#tpma-btn-delete-${row.id}`).addEventListener('click', function(){
-    if (confirm('確定要刪除這筆報名記錄嗎？')) {
-      // 實際應用中，這裡會調用 API 執行刪除
-      alert('刪除功能尚未實作');
-    }
-  });*/
 };
 
 R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
@@ -396,9 +384,9 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   basicSection.id = 'section-basic';
   appendEditField(basicSection, '報名編號', 'reg_no', 'text', row.reg_no, [], true);
   appendEditField(basicSection, '報名時間', 'created_at', 'text', U.trimToMinute(row.created_at), [], true);
-  appendEditField(basicSection, '課程名稱', 'course_id', 'select', row.course_id, [], false); // This will be populated by populateEditCourseAndDate
+  appendEditField(basicSection, '課程名稱', 'course_id', 'select', row.course_id, [], false); // populated by populateEditCourseAndDate
   basicSection.querySelector('[data-field="course_id"]').id = `tpma-edit-course-${row.id}`;
-  appendEditField(basicSection, '授課日期時間', 'class_date', 'select', row.class_date, [], false); // This will be populated by populateEditCourseAndDate
+  appendEditField(basicSection, '授課日期時間', 'class_date', 'select', row.class_date, [], false); // populated by populateEditCourseAndDate
   basicSection.querySelector('[data-field="class_date"]').id = `tpma-edit-class-date-${row.id}`;
   if (row.woocommerce_order_id) {
     const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
@@ -407,7 +395,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     appendEditField(basicSection, 'WooCommerce 訂單 ID', 'woocommerce_order_id', 'text', linkHtml, [], true);
   }
   appendEditField(basicSection, '付款狀態 (WC)', 'payment_status', 'select', row.payment_status, (O.wcStatus || []));
-  detailContainer.appendChild(basicSection); 
+  detailContainer.appendChild(basicSection);
 
   // 區塊 2: 學員資訊
   const studentSection = document.createElement('div');
@@ -430,7 +418,13 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(companySection, '承辦人姓名', 'contact_name', 'text', row.contact_name);
   appendEditField(companySection, '承辦人Email', 'contact_email', 'text', row.contact_email);
   appendEditField(companySection, '收件人', 'receiver', 'text', row.receiver);
-  appendEditField(companySection, '地址', 'address', 'text', row.address);
+
+  // 地址：檢視模式合併顯示；編輯模式一分為四（避免回寫 Woo 時重複拼接）
+  appendEditField(companySection, '郵遞區號', 'address_postcode', 'text', row.address_postcode);
+  appendEditField(companySection, '縣市', 'address_state', 'text', row.address_state);
+  appendEditField(companySection, '區 / 鄉鎮', 'address_city', 'text', row.address_city);
+  appendEditField(companySection, '地址列', 'address_line1', 'text', row.address_line1);
+
   appendEditField(companySection, '資訊來源', 'source', 'text', row.source);
   detailContainer.appendChild(companySection);
 
@@ -464,11 +458,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     'status',
     'select',
     row.status,
-    (O.regStatus || [
-      { value: '', label: '全部' },
-      { value: 'cert_pending', label: '待發證' },
-      { value: 'completed', label: '已結訓' }
-    ]).filter(x => x.value !== '') // 編輯不需要「全部」
+    (O.regStatus || []).filter(x => x.value !== '') // 編輯不需要「全部」
   );
   appendEditField(otherSection, '測驗成績', 'test_score', 'text', row.test_score);
   appendEditField(otherSection, '證書編號', 'certificate_id', 'text', row.certificate_id);
@@ -641,7 +631,7 @@ R.renderTable = function renderTable(ctx){
     details.dataset.id = row.id || '';
     card.appendChild(details);
 
-    // 直接沿用你原本的 detail render（container 變成 div）
+    // detail render
     R.renderDetailView(ctx, details, row);
 
     // toggle details
@@ -665,6 +655,5 @@ R.renderTable = function renderTable(ctx){
   ctx.actions.updateBatchButtonsEnabled();
   ctx.actions.updatePaginationControls();
 };
-
 
 })(window);

@@ -15,8 +15,6 @@ if (!function_exists('tpma_cr_asset_ver')) {
 ?>
 
 <?php
-// 引入共用 mail modal（路徑依你實際放的位置調整）
-// 假設 mail-modal.php 跟 reg-admin.php 一樣在 views 資料夾：
 include __DIR__ . '/mail-modal.php';
 ?>
 <link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/admin-common.css?ver=' . TPMA_CR_VERSION ); ?>">
@@ -26,43 +24,43 @@ include __DIR__ . '/mail-modal.php';
 // === TPMA：統一選項來源（只改這裡就好）======================
 
 // Woo 訂單狀態：後台顯示用（你要的對應）
+//（篩選用含「全部」，編輯用會自動去掉空值）
 $TPMA_WC_STATUS_OPTIONS = [
-  ''            => '全部',
-  'on-hold'     => '尚未付款 (WC)',  // Woo on-hold → 尚未付款
-  'processing'  => '待核帳 (WC)',    // Woo processing → 待核帳
-  'completed'   => '已完成 (WC)',
-  'cancelled'   => '已取消 (WC)',
-  'refunded'    => '已退款 (WC)',
-  'failed'      => '失敗 (WC)',
+  ''               => '全部',
+  'on-hold'        => '尚未付款 (WC)',  // Woo on-hold → 尚未付款
+  'processing'     => '待核帳 (WC)',    // Woo processing → 待核帳
+  'completed'      => '已完成 (WC)',
+  'cancelled'      => '已取消 (WC)',
+  'refunded'       => '已退款 (WC)',
+  'failed'         => '失敗 (WC)',
   'checkout-draft' => '草稿 (WC)',
 ];
 
-// 報名狀態：你說「原本報名狀態只保留待發證/已結訓」
-$TPMA_REG_STATUS_OPTIONS = [
+// 報名狀態：篩選選單（你說只保留待發證/已結訓）
+$TPMA_REG_STATUS_FILTER_OPTIONS = [
   ''             => '全部',
   'cert_pending' => '待發證',
   'completed'    => '已結訓',
 ];
 
+
 // 給 JS 用（編輯模式的 select 也走同一份）
 $TPMA_OPTIONS_FOR_JS = [
-  'wcStatus'  => array_map(
+  'wcStatus'  => array_values(array_filter(array_map(
     fn($label, $value) => ['value' => $value, 'label' => $label],
     $TPMA_WC_STATUS_OPTIONS,
     array_keys($TPMA_WC_STATUS_OPTIONS)
-  ),
-  'regStatus' => array_map(
+  ), fn($x)=>$x['value']!=='')),
+  'regStatus' => array_values(array_map(
     fn($label, $value) => ['value' => $value, 'label' => $label],
-    $TPMA_REG_STATUS_OPTIONS,
-    array_keys($TPMA_REG_STATUS_OPTIONS)
-  ),
+    $TPMA_REG_STATUS_FILTER_OPTIONS,
+    array_keys($TPMA_REG_STATUS_FILTER_OPTIONS)
+  )),
 ];
 ?>
 
-
 <div id="tpma-reg-admin" class="tpma-wrap">
 
-    <!-- 上方關鍵字搜尋列 -->
     <div class="tpma-filter-row">
         <span>關鍵字搜尋：</span>
         <input type="text" id="tpma-filter-q"
@@ -77,18 +75,14 @@ $TPMA_OPTIONS_FOR_JS = [
 
 <div class="tpma-reg-grid tpma-table-shared">
 
-  <!-- Header（用 grid 模擬 th） -->
-<div class="tpma-reg-grid-header tpma-reg-grid-layout">
+  <div class="tpma-reg-grid-header tpma-reg-grid-layout">
 
-  <!-- 全選 -->
   <div class="tpma-reg-grid-th" style="width:35px;">
     <input type="checkbox" id="tpma-select-all-head">
   </div>
 
-  <!-- 序號 -->
   <div class="tpma-reg-grid-th tpma-seq-col">序</div>
 
-  <!-- 報名時間 -->
   <div class="tpma-reg-grid-th">
     <div class="tpma-th-inner">
       <span class="tpma-th-title">報名時間</span>
@@ -115,7 +109,6 @@ $TPMA_OPTIONS_FOR_JS = [
     </div>
   </div>
 
-  <!-- 課程名稱 -->
   <div class="tpma-reg-grid-th">
     <div class="tpma-th-inner">
       <span class="tpma-th-title">課程名稱</span>
@@ -136,7 +129,6 @@ $TPMA_OPTIONS_FOR_JS = [
     </div>
   </div>
 
-  <!-- 授課日期 -->
   <div class="tpma-reg-grid-th">
     <div class="tpma-th-inner">
       <span class="tpma-th-title">授課日期</span>
@@ -163,7 +155,6 @@ $TPMA_OPTIONS_FOR_JS = [
     </div>
   </div>
 
-  <!-- 學員姓名 -->
   <div class="tpma-reg-grid-th">
     <div class="tpma-th-inner">
       <span class="tpma-th-title">學員姓名</span>
@@ -178,7 +169,6 @@ $TPMA_OPTIONS_FOR_JS = [
     </div>
   </div>
 
-  <!-- 公司抬頭 -->
   <div class="tpma-reg-grid-th">
     <div class="tpma-th-inner">
       <span class="tpma-th-title">公司抬頭</span>
@@ -193,7 +183,6 @@ $TPMA_OPTIONS_FOR_JS = [
     </div>
   </div>
 
-  <!-- 狀態 -->
   <div class="tpma-reg-grid-th">
     <div class="tpma-th-inner">
       <span class="tpma-th-title">狀態</span>
@@ -217,7 +206,7 @@ $TPMA_OPTIONS_FOR_JS = [
       <div class="tpma-menu-section">
         <label><strong>報名狀態</strong></label>
           <select id="tpma-filter-status">
-            <?php foreach ($TPMA_REG_STATUS_OPTIONS as $v => $label): ?>
+            <?php foreach ($TPMA_REG_STATUS_FILTER_OPTIONS as $v => $label): ?>
               <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
             <?php endforeach; ?>
           </select>
@@ -283,21 +272,16 @@ $TPMA_OPTIONS_FOR_JS = [
     </div>
   </div>
 
-  <!-- 操作 -->
   <div class="tpma-reg-grid-th">操作</div>
 
 </div>
 
-
-  <!-- Body（JS 會塞卡片） -->
   <div id="tpma-reg-tbody" class="tpma-reg-grid-body">
     <div class="tpma-loading-row">載入中.</div>
   </div>
 
 </div>
 
-
-    <!-- 分頁列 -->
     <div class="tpma-pagination">
         <button class="tpma-btn" id="tpma-page-prev">上一頁</button>
         <span class="tpma-pagination-info" id="tpma-page-info"></span>
@@ -317,23 +301,22 @@ window.TPMARegAdminConfig = <?php echo wp_json_encode(array(
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/02.tpma-public.api.js?ver=' . tpma_cr_asset_ver('assets/js/public/02.tpma-public.api.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/01.reg-admin.utils.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/01.reg-admin.utils.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/02.reg-admin.labels.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/02.reg-admin.labels.js') ); ?>"></script>
+
 <script>
 window.TPMARegAdmin = window.TPMARegAdmin || {};
 window.TPMARegAdmin.options = window.TPMARegAdmin.options || {};
-window.TPMARegAdmin.options.wcStatus = <?php echo wp_json_encode(array_values(array_filter(array_map(function($label, $value){
-    return ['value' => $value, 'label' => $label];
-}, $TPMA_WC_STATUS_OPTIONS, array_keys($TPMA_WC_STATUS_OPTIONS)), fn($x)=>$x['value']!=='' )), JSON_UNESCAPED_UNICODE); ?>;
+window.TPMARegAdmin.options.wcStatus = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['wcStatus'], JSON_UNESCAPED_UNICODE); ?>;
 
-window.TPMARegAdmin.options.regStatus = <?php echo wp_json_encode(array_values(array_filter(array_map(function($label, $value){
-    return ['value' => $value, 'label' => $label];
-}, $TPMA_REG_STATUS_OPTIONS, array_keys($TPMA_REG_STATUS_OPTIONS)), fn($x)=>$x['value']!=='' )), JSON_UNESCAPED_UNICODE); ?>;
+window.TPMARegAdmin.options.regStatus = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['regStatus'], JSON_UNESCAPED_UNICODE); ?>;
 </script>
+
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/03.reg-admin.api.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/03.reg-admin.api.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/04.reg-admin.state.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/04.reg-admin.state.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/05.reg-admin.render.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/05.reg-admin.render.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/06.reg-admin.ui-events.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/06.reg-admin.ui-events.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/07.reg-admin.core.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/07.reg-admin.core.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/08.reg-admin-init.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/08.reg-admin-init.js') ); ?>"></script>
+
 <script>
 (function(){
   const L = window.TPMARegAdmin && window.TPMARegAdmin.labels;

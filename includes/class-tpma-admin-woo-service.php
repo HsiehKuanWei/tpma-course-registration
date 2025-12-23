@@ -49,6 +49,13 @@ class TPMA_CR_Admin_Woo_Service
                     $order->get_billing_address_1(),
                     $order->get_billing_address_2(),
                 ], function($v){ return $v !== null && $v !== ''; }))),
+
+                // ★ 編輯模式需要拆分地址，避免 address_1 被塞入整串後再被合併顯示造成重複
+                'address_postcode'   => $order->get_billing_postcode(),
+                'address_state'      => $order->get_billing_state(),
+                'address_city'       => $order->get_billing_city(),
+                'address_line1'      => $order->get_billing_address_1(),
+
                 'receiver'           => $order->get_shipping_first_name(),
                 'receipt_type'       => $order->get_meta('_tpma_receipt_type', true),
                 'tax_id'             => $order->get_meta('_billing_vat_id', true),
@@ -70,6 +77,10 @@ class TPMA_CR_Admin_Woo_Service
                 $r['company_name']       = $o['company_name'];
                 $r['phone']              = $o['phone'];
                 $r['address']            = $o['address'];
+                $r['address_postcode']   = $o['address_postcode'] ?? '';
+                $r['address_state']      = $o['address_state'] ?? '';
+                $r['address_city']       = $o['address_city'] ?? '';
+                $r['address_line1']      = $o['address_line1'] ?? '';
                 $r['receiver']           = $o['receiver'];
                 $r['receipt_type']       = $o['receipt_type'] !== '' ? $o['receipt_type'] : $r['receipt_type'];
                 $r['tax_id']             = $o['tax_id'] !== '' ? $o['tax_id'] : $r['tax_id'];
@@ -91,14 +102,23 @@ class TPMA_CR_Admin_Woo_Service
     private static function get_field_map()
     {
         return array(
-            'contact_name'  => array('type' => 'billing', 'field' => 'first_name'),
-            'contact_email' => array('type' => 'billing', 'field' => 'email'),
-            'company_name'  => array('type' => 'billing', 'field' => 'company'),
-            'phone'         => array('type' => 'billing', 'field' => 'phone'),
-            'address'       => array('type' => 'billing', 'field' => 'address_1'),
-            'receiver'      => array('type' => 'shipping', 'field' => 'first_name'),
-            'receipt_type'  => array('type' => 'meta',    'field' => '_tpma_receipt_type'),
-            'tax_id'        => array('type' => 'meta',    'field' => '_billing_vat_id'),
+            'contact_name'     => array('type' => 'billing', 'field' => 'first_name'),
+            'contact_email'    => array('type' => 'billing', 'field' => 'email'),
+            'company_name'     => array('type' => 'billing', 'field' => 'company'),
+            'phone'            => array('type' => 'billing', 'field' => 'phone'),
+
+            // ★ 地址拆欄
+            'address_postcode' => array('type' => 'billing', 'field' => 'postcode'),
+            'address_state'    => array('type' => 'billing', 'field' => 'state'),
+            'address_city'     => array('type' => 'billing', 'field' => 'city'),
+            'address_line1'    => array('type' => 'billing', 'field' => 'address_1'),
+
+            // 保留舊 key（若有舊前端仍送 address），只回寫到 address_1
+            'address'          => array('type' => 'billing', 'field' => 'address_1'),
+
+            'receiver'         => array('type' => 'shipping', 'field' => 'first_name'),
+            'receipt_type'     => array('type' => 'meta',    'field' => '_tpma_receipt_type'),
+            'tax_id'           => array('type' => 'meta',    'field' => '_billing_vat_id'),
         );
     }
 
@@ -149,7 +169,7 @@ class TPMA_CR_Admin_Woo_Service
 
         $order_id = $order->get_id();
         $woo_status = $order->get_status();
-        $can_touch_woo_total = in_array($woo_status, array('pending', 'processing'), true);
+        $can_touch_woo_total = in_array($woo_status, array('on-hold','pending','processing'), true);
 
         if ($order_id <= 0) {
             return new WP_Error('no_order', '找不到對應的 Woo 訂單，無法同步金額', array('status' => 400));
@@ -241,6 +261,7 @@ class TPMA_CR_Admin_Woo_Service
 
         return array('has_change' => $has_change);
     }
+
     private static function admin_label_for_woo_status($status)
     {
         $status = (string)$status;
