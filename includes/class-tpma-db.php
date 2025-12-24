@@ -123,12 +123,7 @@ class TPMA_CR_DB
     {
 
         global $wpdb;
-
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-
-
-
-        $charset_collate = $wpdb->get_charset_collate();
+$charset_collate = $wpdb->get_charset_collate();
 
 
 
@@ -144,8 +139,7 @@ class TPMA_CR_DB
 
         // 課程表
 
-        $sql_courses = "CREATE TABLE {$courses_table} (
-
+        $sql_courses = "CREATE TABLE IF NOT EXISTS {$courses_table} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             course_code VARCHAR(50) NOT NULL,
             course_name VARCHAR(255) NOT NULL,
@@ -158,20 +152,14 @@ class TPMA_CR_DB
             updated_at DATETIME NOT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             duration_minutes INT NOT NULL DEFAULT 180,
-            PRIMARY KEY (id),
-            UNIQUE KEY course_code_unique (course_code),
-            KEY course_name_idx (course_name),
-            KEY category_code_idx (category_code),
-            KEY lecturer_code_idx (lecturer_code),
-            KEY is_active_idx (is_active)
-
+            PRIMARY KEY (id)
         ) {$charset_collate};";
 
 
 
         // 報名表
 
-		$sql_regs = "CREATE TABLE {$regs_table} (
+		$sql_regs = "CREATE TABLE IF NOT EXISTS {$regs_table} (
 			id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
 			reg_no VARCHAR(30) NOT NULL,
 			created_at DATETIME NOT NULL,
@@ -180,13 +168,13 @@ class TPMA_CR_DB
 			student_name VARCHAR(255) NOT NULL,
 			department VARCHAR(255) DEFAULT NULL,
 			job_title VARCHAR(255) DEFAULT NULL,
-			mobile VARCHAR(50) DEFAULT NULL,       
-			emails TEXT DEFAULT NULL,              
-			contact_name VARCHAR(255) DEFAULT NULL, 
-			contact_email VARCHAR(255) DEFAULT NULL, 
+			mobile VARCHAR(50) DEFAULT NULL,
+			emails TEXT DEFAULT NULL,
+			contact_name VARCHAR(255) DEFAULT NULL,
+			contact_email VARCHAR(255) DEFAULT NULL,
 			company_name VARCHAR(255) DEFAULT NULL,
 			tax_id VARCHAR(20) DEFAULT NULL,
-			phone VARCHAR(50) DEFAULT NULL,        
+			phone VARCHAR(50) DEFAULT NULL,
 			receipt_type VARCHAR(20) NOT NULL DEFAULT 'electronic',
 			receipt_status VARCHAR(20) DEFAULT NULL,
 			address VARCHAR(500) DEFAULT NULL,
@@ -194,63 +182,54 @@ class TPMA_CR_DB
 			source VARCHAR(100) DEFAULT NULL,
 			note TEXT DEFAULT NULL,
 			remit_account VARCHAR(100) DEFAULT NULL,
-			remit_paid_at DATE DEFAULT NULL,    
+			remit_paid_at DATE DEFAULT NULL,
 			remit_amount INT DEFAULT NULL,
 			status VARCHAR(20) NOT NULL DEFAULT 'cert_pending',
 			test_score VARCHAR(30) DEFAULT NULL,
 			certificate_id VARCHAR(30) DEFAULT NULL,
-            woocommerce_order_id BIGINT UNSIGNED DEFAULT NULL,
-            payment_status VARCHAR(50) DEFAULT NULL,
-			PRIMARY KEY (id),
-			KEY reg_no_idx (reg_no),
-			KEY course_id_idx (course_id),
-			KEY student_name_idx (student_name),
-			KEY phone_idx (phone),
-			KEY contact_email_idx (contact_email),
-            KEY woocommerce_order_id_idx (woocommerce_order_id)
+			wp_user_id BIGINT UNSIGNED DEFAULT NULL,
+			is_virtual_user TINYINT(1) NOT NULL DEFAULT 0,
+			woocommerce_order_id BIGINT UNSIGNED DEFAULT NULL,
+			payment_status VARCHAR(50) DEFAULT NULL,
+			PRIMARY KEY (id)
 		) {$charset_collate};";
 
 
         // 場次表
 
-        $sql_sessions = "CREATE TABLE {$sessions_table} (
-
+        $sql_sessions = "CREATE TABLE IF NOT EXISTS {$sessions_table} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             course_id BIGINT UNSIGNED NOT NULL,
             session_datetime DATETIME NOT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             created_at DATETIME NOT NULL,
-            PRIMARY KEY (id),
-            KEY course_id_idx (course_id),
-            KEY session_datetime_idx (session_datetime),
-            KEY is_active_idx (is_active)
+            PRIMARY KEY (id)
         ) {$charset_collate};";
 
 
 
         // 講師表
 
-        $sql_lecturers = "CREATE TABLE {$lecturers_table} (
-
+        $sql_lecturers = "CREATE TABLE IF NOT EXISTS {$lecturers_table} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            lecturers_code VARCHAR(20) NOT NULL,
-            lecturers_name VARCHAR(255) NOT NULL,
-            lecturers_title VARCHAR(255) DEFAULT NULL,
-            lecturers_sort_order INT NOT NULL DEFAULT 0,
-            PRIMARY KEY (id),
-            UNIQUE KEY lecturers_code_unique (lecturers_code),
-            KEY lecturers_sort_order_idx (lecturers_sort_order)
+            lecturer_code VARCHAR(20) NOT NULL,
+            lecturer_name VARCHAR(255) NOT NULL,
+            title VARCHAR(255) DEFAULT NULL,
+            email VARCHAR(255) DEFAULT NULL,
+            is_active TINYINT(1) NOT NULL DEFAULT 1,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id)
         ) {$charset_collate};";
 
 
 
-        dbDelta($sql_courses);
+        $wpdb->query($sql_courses);
 
-        dbDelta($sql_regs);
+        $wpdb->query($sql_regs);
 
-        dbDelta($sql_sessions);
+        $wpdb->query($sql_sessions);
 
-        dbDelta($sql_lecturers);
+        $wpdb->query($sql_lecturers);
         
         // Ensure schema is current after initial activation
         self::ensure_schema_current();

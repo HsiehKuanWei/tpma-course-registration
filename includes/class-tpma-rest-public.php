@@ -150,190 +150,36 @@ class TPMA_CR_REST_Public
 
      */
 
-		public static function register($request) {
-            global $wpdb;
+    public static function register($request)
+    {
+        // ✅ 舊版路徑相容：避免「未下單就落庫」造成髒資料，/register 一律導向 checkout-init 流程
+        $d = $request->get_json_params();
 
-            $regs_table     = TPMA_CR_DB::table('regs');
-            $courses_table  = TPMA_CR_DB::table('courses');
-            $sessions_table = TPMA_CR_DB::table('sessions');
-
-            $d = $request->get_json_params();
-
-            // Validate comprehensive payload structure
-            if (empty($d['course_id']) || empty($d['learners']) || !is_array($d['learners']) || empty($d['shared'])) {
-                return new WP_Error('invalid_data', '缺少必要欄位或資料結構不正確', array('status' => 400));
-            }
-
-            $course_id  = intval($d['course_id']);
-            $session_id = intval($d['session_id'] ?? 0);
-            $learners   = $d['learners'];
-            $shared     = $d['shared'];
-
-            // 課程資料
-            $course = $wpdb->get_row(
-                $wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $course_id)
-            );
-            if (!$course) {
-                return new WP_Error('course_not_found', '課程不存在', array('status' => 404));
-            }
-
-            // 場次資料：此表單為董監事課程，必須選擇有時間的場次，不接受 class_date fallback
-            $session = null;
-            if ($session_id) {
-                $session = $wpdb->get_row(
-                    $wpdb->prepare("SELECT * FROM {$sessions_table} WHERE id = %d AND course_id = %d", $session_id, $course_id)
-                );
-            }
-            if (!$session || empty($session->session_datetime)) {
-                return new WP_Error('session_required', '需先排定上課時間後才能報名', array('status' => 400));
-            }
-
-            // class_date 直接依 session_datetime 推導
-            $class_date = date('Y-m-d', strtotime($session->session_datetime));
-
-            // 匯款金額：每小時 1000 元（先算出基礎金額，尚未套用折扣）
-            $duration_minutes   = intval($course->duration_minutes ?? 0);
-            $hours              = $duration_minutes / 60;
-            $base_remit_amount  = (int) round($hours * 1000);
-            $remit_amount_per_learner = $base_remit_amount; // Initial amount per learner
-
-            // 產生一個共用的報名編號 (reg_no)
-            $reg_no = TPMA_CR_DB::generate_reg_no('A');
-
-            // 計算總學員數，並應用折扣
-            $total_learners = count($learners);
-            if ($total_learners >= 6) {
-                $remit_amount_per_learner = (int) round($base_remit_amount * 0.8);
-            }
-            $total_order_amount = $remit_amount_per_learner * $total_learners;
-
-            $inserted_reg_ids = [];
-
-            // 逐一插入學員報名資料到 wp_tpma_registrations
-            foreach ($learners as $learner) {
-                $student_email_for_record = sanitize_email($learner['emails'] ?? '');
-                if ($student_email_for_record === sanitize_email($shared['contact_email'] ?? '')) {
-                    $student_email_for_record = ''; // If learner email is same as contact email, don't record it separately
-                }
-
-                $insert = array(
-                    'reg_no'        => $reg_no,
-                    'created_at'    => current_time('mysql'),
-                    'course_id'     => $course_id,
-                    'class_date'    => $class_date,
-                    'student_name'  => sanitize_text_field($learner['student_name']),
-                    'department'    => sanitize_text_field($learner['department'] ?? ''),
-                    'job_title'     => sanitize_text_field($learner['job_title'] ?? ''),
-                    'mobile'        => sanitize_text_field($learner['mobile'] ?? ''),
-                    'emails'        => $student_email_for_record,
-                    'contact_name'  => sanitize_text_field($shared['contact_name'] ?? ''),
-                    'contact_email' => sanitize_text_field($shared['contact_email'] ?? ''),
-                    'company_name'  => sanitize_text_field($shared['company_name'] ?? ''),
-                    'tax_id'        => sanitize_text_field($shared['tax_id'] ?? ''),
-                    'phone'         => sanitize_text_field($shared['phone'] ?? ''),
-                    'receipt_type'  => in_array(($shared['receipt_type'] ?? ''), ['electronic','paper'], true)
-                                        ? $shared['receipt_type'] : 'paper',
-                    'address'       => sanitize_text_field($shared['address'] ?? ''),
-                    'receiver'      => sanitize_text_field($shared['receiver'] ?? ''),
-                    'source'        => sanitize_text_field($shared['source'] ?? ''),
-                    'note'          => sanitize_textarea_field($shared['note'] ?? ''),
-                    'remit_amount'  => $remit_amount_per_learner, // Amount per learner
-                    'status'        => 'cert_pending', // Initial TPMA status
-                    'payment_status' => 'on-hold', // Initial WC payment status
-                );
-
-                $wpdb->insert($regs_table, $insert);
-
-                if (!$wpdb->insert_id) {
-                    error_log('[TPMA register] INSERT FAILED for reg_no ' . $reg_no . ': ' . $wpdb->last_error);
-                    return new WP_Error(
-                        'db_error',
-                        '無法寫入報名資料：' . ($wpdb->last_error ?: '未知錯誤'),
-                        array('status' => 500)
-                    );
-                }
-                $inserted_reg_ids[] = $wpdb->insert_id;
-            }
-
-            // === WooCommerce 訂單建立 ===
-            $order_result = TPMA_CR_Woo_Service::create_registration_order(array(
-                'shared'                   => $shared,
-                'learners'                 => $learners,
-                'course_id'                => $course_id,
-                'session_id'               => $session_id,
-                'reg_no'                   => $reg_no,
-                'remit_amount_per_learner' => $remit_amount_per_learner,
-                'total_learners'           => $total_learners,
-                'total_order_amount'       => $total_order_amount,
-                'inserted_reg_ids'         => $inserted_reg_ids,
-                'regs_table'               => $regs_table,
-            ));
-            if (is_wp_error($order_result)) {
-                return $order_result;
-            }
-            $order = $order_result['order'];
-            $woocommerce_order_id = $order_result['order_id'];
-
-            // === TPMA Mailer: 寄出報名成功通知 ===
-            // (保持原有邏輯，但確保使用正確的 reg_no 和 remit_amount)
-            $email_class_date = '';
-            if ($session && !empty($session->session_datetime)) {
-                $start_ts = strtotime($session->session_datetime);
-                if ($start_ts) {
-                    $date_str  = date('Y/m/d', $start_ts);
-                    $weeknames = array('日','一','二','三','四','五','六');
-                    $w_index   = (int) date('w', $start_ts);
-                    $week_str  = $weeknames[$w_index] ?? '';
-                    $start_time = date('H:i', $start_ts);
-                    $duration_minutes = intval($course->duration_minutes ?? 0);
-                    $time_range = $start_time;
-                    if ($duration_minutes > 0) {
-                        $end_ts    = $start_ts + $duration_minutes * 60;
-                        $end_time  = date('H:i', $end_ts);
-                        $time_range = $start_time . '~' . $end_time;
-                    }
-                    $email_class_date = sprintf('%s（%s） %s', $date_str, $week_str, $time_range);
-                }
-            } elseif (!empty($class_date)) {
-                $ts = strtotime($class_date);
-                if ($ts) {
-                    $date_str  = date('Y/m/d', $ts);
-                    $weeknames = array('日','一','二','三','四','五','六');
-                    $w_index   = (int) date('w', $ts);
-                    $week_str  = $weeknames[$w_index] ?? '';
-                    $email_class_date = sprintf('%s（%s）', $date_str, $week_str);
-                } else {
-                    $email_class_date = $class_date;
-                }
-            }
-
-            $duration_minutes = intval($course->duration_minutes ?? 0);
-            $course_hours     = $duration_minutes > 0 ? ($duration_minutes / 60) : 0;
-
-            $lecturer_name = '';
-            if (!empty($course->lecturer_code) && class_exists('TPMA_CR_DB')) {
-                $lecturers_table = TPMA_CR_DB::table('lecturers');
-                $lect = $wpdb->get_row($wpdb->prepare(
-                    "SELECT lecturers_name, lecturers_title 
-                     FROM {$lecturers_table}
-                     WHERE lecturers_code = %s",
-                    $course->lecturer_code
-                ));
-                if ($lect && !empty($lect->lecturers_name)) {
-                    $lecturer_name = trim(
-                        $lect->lecturers_name .
-                        (!empty($lect->lecturers_title) ? ' ' . $lect->lecturers_title : '')
-                    );
-                }
-            }
-
-
-            return rest_ensure_response(array(
-                'success' => true,
-                'reg_no'  => $reg_no,
-                'woocommerce_order_id' => $woocommerce_order_id,
-            ));
+        // 舊版 payload 可能是：
+        // - course_id, session_id, learners, shared{source,note}
+        // 或新版：
+        // - course_id, session_id, learners, source, note
+        if (empty($d['course_id']) || empty($d['session_id']) || empty($d['learners']) || !is_array($d['learners'])) {
+            return new WP_Error('invalid_data', '缺少必要欄位 course_id / session_id / learners', array('status' => 400));
         }
+
+        $source = sanitize_text_field($d['source'] ?? ($d['shared']['source'] ?? ''));
+        $note   = sanitize_textarea_field($d['note'] ?? ($d['shared']['note'] ?? ''));
+
+        $payload = array(
+            'course_id'  => intval($d['course_id']),
+            'session_id' => intval($d['session_id']),
+            'learners'   => $d['learners'],
+            'source'     => $source,
+            'note'       => $note,
+        );
+
+        $req = new WP_REST_Request('POST', '/tpma/v1/checkout-init');
+        $req->set_body_params($payload);
+
+        return self::checkout_init($req);
+    }
+
 
 
 
