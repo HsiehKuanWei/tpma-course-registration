@@ -31,17 +31,13 @@ include __DIR__ . '/mail-modal.php';
 $TPMA_ENUM = [
   // 報名狀態
   'regStatus' => [
-    'pending'      => '待付款',
-    'verifying'    => '待核帳',
-    'paid'         => '已付款',
     'cert_pending' => '待發證',
     'completed'    => '已結訓',
-    'cancelled'    => '已取消',
   ],
 
   // Woo 訂單狀態（付款狀態）
   'wcStatus' => [
-    'on-hold'        => '尚未付款 (WC)',  // Woo on-hold → 尚未付款
+    'on-hold'        => '未付款 (WC)',  // Woo on-hold → 尚未付款
     'processing'     => '待核帳 (WC)',    // Woo processing → 待核帳
     'completed'      => '已完成 (WC)',
     'cancelled'      => '已取消 (WC)',

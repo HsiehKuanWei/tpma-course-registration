@@ -488,7 +488,7 @@ class TPMA_CR_Woo_Service {
         }
 
         if (isset($fields['billing']['billing_first_name'])) {
-            $fields['billing']['billing_first_name']['label'] = '聯絡人';
+            $fields['billing']['billing_first_name']['label'] = '聯絡人（聯絡窗口）';
             $fields['billing']['billing_first_name']['placeholder'] = '請填寫聯絡人';
             $fields['billing']['billing_first_name']['priority'] = 10;
         }
