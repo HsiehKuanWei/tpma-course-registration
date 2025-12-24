@@ -120,7 +120,6 @@ class TPMA_CR_Mail_Dispatcher
             $parts[] = "姓名：{$name}" . ($title ? "（{$title}）" : "");
             if ($email) $parts[] = "Email：{$email}";
             if ($regno) $parts[] = "報名編號：{$regno}";
-            if ($regid) $parts[] = "RegID：{$regid}";
 
             $lines[] = $idx . '. ' . implode('｜', $parts);
             $idx++;
@@ -170,6 +169,18 @@ class TPMA_CR_Mail_Dispatcher
                     $sql = $wpdb->prepare("SELECT * FROM {$regs_table} WHERE id IN ($in) ORDER BY id ASC", $ids);
                     $rows = $wpdb->get_results($sql, ARRAY_A);
 
+                    // ✅ 2-1) 從 registrations 回填 course_id / session_id（避免 build_context 拿不到課程）
+                    if (!empty($rows) && is_array($rows[0])) {
+                        if (empty($draft['course_id']) && !empty($rows[0]['course_id'])) {
+                            $draft['course_id'] = (int)$rows[0]['course_id'];
+                        }
+                        // 兼容不同欄位命名
+                        $sid = $rows[0]['session_id'] ?? ($rows[0]['course_session_id'] ?? null);
+                        if (empty($draft['session_id']) && !empty($sid)) {
+                            $draft['session_id'] = (int)$sid;
+                        }
+                    }
+
                     $learners = array();
                     foreach ($rows as $r) {
                         $learners[] = array(
@@ -193,15 +204,9 @@ class TPMA_CR_Mail_Dispatcher
             $draft['session_id'] = $order->get_meta('_tpma_session_id', true);
         }
 
-        // 4) session_datetime（若 draft 沒帶）
-        if (empty($draft['session_datetime'])) {
-            $sd = $order->get_meta('_tpma_session_datetime', true);
-            if ($sd) $draft['session_datetime'] = $sd;
-        }
-
-        // 5) mail_templates（若 draft 沒帶，使用 config defaults）
-        if (empty($draft['mail_templates']) && class_exists('TPMA_CR_Mail_Config')) {
-            $cfg = TPMA_CR_Mail_Config::get_config();
+        // 4) mail templates defaults (若 draft 沒帶)
+        if (empty($draft['mail_templates']) && class_exists('TPMA_CR_AdminWooService')) {
+            $cfg = TPMA_CR_AdminWooService::get_mail_template_config();
             $defaults = $cfg['default_templates'] ?? $cfg['defaults'] ?? array();
 
             $draft['mail_templates'] = array(
@@ -213,9 +218,12 @@ class TPMA_CR_Mail_Dispatcher
         return is_array($draft) ? $draft : array();
     }
 
+
+
     /**
      * ✅ lookup lecturer_name：courses.lecturer_code -> lecturers 表
-     * - 兼容不同欄位命名（lecturer_* / lecturers_*）
+     * - 不能用 OR 連不存在的欄位，會讓整個 SQL 失敗（Unknown column）
+     * - 先查舊欄位 lecturers_code，再查新欄位 lecturer_code
      */
     private static function lookup_lecturer_name($lecturer_code): string
     {
@@ -225,22 +233,29 @@ class TPMA_CR_Mail_Dispatcher
 
         $tbl = TPMA_CR_DB::table('lecturers');
 
-        // 兼容欄位命名差異
-        $row = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$tbl} WHERE lecturer_code = %s OR lecturers_code = %s LIMIT 1",
-            $code, $code
-        ), ARRAY_A);
+        // ① 先用舊版欄位：lecturers_code（你舊版有效就是靠這個）
+        $row = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$tbl} WHERE lecturers_code = %s LIMIT 1", $code),
+            ARRAY_A
+        );
+
+        // ② 再嘗試新版欄位：lecturer_code（若你的表其實有）
+        if (!$row) {
+            $row = $wpdb->get_row(
+                $wpdb->prepare("SELECT * FROM {$tbl} WHERE lecturer_code = %s LIMIT 1", $code),
+                ARRAY_A
+            );
+        }
 
         if (!$row) return '';
 
-        $name  = (string)($row['lecturer_name'] ?? $row['lecturers_name'] ?? '');
-        $title = (string)($row['lecturer_title'] ?? $row['lecturers_title'] ?? '');
-
-        $name = trim($name);
-        $title = trim($title);
+        // 兼容 name/title 欄位
+        $name  = trim((string)($row['lecturers_name'] ?? $row['lecturer_name'] ?? ''));
+        $title = trim((string)($row['lecturers_title'] ?? $row['lecturer_title'] ?? ''));
 
         return trim($name . ($title ? ' ' . $title : ''));
     }
+
 
     // =========================================================
     // Send
@@ -369,12 +384,25 @@ class TPMA_CR_Mail_Dispatcher
 
         // 講師：courses.lecturer_code -> lecturers
         $lecturer_name = '';
-        $lecturer_code = $course['lecturer_code'] ?? ($draft['lecturer_code'] ?? '');
-        if ($lecturer_code) {
-            $lecturer_name = self::lookup_lecturer_name($lecturer_code);
+
+        // ① course 已經 join 出講師名稱（最可靠）
+        if (!empty($course['lecturer_name'])) {
+            $lecturer_name = trim((string)$course['lecturer_name']);
         }
+
+        // ② course / draft 有 lecturer_code，才 lookup
         if (!$lecturer_name) {
-            $lecturer_name = (string)($draft['lecturer_name'] ?? '');
+            $lecturer_code = $course['lecturer_code']
+                ?? ($draft['lecturer_code'] ?? '');
+
+            if ($lecturer_code) {
+                $lecturer_name = self::lookup_lecturer_name($lecturer_code);
+            }
+        }
+
+        // ③ 最後保底（舊 draft 或特殊情況）
+        if (!$lecturer_name && !empty($draft['lecturer_name'])) {
+            $lecturer_name = trim((string)$draft['lecturer_name']);
         }
 
         // class_date
