@@ -58,6 +58,12 @@ class TPMA_WooCommerce_Integration {
         add_filter('woocommerce_email_enabled_new_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
         add_filter('woocommerce_email_enabled_customer_on_hold_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
         add_filter('woocommerce_email_enabled_customer_processing_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
+        // ✅ TPMA 報名單：關閉 Woo 內建 completed email（避免用 Woo 模板寄出）
+        add_filter('woocommerce_email_enabled_customer_completed_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
+
+        // ✅ TPMA 報名單：狀態變 completed 時，改用自訂模板寄信（只寄一次）
+        add_action('woocommerce_order_status_completed', [self::class, 'send_tpma_mails_after_order_completed'], 12, 1);
+
     }
 
     /**
@@ -161,6 +167,36 @@ class TPMA_WooCommerce_Integration {
 
         return $is_tpma ? false : $enabled;
     }
+
+    public static function send_tpma_mails_after_order_completed($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) return;
+
+        // 只處理 TPMA
+        $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+            || (bool)$order->get_meta('_tpma_reg_no', true);
+        if (!$is_tpma) return;
+
+        // 避免重複寄
+        if ($order->get_meta('_tpma_completed_mail_sent', true) === 'yes') return;
+
+        if (class_exists('TPMA_CR_Mail_Dispatcher')) {
+            // ✅ 這裡建議你在 Mail Dispatcher 實作一個「完成通知」對應模板
+            // 例如：TPMA_CR_Mail_Dispatcher::send_after_order_completed($order);
+            if (method_exists('TPMA_CR_Mail_Dispatcher', 'send_after_order_completed')) {
+                TPMA_CR_Mail_Dispatcher::send_after_order_completed($order);
+            } else {
+                // 保底：如果你暫時還沒做 completed 專用模板，可先沿用已存在的流程
+                TPMA_CR_Mail_Dispatcher::send_after_order_created($order);
+            }
+        }
+
+        $order->update_meta_data('_tpma_completed_mail_sent', 'yes');
+        $order->save();
+    }
+        
 }
+
+
 
 TPMA_WooCommerce_Integration::init();
