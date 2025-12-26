@@ -301,6 +301,15 @@ function validateForm() {
     window.scrollTo({ top, behavior: "smooth" });
   }
 
+  const sourceEl = document.getElementById("source");
+  const sourceVal = sourceEl?.value.trim() || "";
+
+  if (!sourceVal) {
+    setError("source", "請選擇資訊來源");
+    ok = false;
+  }
+
+
   return {
     ok,
     cid,
@@ -308,8 +317,8 @@ function validateForm() {
     sessionText,
     learners,
     shared: {
-      source: document.getElementById("source").value,
-      note: document.getElementById("note").value.trim(),
+      source: sourceVal,
+      note: document.getElementById("note")?.value?.trim() || "",
     },
   };
 }
@@ -326,7 +335,6 @@ function showSummaryModal(courseInfo, form) {
     <tr><th>授課日期 / 場次</th><td>${courseInfo.class_date || ""}</td></tr>
     <tr><th>講師</th><td>${courseInfo.lecturer || ""}</td></tr>
     <tr><th>資訊來源</th><td>${form.shared.source || ""}</td></tr>
-    <tr><th>備註</th><td>${(form.shared.note || "").replace(/\n/g, "<br>")}</td></tr>
   `;
   const learnersRows = form.learners
     .map(
