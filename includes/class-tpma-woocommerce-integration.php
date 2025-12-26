@@ -42,14 +42,7 @@ public static function init() {
     add_filter('woocommerce_is_purchasable', ['TPMA_CR_Woo_Service', 'force_tpma_product_purchasable'], 10, 2);
     add_filter('woocommerce_checkout_registration_required', ['TPMA_CR_Woo_Service', 'allow_guest_checkout_for_tpma'], 10, 1);
 
-    // ✅ 「建立帳號？」文字改成「加入TPMA會員?」
-    add_filter('woocommerce_form_field_args', function($args, $key, $value){
-        if (!self::cart_is_tpma_registration_only()) return $args;
-        if ($key === 'createaccount') {
-            $args['label'] = '加入TPMA會員?';
-        }
-        return $args;
-    }, 10, 3);
+
 
     
 

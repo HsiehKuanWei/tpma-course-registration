@@ -156,7 +156,107 @@ class TPMA_CR_Thankyou_View
         })();
         </script>';
 
-        echo   '</div>'; // card
+        
+        // === 匯款回報（thankyou）===
+        $order_key  = (string)$order->get_order_key();
+        $rest_url = esc_url_raw( rest_url('tpma/v1/remit-report') );
+        $show_remit = in_array($order->get_status(), array('on-hold', 'pending', 'failed'), true);
+
+        if ($show_remit) {
+            echo '<div class="tpma-thankyou-remit">';
+            echo   '<h3 class="tpma-thankyou-subtitle">匯款回報</h3>';
+            echo   '<p class="tpma-thankyou-hint">填寫匯款日期與匯款帳號末五碼後送出，我們將進行核帳。</p>';
+
+            echo   '<button type="button" class="button tpma-remit-btn" id="tpma-remit-open">回報匯款</button>';
+
+            echo   '<div class="tpma-remit-modal" id="tpma-remit-modal" style="display:none;">';
+            echo     '<div class="tpma-remit-modal-inner">';
+            echo       '<div class="tpma-remit-row">';
+            echo         '<label>匯款日期</label>';
+            echo         '<input type="date" id="tpma-remit-date" />';
+            echo       '</div>';
+            echo       '<div class="tpma-remit-row">';
+            echo         '<label>匯款帳號末五碼</label>';
+            echo         '<input type="text" id="tpma-remit-last5" inputmode="numeric" maxlength="5" placeholder="例如：12345" />';
+            echo       '</div>';
+            echo       '<div class="tpma-remit-actions">';
+            echo         '<button type="button" class="button button-primary" id="tpma-remit-submit">送出</button>';
+            echo         '<button type="button" class="button" id="tpma-remit-cancel">取消</button>';
+            echo       '</div>';
+            echo       '<div class="tpma-remit-msg" id="tpma-remit-msg" style="margin-top:8px;"></div>';
+            echo     '</div>';
+            echo   '</div>';
+
+            echo '<script>
+            (function(){
+              var ENDPOINT = ' . wp_json_encode($endpoint) . ';
+              var ORDER_ID = ' . (int)$order->get_id() . ';
+              var ORDER_KEY = ' . wp_json_encode($order_key) . ';
+
+              var openBtn = document.getElementById("tpma-remit-open");
+              var modal   = document.getElementById("tpma-remit-modal");
+              var cancel  = document.getElementById("tpma-remit-cancel");
+              var submit  = document.getElementById("tpma-remit-submit");
+              var msg     = document.getElementById("tpma-remit-msg");
+              var inDate  = document.getElementById("tpma-remit-date");
+              var inLast5 = document.getElementById("tpma-remit-last5");
+
+              function show(v){ if(modal) modal.style.display = v ? "block" : "none"; }
+              function setMsg(t, ok){
+                if(!msg) return;
+                msg.textContent = t || "";
+                msg.style.color = ok ? "green" : "red";
+              }
+
+              if(openBtn) openBtn.addEventListener("click", function(){ setMsg(""); show(true); });
+              if(cancel)  cancel.addEventListener("click", function(){ setMsg(""); show(false); });
+
+              if(submit) submit.addEventListener("click", async function(){
+                var remitDate = (inDate && inDate.value) ? inDate.value.trim() : "";
+                var last5 = (inLast5 && inLast5.value) ? inLast5.value.replace(/\\D+/g,"").trim() : "";
+
+                if(!remitDate){ setMsg("請填寫匯款日期"); return; }
+                if(!/^\\d{5}$/.test(last5)){ setMsg("請填寫匯款帳號末五碼（5 碼數字）"); return; }
+
+                submit.disabled = true;
+                setMsg("送出中...", true);
+
+                try{
+                  var res = await fetch(ENDPOINT, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      order_id: ORDER_ID,
+                      order_key: ORDER_KEY,
+                      remit_date: remitDate,
+                      remit_last5: last5
+                    })
+                  });
+
+                  var data = null;
+                  try{ data = await res.json(); }catch(e){}
+
+                  if(!res.ok){
+                    var err = (data && (data.message || data.error)) ? (data.message || data.error) : ("HTTP " + res.status);
+                    setMsg("送出失敗：" + err);
+                    submit.disabled = false;
+                    return;
+                  }
+
+                  setMsg("已送出回報，我們將進行核帳。", true);
+                  setTimeout(function(){ window.location.reload(); }, 800);
+                }catch(e){
+                  setMsg("送出失敗：" + (e && e.message ? e.message : "未知錯誤"));
+                  submit.disabled = false;
+                }
+              });
+            })();
+            </script>';
+
+            echo '</div>';
+        }
+
+echo   '</div>'; // card
         echo '</div>';   // root
     }
 

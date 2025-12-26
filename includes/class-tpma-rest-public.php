@@ -75,6 +75,14 @@ class TPMA_CR_REST_Public
 
         ));
 
+        // 匯款回報（thankyou 頁用）
+        register_rest_route($ns, '/remit-report', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'submit_remit_report'),
+            'permission_callback' => '__return_true',
+        ));
+
+
 	}
 	
 
@@ -334,6 +342,91 @@ class TPMA_CR_REST_Public
         return rest_ensure_response(array('success' => true));
 
     }
+
+    /**
+     * POST /remit-report
+     * thankyou 頁匯款回報：寫入 regs（同一筆訂單下所有學員）+ 通知管理員 + Woo 訂單改為 processing
+     *
+     * 參數：
+     * - order_id
+     * - order_key（thankyou 頁可取得，用來做簡單授權）
+     * - remit_date (YYYY-MM-DD)
+     * - remit_last5 (digits)
+     */
+    public static function submit_remit_report($request)
+    {
+        if (!function_exists('wc_get_order')) {
+            return new WP_Error('wc_missing', 'WooCommerce 未啟用', array('status' => 500));
+        }
+
+        $p = $request->get_json_params();
+        $order_id   = intval($p['order_id'] ?? 0);
+        $order_key  = sanitize_text_field($p['order_key'] ?? '');
+        $remit_date = sanitize_text_field($p['remit_date'] ?? '');
+        $last5      = preg_replace('/\D+/', '', (string)($p['remit_last5'] ?? ''));
+
+        if (!$order_id || !$order_key) {
+            return new WP_Error('bad_request', '缺少訂單資訊', array('status' => 400));
+        }
+        if (!$remit_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $remit_date)) {
+            return new WP_Error('bad_request', '匯款日期格式錯誤', array('status' => 400));
+        }
+        if (strlen($last5) !== 5) {
+            return new WP_Error('bad_request', '匯款帳號末五碼格式錯誤', array('status' => 400));
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            return new WP_Error('not_found', '找不到訂單', array('status' => 404));
+        }
+
+        // 授權：必須提供正確 order_key
+        if ($order->get_order_key() !== $order_key) {
+            return new WP_Error('forbidden', '訂單驗證失敗', array('status' => 403));
+        }
+
+        // 僅允許未完成/未取消的訂單回報
+        $st = $order->get_status();
+        if (in_array($st, array('completed', 'cancelled', 'refunded', 'failed'), true)) {
+            return new WP_Error('not_allowed', '此訂單狀態不可回報匯款', array('status' => 400));
+        }
+
+        global $wpdb;
+        $regs_table = TPMA_CR_DB::table('regs');
+
+        // 寫入 regs：同一筆訂單下所有學員
+        $wpdb->update(
+            $regs_table,
+            array(
+                'remit_account' => $last5,
+                'remit_date'    => $remit_date,
+                'remit_paid_at' => $remit_date,
+                // 同步目前 Woo 狀態（回報後會改為 processing）
+                'payment_status' => 'processing',
+            ),
+            array('woocommerce_order_id' => (int)$order_id)
+        );
+
+        // 寫入 order meta（方便追溯）
+        $order->update_meta_data('_tpma_remit_date', $remit_date);
+        $order->update_meta_data('_tpma_remit_last5', $last5);
+
+        // 先把 Woo 訂單改為「處理中」
+        if ($st !== 'processing') {
+            $order->update_status('processing', '學員於 thankyou 頁回報匯款：' . $remit_date . ' / ' . $last5);
+        } else {
+            $order->save();
+        }
+
+        // 通知管理員（如果 mail dispatcher 有提供）
+        if (class_exists('TPMA_CR_Mail_Dispatcher') && method_exists('TPMA_CR_Mail_Dispatcher', 'notify_admin_remit_report')) {
+            TPMA_CR_Mail_Dispatcher::notify_admin_remit_report($order, $remit_date, $last5);
+        }
+
+        return rest_ensure_response(array('success' => true));
+    }
+
+
 	
 
     /**

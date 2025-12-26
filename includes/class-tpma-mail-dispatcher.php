@@ -722,4 +722,57 @@ class TPMA_CR_Mail_Dispatcher
             'success' => true,
         ));
     }
+
+    /**
+     * 管理員通知：匯款回報（thankyou 頁）
+     */
+    public static function notify_admin_remit_report(WC_Order $order, string $remit_date, string $last5)
+    {
+        $to = apply_filters('tpma_cr_admin_notify_emails', array(get_option('admin_email')));
+        if (!is_array($to)) {
+            $to = array((string)$to);
+        }
+        $to = array_values(array_filter(array_map('sanitize_email', $to)));
+
+        if (empty($to)) return;
+
+        $order_id     = $order->get_id();
+        $order_number = $order->get_order_number();
+        $total        = $order->get_total();
+        $currency     = $order->get_currency();
+
+        $contact_name  = trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name());
+        $contact_email = $order->get_billing_email();
+
+        $admin_link = admin_url('post.php?post=' . $order_id . '&action=edit');
+
+        $subject = sprintf('[TPMA] 匯款回報｜訂單 #%s', $order_number);
+
+        $body = '';
+        $body .= "收到匯款回報：
+";
+        $body .= "訂單編號：#" . $order_number . "
+";
+        $body .= "訂單金額：" . $total . " " . $currency . "
+";
+        $body .= "回報匯款日期：" . $remit_date . "
+";
+        $body .= "回報帳號末五碼：" . $last5 . "
+";
+        $body .= "
+";
+        $body .= "下單者：" . $contact_name . "
+";
+        $body .= "下單 Email：" . $contact_email . "
+";
+        $body .= "
+";
+        $body .= "後台訂單：" . $admin_link . "
+";
+
+        $headers = array('Content-Type: text/plain; charset=UTF-8');
+        wp_mail($to, $subject, $body, $headers);
+    }
+
+
 }
