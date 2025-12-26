@@ -325,7 +325,6 @@ public static function admin_update_reg($request)
         'status',          // 報名狀態
         'receipt_status',
         'remit_paid_at',   // 匯款日期（仍存在 regs，給教務參考）
-        'note',
         'test_score',
         'certificate_id',
     );

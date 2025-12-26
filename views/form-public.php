@@ -93,13 +93,13 @@ $assets_base = isset($assets_base) ? $assets_base : TPMA_CR_URL;
         </select>
       </div>
 
-      <!-- 備註 -->
+      <!-- 備註 
       <div class="tpma-field">
         <div class="tpma-label-row">
           <div class="tpma-label">備註</div>
         </div>
         <textarea id="note" class="tpma-textarea" rows="3"></textarea>
-      </div>
+      </div>-->
 
       <button type="button" id="tpma-submit" class="tpma-btn">下一步</button>
       <div id="tpma-message"></div>

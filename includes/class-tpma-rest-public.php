@@ -349,7 +349,7 @@ class TPMA_CR_REST_Public
         $session_id = intval($d['session_id']);
         $learners   = $d['learners'];
         $source     = sanitize_text_field($d['source'] ?? '');
-        $note       = sanitize_textarea_field($d['note'] ?? '');
+        $note       = '';
 
         $draft = TPMA_CR_Woo_Service::build_draft($course_id, $session_id, $learners, $source, $note);
         if (is_wp_error($draft)) {

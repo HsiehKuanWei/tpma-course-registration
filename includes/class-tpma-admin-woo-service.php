@@ -42,6 +42,7 @@ class TPMA_CR_Admin_Woo_Service
                 'contact_email'      => $order->get_billing_email(),
                 'company_name'       => $order->get_billing_company(),
                 'phone'              => $order->get_billing_phone(),
+                'note'               => (string) $order->get_customer_note(),
                 'address'            => trim(implode(' ', array_filter([
                     $order->get_billing_postcode(),
                     $order->get_billing_state(),
@@ -62,6 +63,7 @@ class TPMA_CR_Admin_Woo_Service
                 'remit_amount_total' => $order->get_meta('_tpma_remit_amount_total', true),
                 'remit_paid_at'      => $order->get_meta('_tpma_remit_paid_at', true),
                 'remit_account'      => $order->get_meta('_tpma_remit_account', true),
+                'note'              => (string) $order->get_customer_note(),
             );
         }
 
@@ -89,6 +91,7 @@ class TPMA_CR_Admin_Woo_Service
                 $r['remit_account']      = $o['remit_account'] ?: $r['remit_account'];
                 $r['payment_status_label'] = self::admin_label_for_woo_status($o['status']);
                 $r['order_status_label']   = $r['payment_status_label'];
+                $r['note']                = $o['note'];
             }
         }
         unset($r);
@@ -119,6 +122,8 @@ class TPMA_CR_Admin_Woo_Service
             'receiver'         => array('type' => 'shipping', 'field' => 'first_name'),
             'receipt_type'     => array('type' => 'meta',    'field' => '_tpma_receipt_type'),
             'tax_id'           => array('type' => 'meta',    'field' => '_billing_vat_id'),
+            // ✅ Woo 備註（顧客下單備註 / customer note）
+            'note'             => array('type' => 'customer_note', 'field' => 'customer_note'),
         );
     }
 
@@ -150,7 +155,12 @@ class TPMA_CR_Admin_Woo_Service
                 $order->set_address($addr, 'shipping');
             } elseif ($info['type'] === 'meta') {
                 $order->update_meta_data($info['field'], $val);
-            }
+            } elseif ($info['type'] === 'customer_note') {
+                $current = (string) $order->get_customer_note();
+                if ($current !== (string) $val) {
+                        $order->set_customer_note((string) $val);
+                }
+}
         }
         return array('has_change' => $has_change);
     }

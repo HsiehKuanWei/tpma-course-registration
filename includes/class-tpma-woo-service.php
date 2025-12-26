@@ -354,11 +354,11 @@ class TPMA_CR_Woo_Service {
         $order->set_status('pending');
         $order->set_payment_method('bacs');
         $order->set_payment_method_title('銀行轉帳');
-
+/*
         if (!empty($shared['note'])) {
             $order->add_order_note(sanitize_textarea_field($shared['note']));
         }
-
+*/
         $order->update_meta_data('_tpma_reg_no', $ctx['reg_no']);
         $order->update_meta_data('_tpma_course_id', (int) $ctx['course_id']);
         $order->update_meta_data('_tpma_session_id', (int) $ctx['session_id']);
