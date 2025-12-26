@@ -113,6 +113,32 @@ class TPMA_CR_Woo_Service {
         return $draft;
     }
 
+    public static function tpma_wrap_checkout_groups($field_html, $key, $args, $value) {
+        // 只在 TPMA 報名 cart 才包
+        if (!method_exists(__CLASS__, 'is_tpma_reg_cart') || !self::is_tpma_reg_cart()) {
+            return $field_html;
+        }
+
+        // ---- 地址區段：從 tpma_postcode 開始，到 tpma_street 結束 ----
+        if ($key === 'tpma_postcode') {
+            $field_html = '<div class="tpma-checkout-group tpma-checkout-group--address">' . $field_html;
+        }
+        if ($key === 'tpma_street') {
+            $field_html = $field_html . '</div>';
+        }
+
+        // ---- 電話區段：從 tpma_phone_area 開始，到 tpma_phone_ext 結束 ----
+        if ($key === 'tpma_phone_area') {
+            $field_html = '<div class="tpma-checkout-group tpma-checkout-group--phone">' . $field_html;
+        }
+        if ($key === 'tpma_phone_ext') {
+            $field_html = $field_html . '</div>';
+        }
+
+        return $field_html;
+    }
+
+
     /**
      * 透過草稿加入購物車並回傳 checkout URL
      */
@@ -240,6 +266,8 @@ class TPMA_CR_Woo_Service {
         add_filter('woocommerce_product_get_regular_price', $cb_regular_price, 10, 2);
         add_filter('woocommerce_product_is_in_stock', $cb_in_stock, 10, 2);
 
+
+
         try {
             return call_user_func($callback);
         } finally {
@@ -248,6 +276,7 @@ class TPMA_CR_Woo_Service {
             remove_filter('woocommerce_product_get_regular_price', $cb_regular_price, 10);
             remove_filter('woocommerce_product_is_in_stock', $cb_in_stock, 10);
         }
+   
     }
 
     /**
@@ -472,7 +501,7 @@ class TPMA_CR_Woo_Service {
         if (!isset($fields['billing']['billing_vat_id'])) {
             $fields['billing']['billing_vat_id'] = array(
                 'type'     => 'text',
-                'required' => false,
+                'required' => true,
                 'label'    => '統一編號',
                 'priority' => 40,
             );
@@ -516,48 +545,98 @@ class TPMA_CR_Woo_Service {
             }
         }
 
+        // === 1) 地址欄位：tpma_state / tpma_city 改成可搜尋下拉（select）===
+
         $fields['billing']['tpma_postcode'] = array(
-            'type'     => 'text',
-            'required' => true,
-            'label'    => '郵遞區號',
-            'priority' => 60,
-            'class'    => array('form-row-first'),
-        );
-        // Spacer field to keep the right half of the first row empty.
-        $fields['billing']['tpma_postcode_spacer'] = array(
-            'type'     => 'text',
-            'required' => false,
-            'label'    => '佔位符',
-            'priority' => 65,
-            'class'    => array('form-row-last', 'tpma-field-spacer'),
-            'custom_attributes' => array(
-                'readonly'      => 'readonly',
-                'tabindex'      => '-1',
-                'autocomplete'  => 'off',
-                'aria-hidden'   => 'true',
+        'type'     => 'text',
+        'required' => true,
+        'label'    => '郵遞區號',
+        'priority' => 60,
+        'class'    => array('form-row-wide'),
+        'custom_attributes' => array(
+            'inputmode' => 'numeric',
+            'maxlength' => '5',
+            'pattern'   => '[0-9]*',
             ),
         );
+
         $fields['billing']['tpma_state'] = array(
-            'type'     => 'text',
-            'required' => true,
-            'label'    => '縣市',
-            'priority' => 70,
-            'class'    => array('form-row-first'),
-            'clear'    => true,
+        'type'     => 'select',
+        'required' => true,
+        'label'    => '縣市',
+        'priority' => 70,
+        'class'    => array('form-row-wide'),
+        'options'  => array('' => '請選擇縣市'),
+        'input_class' => array('wc-enhanced-select'), // selectWoo / select2 searchable
         );
+
         $fields['billing']['tpma_city'] = array(
-            'type'     => 'text',
-            'required' => true,
-            'label'    => '行政區',
-            'priority' => 80,
-            'class'    => array('form-row-last'),
+        'type'     => 'select',
+        'required' => true,
+        'label'    => '行政區',
+        'priority' => 80,
+        'class'    => array('form-row-wide'),
+        'options'  => array('' => '請先選擇縣市'),
+        'input_class' => array('wc-enhanced-select'),
+        'custom_attributes' => array(
+            'disabled' => 'disabled', // 沒先選縣市 → 行政區下拉為空且不可選
+            ),
         );
+
         $fields['billing']['tpma_street'] = array(
-            'type'     => 'text',
-            'required' => true,
-            'label'    => '街道地址',
-            'priority' => 90,
-            'class'    => array('form-row-wide'),
+        'type'     => 'text',
+        'required' => true,
+        'label'    => '街道地址',
+        'priority' => 90,
+        'class'    => array('form-row-wide'),
+        );
+
+        // === 2) 加入「電話三欄」並把 Woo 原生 billing_phone 隱藏 ===
+
+        if (isset($fields['billing']['billing_phone'])) {
+        $fields['billing']['billing_phone']['required'] = false;
+        $fields['billing']['billing_phone']['type'] = 'hidden';
+        $fields['billing']['billing_phone']['label'] = '';
+        }
+
+        $fields['billing']['tpma_phone_area'] = array(
+        'type'     => 'text',
+        'required' => true,
+        'label'    => '區碼',
+        'priority' => 55,
+        'class'    => array('form-row-wide', 'tpma-phone-third'),
+        'custom_attributes' => array(
+            'inputmode' => 'numeric',
+            'maxlength' => '3',
+            'pattern'   => '[0-9]*',
+            ),
+        );
+
+
+        $fields['billing']['tpma_phone_number'] = array(
+        'type'     => 'text',
+        'required' => true,
+        'label'    => '電話',
+        'priority' => 57,
+        'class'    => array('form-row-wide', 'tpma-phone-third'),
+        'custom_attributes' => array(
+            'inputmode' => 'numeric',
+            'maxlength' => '8',
+            'pattern'   => '[0-9]*',
+            ),
+        );
+
+        $fields['billing']['tpma_phone_ext'] = array(
+        'type'     => 'text',
+        'required' => false,
+        'label'    => '分機',
+        'priority' => 58,
+        'class'    => array('form-row-wide'),
+        'custom_attributes' => array(
+            'inputmode' => 'numeric',
+            'maxlength' => '6',
+            'pattern'   => '[0-9]*',
+            ),
         );
 
         if (isset($fields['billing']['billing_email'])) {
@@ -583,7 +662,7 @@ class TPMA_CR_Woo_Service {
 
         $custom_address_required = array(
             'tpma_postcode' => '請填寫郵遞區號',
-            'tpma_state'    => '請填寫縣市/州',
+            'tpma_state'    => '請填寫縣市',
             'tpma_city'     => '請填寫行政區',
             'tpma_street'   => '請填寫街道地址',
         );
@@ -598,6 +677,26 @@ class TPMA_CR_Woo_Service {
         }
         if (!empty($_POST['billing_vat_id']) && !preg_match('/^[0-9]{8}$/', $_POST['billing_vat_id'])) {
             wc_add_notice('統一編號需為 8 碼數字', 'error');
+        }
+
+        // === 電話三欄驗證 ===
+        $area = preg_replace('/\D+/', '', (string)($_POST['tpma_phone_area'] ?? ''));
+        $num  = preg_replace('/\D+/', '', (string)($_POST['tpma_phone_number'] ?? ''));
+        $ext  = preg_replace('/\D+/', '', (string)($_POST['tpma_phone_ext'] ?? ''));
+
+        if ($area === '') wc_add_notice('請填寫區碼', 'error');
+        if ($num === '')  wc_add_notice('請填寫電話', 'error');
+
+        if ($area !== '' && !preg_match('/^\d{2,3}$/', $area)) {
+        wc_add_notice('區碼需為 2~3 碼數字', 'error');
+        }
+        // 你文字寫「電話八位」，但你例子有 7 碼（7476543 / 3356211）
+        // 這裡用 7~8 碼，才能同時符合你提供的三個例子
+        if ($num !== '' && !preg_match('/^\d{7,8}$/', $num)) {
+        wc_add_notice('電話需為 7~8 碼數字', 'error');
+        }
+        if ($ext !== '' && !preg_match('/^\d{1,6}$/', $ext)) {
+        wc_add_notice('分機需為數字（最多 6 碼）', 'error');
         }
     }
 
@@ -680,6 +779,21 @@ class TPMA_CR_Woo_Service {
             $order->update_meta_data('_tpma_city', $city);
             $order->update_meta_data('_tpma_street', $street);
         }
+
+        // === 電話三欄合併 → 寫回 Woo billing_phone ===
+        $area = preg_replace('/\D+/', '', (string)($_POST['tpma_phone_area'] ?? ''));
+        $num  = preg_replace('/\D+/', '', (string)($_POST['tpma_phone_number'] ?? ''));
+        $ext  = preg_replace('/\D+/', '', (string)($_POST['tpma_phone_ext'] ?? ''));
+
+        if ($area && $num) {
+        $prefix = substr($num, 0, -4);
+        $last4  = substr($num, -4);
+        $merged = $area . '-' . $prefix . '-' . $last4;
+        if ($ext !== '') $merged .= '#' . $ext;
+
+        $order->set_billing_phone($merged);
+        }
+
     }
 
     /**

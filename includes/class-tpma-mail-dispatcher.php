@@ -117,10 +117,10 @@ class TPMA_CR_Mail_Dispatcher
             $regid = trim((string)($lr['reg_id'] ?? ($lr['id'] ?? '')));
 
             $parts = array();
+            if ($regno) $parts[] = "報名編號：{$regno}";
             $parts[] = "姓名：{$name}" . ($title ? "（{$title}）" : "");
             if ($email) $parts[] = "Email：{$email}";
-            if ($regno) $parts[] = "報名編號：{$regno}";
-
+            
             $lines[] = $idx . '. ' . implode('｜', $parts);
             $idx++;
         }

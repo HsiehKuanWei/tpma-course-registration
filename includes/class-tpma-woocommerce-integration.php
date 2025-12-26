@@ -5,66 +5,186 @@ if (!defined('ABSPATH')) {
 
 class TPMA_WooCommerce_Integration {
 
-    public static function init() {
+public static function init() {
 
-        // ✅ 只在「購物車全部都是 TPMA 報名商品」時，改寫 checkout URL
-        add_filter('woocommerce_get_checkout_url', [self::class, 'filter_checkout_url_for_tpma'], 20);
+    // ✅ 只在「購物車全部都是 TPMA 報名商品」時，改寫 checkout URL
+    add_filter('woocommerce_get_checkout_url', [self::class, 'filter_checkout_url_for_tpma'], 20);
 
-        // Frontend checkout/cart helpers
-        add_action('woocommerce_before_calculate_totals', ['TPMA_CR_Woo_Service', 'apply_cart_price']);
-        add_action('woocommerce_checkout_order_review', ['TPMA_CR_Woo_Service', 'render_checkout_summary'], 5);
+    // Frontend checkout/cart helpers
+    add_action('woocommerce_before_calculate_totals', ['TPMA_CR_Woo_Service', 'apply_cart_price']);
+    add_action('woocommerce_checkout_order_review', ['TPMA_CR_Woo_Service', 'render_checkout_summary'], 5);
 
-        // TPMA checkout：只讓 TPMA draft 使用匯款（bacs）
-        add_filter('woocommerce_available_payment_gateways', function($gateways){
-            if (!self::cart_is_tpma_registration_only()) return $gateways;
-            return isset($gateways['bacs']) ? ['bacs' => $gateways['bacs']] : $gateways;
-        }, 99);
+    // TPMA checkout：只讓 TPMA draft 使用匯款（bacs）
+    add_filter('woocommerce_available_payment_gateways', function($gateways){
+        if (!self::cart_is_tpma_registration_only()) return $gateways;
+        return isset($gateways['bacs']) ? ['bacs' => $gateways['bacs']] : $gateways;
+    }, 99);
 
-        add_filter('woocommerce_default_gateway', function($default){
-            if (!self::cart_is_tpma_registration_only()) return $default;
-            return 'bacs';
-        });
+    add_filter('woocommerce_default_gateway', function($default){
+        if (!self::cart_is_tpma_registration_only()) return $default;
+        return 'bacs';
+    });
 
-        add_filter('woocommerce_order_button_text', function($text){
-            if (!self::cart_is_tpma_registration_only()) return $text;
-            return '提交訂單';
-        });
+    add_filter('woocommerce_order_button_text', function($text){
+        if (!self::cart_is_tpma_registration_only()) return $text;
+        return '提交訂單';
+    });
 
-        add_action('woocommerce_checkout_before_customer_details', ['TPMA_CR_Woo_Service', 'render_auto_fill_controls'], 1);
-        add_action('woocommerce_checkout_process', ['TPMA_CR_Woo_Service', 'validate_checkout_fields']);
-        add_action('woocommerce_checkout_create_order', ['TPMA_CR_Woo_Service', 'save_checkout_fields'], 10, 2);
-        add_filter('woocommerce_checkout_fields', ['TPMA_CR_Woo_Service', 'add_checkout_fields']);
-        add_filter('woocommerce_is_purchasable', ['TPMA_CR_Woo_Service', 'force_tpma_product_purchasable'], 10, 2);
-        add_filter('woocommerce_checkout_registration_required', ['TPMA_CR_Woo_Service', 'allow_guest_checkout_for_tpma'], 10, 1);
+    // ✅ 結帳欄位（你已在 TPMA_CR_Woo_Service 內處理）
+    add_action('woocommerce_checkout_before_customer_details', ['TPMA_CR_Woo_Service', 'render_auto_fill_controls'], 1);
+    add_action('woocommerce_checkout_process', ['TPMA_CR_Woo_Service', 'validate_checkout_fields']);
+    add_action('woocommerce_checkout_create_order', ['TPMA_CR_Woo_Service', 'save_checkout_fields'], 10, 2);
+    add_filter('woocommerce_checkout_fields', ['TPMA_CR_Woo_Service', 'add_checkout_fields']);
+    add_filter('woocommerce_form_field', ['TPMA_CR_Woo_Service', 'tpma_wrap_checkout_groups'], 20, 4);
 
-        add_filter('woocommerce_bacs_process_payment_order_status', function($status, $order) {
-            if (!$order instanceof WC_Order) return $status;
 
-            $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
-                || (bool)$order->get_meta('_tpma_reg_no', true);
+    // ✅ 修正：這行原本被你寫成 ... 會直接 fatal（500）
+    add_filter('woocommerce_is_purchasable', ['TPMA_CR_Woo_Service', 'force_tpma_product_purchasable'], 10, 2);
+    add_filter('woocommerce_checkout_registration_required', ['TPMA_CR_Woo_Service', 'allow_guest_checkout_for_tpma'], 10, 1);
 
-            return $is_tpma ? 'on-hold' : $status;
-        }, 10, 2);
+    // ✅ 「建立帳號？」文字改成「加入TPMA會員?」
+    add_filter('woocommerce_form_field_args', function($args, $key, $value){
+        if (!self::cart_is_tpma_registration_only()) return $args;
+        if ($key === 'createaccount') {
+            $args['label'] = '加入TPMA會員?';
+        }
+        return $args;
+    }, 10, 3);
 
-        if (class_exists('TPMA_CR_Thankyou_View')) {
-            TPMA_CR_Thankyou_View::init();
+    
+
+    // ✅ 讓縣市/行政區下拉具備文字搜尋 + 載入你的地址互動 JS
+    add_action('wp_enqueue_scripts', function(){
+        if (!function_exists('is_checkout') || !is_checkout()) return;
+        if (!self::cart_is_tpma_registration_only()) return;
+
+        // Woo 內建 selectWoo（=select2），讓下拉可文字搜尋
+        wp_enqueue_script('selectWoo');
+        wp_enqueue_style('selectWoo');
+
+        // 你的地址互動 JS（路徑用 ../ 方式，避免這支檔不在外掛根目錄時找不到）
+        $js_url = plugins_url('../assets/js/public/tpma-woo-address.js', __FILE__);
+        wp_enqueue_script('tpma-woo-address', $js_url, ['jquery', 'selectWoo'], '20251226_fix_init', true);
+
+        // 嘗試讀 taiwan_districts.json（路徑不對也不會 fatal）
+        $districts = [];
+        $candidates = [
+            // 常見：外掛根目錄
+            dirname(__DIR__) . '/taiwan_districts.json',
+            // 常見：外掛根目錄 assets/json
+            dirname(__DIR__) . '/assets/json/taiwan_districts.json',
+            // 若你真的放在 includes 同層
+            __DIR__ . '/taiwan_districts.json',
+            __DIR__ . '/assets/json/taiwan_districts.json',
+        ];
+
+        foreach ($candidates as $p) {
+            if (file_exists($p)) {
+                $raw = @file_get_contents($p);
+                $tmp = json_decode($raw, true);
+                if (is_array($tmp) && !empty($tmp)) {
+                    $districts = $tmp;
+                    break;
+                }
+            }
         }
 
-        // 建單後：先寫 regs，再寄信
-        add_action('woocommerce_checkout_order_processed', [self::class, 'sync_order_to_registrations'], 10, 3);
-        add_action('woocommerce_checkout_order_processed', [self::class, 'send_tpma_mails_after_order_created'], 12, 1);
+        wp_localize_script('tpma-woo-address', 'TPMA_WOO_ADDR', [
+            'districts' => $districts,
+            'selectors' => [
+                'zip'   => '#tpma_postcode',
+                'state' => '#tpma_state',
+                'city'  => '#tpma_city',
+            ],
+        ]);
+    
 
-        // TPMA 報名單：關閉 Woo 內建 email（避免重複）
-        add_filter('woocommerce_email_enabled_new_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
-        add_filter('woocommerce_email_enabled_customer_on_hold_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
-        add_filter('woocommerce_email_enabled_customer_processing_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
-        // ✅ TPMA 報名單：關閉 Woo 內建 completed email（避免用 Woo 模板寄出）
-        add_filter('woocommerce_email_enabled_customer_completed_order', [self::class, 'maybe_disable_woo_emails_for_tpma'], 10, 2);
+        wp_add_inline_script('tpma-woo-address', <<<JS
+        jQuery(function($){
 
-        // ✅ TPMA 報名單：狀態變 completed 時，改用自訂模板寄信（只寄一次）
-        add_action('woocommerce_order_status_completed', [self::class, 'send_tpma_mails_after_order_completed'], 12, 1);
+        function fixCreateAccountLabel(){
+            var \$cb = $('#createaccount');
+            if (!\$cb.length) return;
 
+            // 1) 最常見：input 被 label 包住
+            var \$wrapLabel = \$cb.closest('label');
+            if (\$wrapLabel.length) {
+            // 把 input 留下，其餘文字全部清掉，改成我們要的字
+            var \$input = \$wrapLabel.find('input#createaccount').first();
+            \$wrapLabel.empty().append(\$input).append(' 加入TPMA會員?');
+            return;
+            }
+
+            // 2) label 用 for 指向 input
+            var \$forLabel = $('label[for="createaccount"]');
+            if (\$forLabel.length) {
+            \$forLabel.text('加入TPMA會員?');
+            return;
+            }
+
+            // 3) 兜底：全頁找包含「建立帳號」的 label/span（只改帳號區塊附近）
+            $('.woocommerce-account-fields, #customer_details').find('label, span').each(function(){
+            var t = $(this).text();
+            if (t && (t.indexOf('建立帳號') !== -1 || t.indexOf('Create an account') !== -1)) {
+                $(this).text('加入TPMA會員?');
+            }
+            });
+        }
+
+        // 首次載入先改一次
+        fixCreateAccountLabel();
+
+        // Woo 結帳 AJAX 更新後會把 DOM 覆蓋掉，所以每次更新都再改一次
+        $(document.body).on('updated_checkout wc_fragments_loaded updated_cart_totals', function(){
+            fixCreateAccountLabel();
+        });
+
+        });
+        JS);
+    }, 20);
+
+    add_filter('woocommerce_bacs_process_payment_order_status', function($status, $order) {
+        if (!$order instanceof WC_Order) return $status;
+
+        $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+            || (bool)$order->get_meta('_tpma_reg_no', true);
+
+        return $is_tpma ? 'on-hold' : $status;
+    }, 10, 2);
+
+    if (class_exists('TPMA_CR_Thankyou_View')) {
+        TPMA_CR_Thankyou_View::init();
     }
+
+    // 建單後：先寫 regs，再寄信
+    add_action('woocommerce_checkout_order_processed', [self::class, 'sync_order_to_registrations'], 10, 3);
+    add_action('woocommerce_checkout_order_processed', [self::class, 'send_tpma_mails_after_order_created'], 12, 1);
+
+    // TPMA 報名單：關閉 Woo 內建 email（避免重複）
+    add_filter('woocommerce_email_enabled_customer_processing_order', function($enabled, $order){
+        if (!$order instanceof WC_Order) return $enabled;
+        $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+            || (bool)$order->get_meta('_tpma_reg_no', true);
+        return $is_tpma ? false : $enabled;
+    }, 99, 2);
+
+    add_filter('woocommerce_email_enabled_customer_on_hold_order', function($enabled, $order){
+        if (!$order instanceof WC_Order) return $enabled;
+        $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+            || (bool)$order->get_meta('_tpma_reg_no', true);
+        return $is_tpma ? false : $enabled;
+    }, 99, 2);
+
+    add_filter('woocommerce_email_enabled_new_order', function($enabled, $order){
+        if (!$order instanceof WC_Order) return $enabled;
+        $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+            || (bool)$order->get_meta('_tpma_reg_no', true);
+        return $is_tpma ? false : $enabled;
+    }, 99, 2);
+
+
+}
+
 
     /**
      * ✅ 取得 TPMA 報名商品 ID（與 TPMA_CR_Woo_Service 一致）
@@ -142,6 +262,67 @@ class TPMA_WooCommerce_Integration {
         $custom = self::get_custom_checkout_url();
         return $custom ? $custom : $url;
     }
+
+    public static function tpma_filter_createaccount_label($args, $key, $value) {
+        if (!self::cart_is_tpma_registration_only()) return $args;
+
+        if ($key === 'createaccount') {
+            $args['label'] = '加入TPMA會員?';
+        }
+        return $args;
+    }
+
+    private static function load_taiwan_districts_data(): array {
+        // 依你的實際放置位置自動嘗試（你可以把 JSON 放到其中任一路徑）
+        $candidates = array(
+            // 1) 與本檔同層（你現在這支檔就在 includes 也可能）
+            plugin_dir_path(__FILE__) . 'taiwan_districts.json',
+            // 2) 外掛根目錄
+            dirname(plugin_dir_path(__FILE__)) . 'taiwan_districts.json',
+            // 3) assets/json
+            plugin_dir_path(__FILE__) . 'assets/json/taiwan_districts.json',
+            dirname(plugin_dir_path(__FILE__)) . 'assets/json/taiwan_districts.json',
+        );
+
+        foreach ($candidates as $path) {
+            if ($path && file_exists($path)) {
+                $raw = file_get_contents($path);
+                $data = json_decode($raw, true);
+                if (is_array($data) && !empty($data)) return $data;
+            }
+        }
+        return array();
+    }
+
+    public static function enqueue_tpma_checkout_assets() {
+        if (!function_exists('is_checkout') || !is_checkout()) return;
+        if (!self::cart_is_tpma_registration_only()) return;
+
+        // 讓縣市/行政區變成可搜尋下拉（selectWoo）
+        wp_enqueue_script('selectWoo');
+        wp_enqueue_style('selectWoo');
+
+        $districts = self::load_taiwan_districts_data();
+
+        wp_enqueue_script(
+            'tpma-woo-address',
+            plugin_dir_url(__FILE__) . 'assets/js/public/tpma-woo-address.js',
+            array('jquery', 'selectWoo'),
+            '20251226_3',
+            true
+        );
+
+        wp_localize_script('tpma-woo-address', 'TPMA_WOO_ADDR', array(
+            'districts' => $districts,
+            'selectors' => array(
+                'zip'   => '#tpma_postcode',
+                'state' => '#tpma_state',
+                'city'  => '#tpma_city',
+            ),
+        ));
+    }
+    
+
 
     public static function sync_order_to_registrations($order_id, $posted_data, $order) {
         if (!class_exists('TPMA_CR_Woo_Service')) return;
