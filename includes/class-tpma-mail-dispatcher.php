@@ -768,4 +768,48 @@ class TPMA_CR_Mail_Dispatcher
         wp_mail($to, $subject, $body, array('Content-Type: text/plain; charset=UTF-8'));
     }
 
+    public static function send_after_order_completed(WC_Order $order, $draft = null): bool
+    {
+        if (!class_exists('TPMA_Mailer')) return false;
+
+        if (!is_array($draft)) {
+            $draft = self::get_draft_from_order($order);
+        }
+
+        $templates = is_array($draft['mail_templates'] ?? null) ? $draft['mail_templates'] : array();
+        // ✅ 沒有就用預設模板 key（避免 draft 沒帶 completed 造成完全不寄）
+        $tpl_completed = trim((string)($templates['completed'] ?? 'registration_completed'));
+
+        // 如果你想要「必須存在模板才寄」，可在 TPMA_Mailer 內處理；這裡先嘗試寄
+        $ctx = self::build_context($order, $draft);
+
+        $sent = false;
+
+        // 寄給訂購者（Woo 結帳信箱）
+        $billing_email = trim((string)$order->get_billing_email());
+        if ($billing_email && is_email($billing_email)) {
+            $ok = TPMA_Mailer::send_template($tpl_completed, $billing_email, array(
+                'reg_context' => $ctx,
+            ));
+            if ($ok) $sent = true;
+        }
+
+        // 副本（若模板有設定）
+        $copies = array();
+        if (method_exists(__CLASS__, 'get_copy_recipients_from_config')) {
+            $copies = self::get_copy_recipients_from_config($tpl_completed);
+        }
+        foreach ((array)$copies as $copy) {
+            $copy = trim((string)$copy);
+            if (!$copy || !is_email($copy)) continue;
+            $ok = TPMA_Mailer::send_template($tpl_completed, $copy, array(
+                'reg_context' => $ctx,
+            ));
+            if ($ok) $sent = true;
+        }
+
+        return $sent;
+    }
+
+
 }

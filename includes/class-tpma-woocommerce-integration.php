@@ -156,7 +156,7 @@ public static function init() {
     add_action('woocommerce_checkout_order_processed', [self::class, 'send_tpma_mails_after_order_created'], 12, 1);
 
     // TPMA 報名單：關閉 Woo 內建 email（避免重複）
-    add_filter('woocommerce_email_enabled_customer_processing_order', function($enabled, $order){
+    add_filter('woocommerce_email_enabled_customer_completed_order', function($enabled, $order){
         if (!$order instanceof WC_Order) return $enabled;
         $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
             || (bool)$order->get_meta('_tpma_reg_no', true);
@@ -176,7 +176,7 @@ public static function init() {
             || (bool)$order->get_meta('_tpma_reg_no', true);
         return $is_tpma ? false : $enabled;
     }, 99, 2);
-
+    add_action('woocommerce_order_status_completed', [self::class, 'send_tpma_mails_after_order_completed'], 10, 1);
 
 }
 
