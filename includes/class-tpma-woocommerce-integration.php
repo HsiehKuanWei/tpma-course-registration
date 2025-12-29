@@ -6,6 +6,10 @@ if (!defined('ABSPATH')) {
 class TPMA_WooCommerce_Integration {
 
 public static function init() {
+    // 結帳勾選建立帳號時，避免 user_nicename 超過 50 字元（WP 核心限制）
+    add_filter('woocommerce_new_customer_data', [__CLASS__, 'tpma_adjust_new_customer_data'], 10, 1);
+    add_action('woocommerce_checkout_update_customer', [__CLASS__, 'tpma_after_checkout_update_customer'], 100, 2);
+
 
     // ✅ 只在「購物車全部都是 TPMA 報名商品」時，改寫 checkout URL
     add_filter('woocommerce_get_checkout_url', [self::class, 'filter_checkout_url_for_tpma'], 20);
@@ -41,8 +45,6 @@ public static function init() {
     // ✅ 修正：這行原本被你寫成 ... 會直接 fatal（500）
     add_filter('woocommerce_is_purchasable', ['TPMA_CR_Woo_Service', 'force_tpma_product_purchasable'], 10, 2);
     add_filter('woocommerce_checkout_registration_required', ['TPMA_CR_Woo_Service', 'allow_guest_checkout_for_tpma'], 10, 1);
-
-
 
     
 
@@ -177,7 +179,6 @@ public static function init() {
 
 
 }
-
 
     /**
      * ✅ 取得 TPMA 報名商品 ID（與 TPMA_CR_Woo_Service 一致）
@@ -368,9 +369,123 @@ public static function init() {
         $order->update_meta_data('_tpma_completed_mail_sent', 'yes');
         $order->save();
     }
-        
+
+/**
+ * 只在 Woo「勾選建立帳號」時會進來
+ * 目的：
+ * - user_login：改成 email @ 前綴（避免名字被拆成姓/名造成重複）
+ * - user_nicename：slug，<=50 且唯一（避免你原本的 50 字限制錯誤）
+ * - last_name：先給空，避免建立當下就被填入名字
+ */
+public static function tpma_adjust_new_customer_data($data) {
+    $email = $data['user_email'] ?? '';
+    $prefix = $email && strpos($email, '@') !== false ? explode('@', $email)[0] : '';
+
+    // user_login：<=60，且必須唯一
+    $base_login = sanitize_user($prefix, true);
+    if ($base_login === '') {
+        $base_login = 'tpma' . wp_generate_password(6, false, false);
+    }
+    $data['user_login'] = self::tpma_unique_user_login($base_login);
+
+    // user_nicename：<=50，且必須唯一（用 slug 檢查）
+    $data['user_nicename'] = self::tpma_unique_user_nicename($data['user_login']);
+
+    // 盡量在建立當下就不要帶 last_name（避免變成名字重複兩次）
+    $data['last_name'] = '';
+
+    return $data;
+}
+
+    /**
+     * Woo 在結帳最後會把 checkout 的帳單資料同步回使用者（含 last_name / billing_last_name）
+     * 這裡做兩件事：
+     * 1) 強制清空 last_name + billing_last_name（避免又被回填）
+     * 2) Ultimate Member 常吃 nickname / display_name：同步成 email @ 前綴
+     */
+    public static function tpma_after_checkout_update_customer($customer, $data) {
+        if (!$customer || !is_a($customer, 'WC_Customer')) return;
+
+        // 只處理「這次結帳有勾選建立帳號」的情境，避免動到既有會員
+        // Woo 這裡通常會帶 createaccount => 1
+        if (empty($data['createaccount'])) return;
+
+        $user_id = (int) $customer->get_id();
+        if ($user_id <= 0) return;
+
+        // 取 email @ 前綴
+        $email = $customer->get_email();
+        $prefix = ($email && strpos($email, '@') !== false) ? explode('@', $email)[0] : '';
+        $nickname = sanitize_user($prefix, true);
+        if ($nickname === '') {
+            $nickname = 'tpma' . wp_generate_password(6, false, false);
+        }
+
+        // 1) 強制清空姓氏（WP + Woo billing）
+        $customer->set_last_name('');
+        if (method_exists($customer, 'set_billing_last_name')) {
+            $customer->set_billing_last_name('');
+        }
+        $customer->save();
+
+        update_user_meta($user_id, 'last_name', '');
+        update_user_meta($user_id, 'billing_last_name', '');
+
+        // 2) 給 UM 用的暱稱 / 顯示名稱
+        update_user_meta($user_id, 'nickname', $nickname);
+        wp_update_user([
+            'ID' => $user_id,
+            'display_name' => $nickname,
+        ]);
+    }
+
+    /** user_login 必須唯一，且建議限制 60 字元 */
+    private static function tpma_unique_user_login($base) {
+        $base = substr($base, 0, 60);
+        $login = $base;
+
+        $i = 1;
+        while (username_exists($login)) {
+            $suffix = (string) $i;
+            $login = substr($base, 0, max(1, 60 - (1 + strlen($suffix)))) . '-' . $suffix;
+            $i++;
+            if ($i > 200) {
+                $login = substr($base, 0, 45) . '-' . wp_generate_password(10, false, false);
+                $login = substr($login, 0, 60);
+                break;
+            }
+        }
+        return $login;
+    }
+
+    /** user_nicename 必須 <=50 且唯一（用 user slug 查） */
+    private static function tpma_unique_user_nicename($base) {
+        $nicename = sanitize_title($base);
+        $nicename = substr($nicename, 0, 50);
+
+        if ($nicename === '') {
+            $nicename = 'tpma-' . wp_generate_password(10, false, false);
+            $nicename = substr($nicename, 0, 50);
+        }
+
+        $orig = $nicename;
+        $i = 1;
+        while (get_user_by('slug', $nicename)) {
+            $suffix = '-' . $i;
+            $nicename = substr($orig, 0, max(1, 50 - strlen($suffix))) . $suffix;
+            $i++;
+            if ($i > 200) {
+                $nicename = substr($orig, 0, 35) . '-' . wp_generate_password(10, false, false);
+                $nicename = substr($nicename, 0, 50);
+                break;
+            }
+        }
+        return $nicename;
+    }
 }
 
 
 
 TPMA_WooCommerce_Integration::init();
+
+
