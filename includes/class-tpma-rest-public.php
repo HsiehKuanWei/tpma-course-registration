@@ -326,7 +326,7 @@ class TPMA_CR_REST_Public
             array(
 
                 'remit_account' => sanitize_text_field($p['remit_account'] ?? ''),
-                'remit_date'    => sanitize_text_field($p['remit_date'] ?? ''),
+            //    'remit_date'    => sanitize_text_field($p['remit_date'] ?? ''),
                 'remit_paid_at' => sanitize_text_field($p['remit_date'] ?? null),
                 'remit_amount'  => floatval($p['remit_amount'] ?? 0),
                 'status'        => 'submitted',
@@ -399,14 +399,19 @@ class TPMA_CR_REST_Public
             $regs_table,
             array(
                 'remit_account' => $last5,
-                'remit_date'    => $remit_date,
+            //    'remit_date'    => $remit_date,
                 'remit_paid_at' => $remit_date,
                 // 同步目前 Woo 狀態（回報後會改為 processing）
                 'payment_status' => 'processing',
             ),
-            array('woocommerce_order_id' => (int)$order_id)
+            array('woocommerce_order_id' => (int)$order_id),
+            array('%s','%s','%s'),
+            array('%d')
         );
 
+        if ($updated === false) {
+        return new WP_Error('db_error', '資料表寫入失敗：' . $wpdb->last_error, array('status' => 500));
+        }        
         // 寫入 order meta（方便追溯）
         $order->update_meta_data('_tpma_remit_date', $remit_date);
         $order->update_meta_data('_tpma_remit_last5', $last5);

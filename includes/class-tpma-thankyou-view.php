@@ -189,7 +189,7 @@ class TPMA_CR_Thankyou_View
 
             echo '<script>
             (function(){
-              var ENDPOINT = ' . wp_json_encode($endpoint) . ';
+              var ENDPOINT = ' . wp_json_encode($rest_url) . ';
               var ORDER_ID = ' . (int)$order->get_id() . ';
               var ORDER_KEY = ' . wp_json_encode($order_key) . ';
 
