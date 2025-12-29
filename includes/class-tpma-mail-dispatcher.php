@@ -725,54 +725,47 @@ class TPMA_CR_Mail_Dispatcher
 
     /**
      * 管理員通知：匯款回報（thankyou 頁）
+     * - 優先使用資料庫模板（TPMA_Mailer::send_template）
+     * - 若模板/寄送類別不可用，fallback 純文字 wp_mail
      */
-    public static function notify_admin_remit_report(WC_Order $order, string $remit_date, string $last5)
+    public static function notify_admin_remit_report(WC_Order $order, string $remit_date, string $remit_account)
     {
+        // ✅ 只寄給管理員（主收件人）
         $to = apply_filters('tpma_cr_admin_notify_emails', array(get_option('admin_email')));
-        if (!is_array($to)) {
-            $to = array((string)$to);
-        }
+        if (!is_array($to)) $to = array((string)$to);
         $to = array_values(array_filter(array_map('sanitize_email', $to)));
-
         if (empty($to)) return;
 
-        $order_id     = $order->get_id();
-        $order_number = $order->get_order_number();
-        $total        = $order->get_total();
-        $currency     = $order->get_currency();
+        // ✅ 固定模板 key（你 DB 建同名模板即可）
+        $template_key = apply_filters('tpma_cr_mail_template_admin_remit_report', 'admin_remit_report');
 
-        $contact_name  = trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name());
-        $contact_email = $order->get_billing_email();
+        // ✅ 用同一套 draft + context（跟 registration_order 一致）
+        $draft = self::get_draft_from_order($order);
+        $ctx   = self::build_context($order, is_array($draft) ? $draft : array(), array());
 
-        $admin_link = admin_url('post.php?post=' . $order_id . '&action=edit');
+        // ✅ 匯款回報專用欄位（你模板可用）
+        $ctx['remit_date']    = $remit_date;
+        $ctx['remit_account'] = $remit_account;
+        $ctx['admin_link']    = admin_url('post.php?post=' . $order->get_id() . '&action=edit');
 
-        $subject = sprintf('[TPMA] 匯款回報｜訂單 #%s', $order_number);
+        // ✅ 透過 DB 模板寄送（模板內的副本/抄送設定會自行處理）
+        if (class_exists('TPMA_Mailer')) {
+            foreach ($to as $email) {
+                TPMA_Mailer::send_template($template_key, $email, array(
+                    'reg_context' => $ctx,
+                ));
+            }
+            return;
+        }
 
-        $body = '';
-        $body .= "收到匯款回報：
-";
-        $body .= "訂單編號：#" . $order_number . "
-";
-        $body .= "訂單金額：" . $total . " " . $currency . "
-";
-        $body .= "回報匯款日期：" . $remit_date . "
-";
-        $body .= "回報帳號末五碼：" . $last5 . "
-";
-        $body .= "
-";
-        $body .= "下單者：" . $contact_name . "
-";
-        $body .= "下單 Email：" . $contact_email . "
-";
-        $body .= "
-";
-        $body .= "後台訂單：" . $admin_link . "
-";
-
-        $headers = array('Content-Type: text/plain; charset=UTF-8');
-        wp_mail($to, $subject, $body, $headers);
+        // fallback（理論上你有 TPMA_Mailer，不太會走到這）
+        $subject = sprintf('[TPMA] 匯款回報｜訂單 #%s', $order->get_order_number());
+        $body  = "收到匯款回報：\n";
+        $body .= "訂單編號：#" . $order->get_order_number() . "\n";
+        $body .= "回報匯款日期：" . $remit_date . "\n";
+        $body .= "回報公司戶名/末五碼：" . $remit_account . "\n";
+        $body .= "後台訂單：" . $ctx['admin_link'] . "\n";
+        wp_mail($to, $subject, $body, array('Content-Type: text/plain; charset=UTF-8'));
     }
-
 
 }

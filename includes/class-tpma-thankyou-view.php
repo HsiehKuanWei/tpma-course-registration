@@ -176,8 +176,9 @@ class TPMA_CR_Thankyou_View
             echo         '<input type="date" id="tpma-remit-date" />';
             echo       '</div>';
             echo       '<div class="tpma-remit-row">';
-            echo         '<label>匯款帳號末五碼</label>';
-            echo         '<input type="text" id="tpma-remit-last5" inputmode="numeric" maxlength="5" placeholder="例如：12345" />';
+            echo         '<label>公司戶名或匯款帳號末五碼</label>';
+            echo         '<input type="text" id="tpma-remit-account" maxlength="50" placeholder="公司戶名或末五碼（例如：王小明／12345）" />
+';
             echo       '</div>';
             echo       '<div class="tpma-remit-actions">';
             echo         '<button type="button" class="button button-primary" id="tpma-remit-submit">送出</button>';
@@ -199,7 +200,9 @@ class TPMA_CR_Thankyou_View
               var submit  = document.getElementById("tpma-remit-submit");
               var msg     = document.getElementById("tpma-remit-msg");
               var inDate  = document.getElementById("tpma-remit-date");
-              var inLast5 = document.getElementById("tpma-remit-last5");
+
+              // ✅ 你 HTML 已改成 tpma-remit-account，JS 也要跟著改
+              var inAcct  = document.getElementById("tpma-remit-account");
 
               function show(v){ if(modal) modal.style.display = v ? "block" : "none"; }
               function setMsg(t, ok){
@@ -212,11 +215,19 @@ class TPMA_CR_Thankyou_View
               if(cancel)  cancel.addEventListener("click", function(){ setMsg(""); show(false); });
 
               if(submit) submit.addEventListener("click", async function(){
-                var remitDate = (inDate && inDate.value) ? inDate.value.trim() : "";
-                var last5 = (inLast5 && inLast5.value) ? inLast5.value.replace(/\\D+/g,"").trim() : "";
+                var remitDate = (inDate && inDate.value) ? String(inDate.value).trim() : "";
+                var remitAccount = (inAcct && inAcct.value) ? String(inAcct.value).trim() : "";
 
                 if(!remitDate){ setMsg("請填寫匯款日期"); return; }
-                if(!/^\\d{5}$/.test(last5)){ setMsg("請填寫匯款帳號末五碼（5 碼數字）"); return; }
+
+                // ✅ 允許：5 碼數字（末五碼）或公司戶名（2~50 字）
+                var isLast5 = /^\\d{5}$/.test(remitAccount);
+                var isName  = (remitAccount.length >= 2 && remitAccount.length <= 50);
+
+                if(!(isLast5 || isName)){
+                  setMsg("請填寫公司戶名或匯款帳號末五碼（5 碼數字）");
+                  return;
+                }
 
                 submit.disabled = true;
                 setMsg("送出中...", true);
@@ -229,7 +240,8 @@ class TPMA_CR_Thankyou_View
                       order_id: ORDER_ID,
                       order_key: ORDER_KEY,
                       remit_date: remitDate,
-                      remit_last5: last5
+                      // ✅ payload key 改成 remit_account
+                      remit_account: remitAccount
                     })
                   });
 

@@ -351,7 +351,7 @@ class TPMA_CR_REST_Public
      * - order_id
      * - order_key（thankyou 頁可取得，用來做簡單授權）
      * - remit_date (YYYY-MM-DD)
-     * - remit_last5 (digits)
+     * - remit_account (digits or company name)
      */
     public static function submit_remit_report($request)
     {
@@ -360,10 +360,14 @@ class TPMA_CR_REST_Public
         }
 
         $p = $request->get_json_params();
+
         $order_id   = intval($p['order_id'] ?? 0);
         $order_key  = sanitize_text_field($p['order_key'] ?? '');
         $remit_date = sanitize_text_field($p['remit_date'] ?? '');
-        $last5      = preg_replace('/\D+/', '', (string)($p['remit_last5'] ?? ''));
+
+        // ✅ 允許「公司戶名」或「末五碼」：不再只保留數字
+        $remit_account_raw = (string)($p['remit_account'] ?? '');
+        $remit_account     = sanitize_text_field(trim($remit_account_raw));
 
         if (!$order_id || !$order_key) {
             return new WP_Error('bad_request', '缺少訂單資訊', array('status' => 400));
@@ -371,8 +375,13 @@ class TPMA_CR_REST_Public
         if (!$remit_date || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $remit_date)) {
             return new WP_Error('bad_request', '匯款日期格式錯誤', array('status' => 400));
         }
-        if (strlen($last5) !== 5) {
-            return new WP_Error('bad_request', '匯款帳號末五碼格式錯誤', array('status' => 400));
+
+        // ✅ 驗證：5 碼數字 OR 公司戶名（2~50字）
+        $is_last5 = (bool)preg_match('/^\d{5}$/', $remit_account);
+        $is_name  = (mb_strlen($remit_account, 'UTF-8') >= 2 && mb_strlen($remit_account, 'UTF-8') <= 50);
+
+        if (!($is_last5 || $is_name)) {
+            return new WP_Error('bad_request', '公司戶名或匯款帳號末五碼格式錯誤', array('status' => 400));
         }
 
         $order = wc_get_order($order_id);
@@ -394,14 +403,13 @@ class TPMA_CR_REST_Public
         global $wpdb;
         $regs_table = TPMA_CR_DB::table('regs');
 
-        // 寫入 regs：同一筆訂單下所有學員
-        $wpdb->update(
+        // ✅ 寫入 regs：同一筆訂單下所有學員
+        $updated = $wpdb->update(
             $regs_table,
             array(
-                'remit_account' => $last5,
-            //    'remit_date'    => $remit_date,
-                'remit_paid_at' => $remit_date,
-                // 同步目前 Woo 狀態（回報後會改為 processing）
+                'remit_account'  => $remit_account,
+                // 'remit_date'   => $remit_date,   // 你先前 DB 沒有 remit_date 就先別寫
+                'remit_paid_at'  => $remit_date,
                 'payment_status' => 'processing',
             ),
             array('woocommerce_order_id' => (int)$order_id),
@@ -410,27 +418,27 @@ class TPMA_CR_REST_Public
         );
 
         if ($updated === false) {
-        return new WP_Error('db_error', '資料表寫入失敗：' . $wpdb->last_error, array('status' => 500));
-        }        
-        // 寫入 order meta（方便追溯）
-        $order->update_meta_data('_tpma_remit_date', $remit_date);
-        $order->update_meta_data('_tpma_remit_last5', $last5);
+            return new WP_Error('db_error', '資料表寫入失敗：' . $wpdb->last_error, array('status' => 500));
+        }
 
-        // 先把 Woo 訂單改為「處理中」
+        // ✅ 寫入 order meta（方便追溯）
+        $order->update_meta_data('_tpma_remit_date', $remit_date);
+        $order->update_meta_data('_tpma_remit_account', $remit_account);
+
+        // ✅ 先把 Woo 訂單改為「處理中」
         if ($st !== 'processing') {
-            $order->update_status('processing', '學員於 thankyou 頁回報匯款：' . $remit_date . ' / ' . $last5);
+            $order->update_status('processing', '學員於 thankyou 頁回報匯款：' . $remit_date . ' / ' . $remit_account);
         } else {
             $order->save();
         }
 
         // 通知管理員（如果 mail dispatcher 有提供）
         if (class_exists('TPMA_CR_Mail_Dispatcher') && method_exists('TPMA_CR_Mail_Dispatcher', 'notify_admin_remit_report')) {
-            TPMA_CR_Mail_Dispatcher::notify_admin_remit_report($order, $remit_date, $last5);
+            TPMA_CR_Mail_Dispatcher::notify_admin_remit_report($order, $remit_date, $remit_account);
         }
 
         return rest_ensure_response(array('success' => true));
     }
-
 
 	
 
