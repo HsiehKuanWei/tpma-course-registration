@@ -235,6 +235,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField(receiptSection, '收據方式', L.receiptTypeLabel(row.receipt_type));
   appendField(receiptSection, '收據狀態', L.receiptStatusLabel(row.receipt_status));
   appendField(receiptSection, '匯款金額（元）', U.formatAmount(row.remit_amount));
+  appendField(receiptSection, '匯款帳號', row.remit_account);
   appendField(receiptSection, '匯款日期', row.remit_paid_at);
   detailContainer.appendChild(receiptSection);
 
@@ -440,7 +441,9 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     { value: '', label: '請選擇' },
     ...(O.receiptStatus || [])
   ]);
+  
   appendEditField(receiptSection, '匯款金額（元）', 'remit_amount', 'text', U.formatAmount(row.remit_amount));
+  appendEditField(receiptSection, '匯款帳號','remit_account','text',row.remit_account,[],true);
   appendEditField(receiptSection, '匯款日期', 'remit_paid_at', 'date', row.remit_paid_at);
   detailContainer.appendChild(receiptSection);
 
