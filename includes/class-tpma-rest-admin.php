@@ -48,7 +48,7 @@ class TPMA_CR_REST_Admin
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
-		// 信件模板與設定：限管理員使用
+		/* 信件模板與設定：限管理員使用
 		register_rest_route($ns, '/mail/templates', array(
 			'methods'  => 'GET',
 			'callback' => array('TPMA_CR_Mail_Dispatcher', 'get_mail_templates'),
@@ -71,7 +71,7 @@ class TPMA_CR_REST_Admin
 			'methods'  => 'POST',
 			'callback' => array('TPMA_CR_Mail_Dispatcher', 'send_test_mail'),
 			'permission_callback' => array(__CLASS__, 'can_manage'),
-		));
+		));*/
     }
 
     public static function can_manage()

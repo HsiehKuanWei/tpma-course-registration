@@ -14,9 +14,6 @@ if (!function_exists('tpma_cr_asset_ver')) {
 }
 ?>
 
-<?php
-include __DIR__ . '/mail-modal.php';
-?>
 <link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/admin-common.css?ver=' . TPMA_CR_VERSION ); ?>">
 <link rel="stylesheet" href="<?php echo esc_url( TPMA_CR_URL . 'assets/css/reg-admin.css?ver=' . TPMA_CR_VERSION ); ?>">
 
@@ -97,9 +94,18 @@ $TPMA_OPTIONS_FOR_JS = [
         <button class="tpma-btn" id="tpma-btn-clear-all">清除全部篩選</button>
     </div>
 	
-	<button type="button" class="tpma-btn" id="tpma-btn-mail-templates">
+<?php if ( function_exists('tpma_mailer_templates_page_url') ): ?>
+  <a class="tpma-btn"
+     id="tpma-btn-mail-templates"
+     href="<?php echo esc_url( tpma_mailer_templates_page_url() ); ?>"
+     target="_blank" rel="noopener">
     信件模板設定
-</button>
+  </a>
+<?php else: ?>
+  <button type="button" class="tpma-btn" id="tpma-btn-mail-templates" disabled>
+    信件模板設定（未啟用 TPMA Mailer）
+  </button>
+<?php endif; ?>
 
 <div class="tpma-reg-grid tpma-table-shared">
 
