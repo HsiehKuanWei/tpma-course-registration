@@ -241,16 +241,20 @@ function validateForm() {
     const title = titleInput.value.trim();
     const email = emailInput.value.trim();
     const mobileRaw = mobileInput.value;
+    const mobileDigits = (mobileRaw || "").replace(/\D/g, "");
 
     eName.textContent = "";
     eEmail.textContent = "";
     eMobile.textContent = "";
     [nameInput, emailInput, mobileInput].forEach((i) => i && i.classList.remove("tpma-input-error"));
 
-    const mobileStr = buildMobile(mobileRaw);
+    let mobileStr = "";
+    if (mobileDigits) {
+      mobileStr = buildMobile(mobileRaw);
+    }
 
     // 全空白就跳過這塊
-    if (!name && !email && !mobileRaw.replace(/\D/g, "") && !dept && !title) return;
+    if (!name && !email && !mobileDigits && !dept && !title) return;
 
     if (!name) {
       eName.textContent = "請填寫學員姓名";
@@ -272,7 +276,7 @@ function validateForm() {
       ok = false;
     }
 
-    if (mobileStr === null) {
+    if (mobileDigits && mobileStr === null) {
       eMobile.textContent = "行動電話需為 10 碼數字，或留空";
       mobileInput.classList.add("tpma-input-error");
       if (!firstErrorElement) firstErrorElement = mobileInput;

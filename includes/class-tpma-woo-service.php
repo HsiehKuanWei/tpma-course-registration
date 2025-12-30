@@ -823,7 +823,7 @@ class TPMA_CR_Woo_Service {
             'user_pass'    => wp_generate_password(20, true, true),
             'user_email'   => $email,
             'display_name' => $display_name ? $display_name : $login,
-            'role'         => 'subscriber',
+            'role'         => 'um_custom_role_2',
         ]);
 
         if (is_wp_error($uid)) {
