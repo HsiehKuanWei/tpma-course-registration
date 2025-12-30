@@ -48,30 +48,30 @@ class TPMA_CR_REST_Admin
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
-		/* 信件模板與設定：限管理員使用
-		register_rest_route($ns, '/mail/templates', array(
-			'methods'  => 'GET',
-			'callback' => array('TPMA_CR_Mail_Dispatcher', 'get_mail_templates'),
-			'permission_callback' => array(__CLASS__, 'can_manage'),
-		));
+        // 信件模板與設定：限管理員使用
+        register_rest_route($ns, '/mail/templates', array(
+            'methods'  => 'GET',
+            'callback' => array('TPMA_CR_Mail_Dispatcher', 'get_mail_templates'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
 
-		register_rest_route($ns, '/mail/templates', array(
-			'methods'  => 'POST',
-			'callback' => array('TPMA_CR_Mail_Dispatcher', 'save_mail_templates'),
-			'permission_callback' => array(__CLASS__, 'can_manage'),
-		));
+        register_rest_route($ns, '/mail/templates', array(
+            'methods'  => 'POST',
+            'callback' => array('TPMA_CR_Mail_Dispatcher', 'save_mail_templates'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
 
-		register_rest_route($ns, '/mail/preview', array(
-			'methods'  => 'POST',
-			'callback' => array('TPMA_CR_Mail_Dispatcher', 'preview_mail_template'),
-			'permission_callback' => array(__CLASS__, 'can_manage'),
-		));
+        register_rest_route($ns, '/mail/preview', array(
+            'methods'  => 'POST',
+            'callback' => array('TPMA_CR_Mail_Dispatcher', 'preview_mail_template'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
 
-		register_rest_route($ns, '/mail/send-test', array(
-			'methods'  => 'POST',
-			'callback' => array('TPMA_CR_Mail_Dispatcher', 'send_test_mail'),
-			'permission_callback' => array(__CLASS__, 'can_manage'),
-		));*/
+        register_rest_route($ns, '/mail/send-test', array(
+            'methods'  => 'POST',
+            'callback' => array('TPMA_CR_Mail_Dispatcher', 'send_test_mail'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
     }
 
     public static function can_manage()

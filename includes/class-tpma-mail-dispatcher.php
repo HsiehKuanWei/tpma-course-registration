@@ -4,6 +4,35 @@ if (!defined('ABSPATH')) exit;
 class TPMA_CR_Mail_Dispatcher
 {
     /**
+     * 統一定義寄信模板預設鍵，所有流程都透過這裡取得。
+     */
+    private static function get_default_templates(): array
+    {
+        $defaults = array(
+            'student'   => 'registration_notice',
+            'order'     => 'registration_order',
+            'completed' => 'registration_completed',
+            // 其他情境可再擴充；保留管理員匯款通知的常用 key
+            'admin_remit_report' => 'admin_remit_report',
+        );
+
+        return apply_filters('tpma_cr_mail_default_templates', $defaults);
+    }
+
+    /**
+     * 將 draft 的 mail_templates 與預設鍵合併，避免各處自行塞值。
+     */
+    private static function apply_default_templates(array $draft): array
+    {
+        $defaults = self::get_default_templates();
+        $existing = is_array($draft['mail_templates'] ?? null) ? $draft['mail_templates'] : array();
+
+        $draft['mail_templates'] = array_merge($defaults, $existing);
+
+        return $draft;
+    }
+
+    /**
      * ✅ 目標：
      * - 寄信流程完全不依賴 session
      * - 只依賴 Woo order meta（_tpma_reg_draft_json、_tpma_reg_ids）與 DB
@@ -204,16 +233,7 @@ class TPMA_CR_Mail_Dispatcher
             $draft['session_id'] = $order->get_meta('_tpma_session_id', true);
         }
 
-        // 4) mail templates defaults (若 draft 沒帶)
-        if (empty($draft['mail_templates']) && class_exists('TPMA_CR_AdminWooService')) {
-            $cfg = TPMA_CR_AdminWooService::get_mail_template_config();
-            $defaults = $cfg['default_templates'] ?? $cfg['defaults'] ?? array();
-
-            $draft['mail_templates'] = array(
-                'student' => (string)($defaults['student'] ?? ''),
-                'order'   => (string)($defaults['order'] ?? ''),
-            );
-        }
+        $draft = self::apply_default_templates($draft);
 
         return is_array($draft) ? $draft : array();
     }
@@ -281,6 +301,7 @@ class TPMA_CR_Mail_Dispatcher
         if (!is_array($draft)) {
             $draft = self::get_draft_from_order($order);
         }
+        $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
 
         $templates   = $draft['mail_templates'] ?? array();
         $tpl_student = (string)($templates['student'] ?? '');
@@ -569,38 +590,45 @@ class TPMA_CR_Mail_Dispatcher
     {
         return array(
             // 學員
-            'student_name' => '學員姓名（學員信）',
-            'job_title' => '職稱（學員信）',
-            'student_email' => '學員 Email（學員信）',
-            'student_reg_no' => '學員報名編號（學員信）',
-            'student_reg_id' => '學員 RegID（學員信）',
+            'student_name' => '學員姓名',
+            'job_title' => '職稱',
+            'student_email' => '學員 Email',
+            'student_reg_no' => '學員報名編號',
+            'student_reg_id' => '學員 RegID',
 
             // 兼容
-            'reg_no' => '報名編號（學員信＝該學員；訂單信＝reg_nos）',
-            'reg_nos' => '報名編號清單（訂單含多學員）',
+            'reg_no' => '報名編號',
+            'reg_nos' => '報名清單',
 
             // 課程
             'course_name' => '課程名稱',
-            'lecturer_name' => '講師姓名（courses.lecturer_code -> lecturers lookup）',
-            'class_date' => '課程日期（含週與起迄時間）',
-            'course_hours' => '課程時數（由 duration_minutes 換算）',
+            'lecturer_name' => '講師姓名',
+            'class_date' => '課程日期',
+            'course_hours' => '課程時數',
 
             // 訂單
-            'order_id' => 'Woo 訂單ID（例如 1535）',
-            'order_number' => 'Woo 訂單顯示編號（可能等於 order_id）',
+            'order_id' => 'Woo 訂單ID',
+            'order_number' => 'Woo 訂單顯示編號',
             'order_total' => '訂單總額',
-            'remit_amount' => '訂單總額（同 order_total）',
+            'remit_amount' => '訂單總額（order_total）',
+            'billing_name' => '帳單姓名（Woo 結帳填寫）',
+            'billing_email' => '帳單 Email（Woo 結帳填寫）',
+            'billing_phone' => '帳單電話（Woo 結帳填寫）',
+
+            // 匯款回報（thankyou 回報專用）
+            'remit_date' => '匯款日期（thankyou 回報）',
+            'remit_account' => '公司戶名或匯款帳號末五碼（thankyou 回報）',
 
             // 金額（每位）
-            'remit_amount_per_learner' => '每位學員費用（draft.remit_amount_per_learner）',
-            'student_fee' => '每位學員費用（同 remit_amount_per_learner）',
+            'remit_amount_per_learner' => '每位學員費用',
+            'student_fee' => '每位學員費用（remit_amount_per_learner）',
 
             // 清單
             'learners_list' => '學員清單（純文字、可換行）',
             'learners_count' => '學員數',
 
             // 連結
-            'order_public_url' => '訂單查詢連結（order-received/?key=...）',
+            'order_public_url' => '訂單查詢連結',
         );
     }
 
@@ -694,8 +722,7 @@ class TPMA_CR_Mail_Dispatcher
     }
 
     public static function send_test_mail($request) {
-        // 這裡維持你舊版依賴 TPMA_CR_Mail_Service 的模式（恢復原有功能）
-        if (!class_exists('TPMA_CR_Mail_Service')) {
+        if (!class_exists('TPMA_Mailer')) {
             return new WP_Error('mail_not_available', 'Mail 模組尚未載入', array('status' => 500));
         }
 
@@ -710,9 +737,8 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         try {
-            TPMA_CR_Mail_Service::send($template_key, array(
+            TPMA_Mailer::send_template($template_key, $to, array(
                 'reg_context' => $reg_context,
-                'to'          => $to,
             ));
         } catch (Exception $e) {
             return new WP_Error('send_failed', $e->getMessage(), array('status' => 500));
@@ -737,7 +763,8 @@ class TPMA_CR_Mail_Dispatcher
         if (empty($to)) return;
 
         // ✅ 固定模板 key（你 DB 建同名模板即可）
-        $template_key = apply_filters('tpma_cr_mail_template_admin_remit_report', 'admin_remit_report');
+        $defaults = self::get_default_templates();
+        $template_key = apply_filters('tpma_cr_mail_template_admin_remit_report', $defaults['admin_remit_report'] ?? 'admin_remit_report');
 
         // ✅ 用同一套 draft + context（跟 registration_order 一致）
         $draft = self::get_draft_from_order($order);
@@ -775,10 +802,11 @@ class TPMA_CR_Mail_Dispatcher
         if (!is_array($draft)) {
             $draft = self::get_draft_from_order($order);
         }
+        $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
 
         $templates = is_array($draft['mail_templates'] ?? null) ? $draft['mail_templates'] : array();
         // ✅ 沒有就用預設模板 key（避免 draft 沒帶 completed 造成完全不寄）
-        $tpl_completed = trim((string)($templates['completed'] ?? 'registration_completed'));
+        $tpl_completed = trim((string)($templates['completed'] ?? self::get_default_templates()['completed'] ?? 'registration_completed'));
 
         // 如果你想要「必須存在模板才寄」，可在 TPMA_Mailer 內處理；這裡先嘗試寄
         $ctx = self::build_context($order, $draft);
@@ -813,3 +841,4 @@ class TPMA_CR_Mail_Dispatcher
 
 
 }
+

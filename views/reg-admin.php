@@ -94,18 +94,14 @@ $TPMA_OPTIONS_FOR_JS = [
         <button class="tpma-btn" id="tpma-btn-clear-all">清除全部篩選</button>
     </div>
 	
-<?php if ( function_exists('tpma_mailer_templates_page_url') ): ?>
+
   <a class="tpma-btn"
      id="tpma-btn-mail-templates"
-     href="<?php echo esc_url( tpma_mailer_templates_page_url() ); ?>"
+     href="https://mazuuni.org.tw/tw-pma/%e4%bf%a1%e4%bb%b6%e6%a8%a1%e6%9d%bf/"
      target="_blank" rel="noopener">
-    信件模板設定
+    信件模板
   </a>
-<?php else: ?>
-  <button type="button" class="tpma-btn" id="tpma-btn-mail-templates" disabled>
-    信件模板設定（未啟用 TPMA Mailer）
-  </button>
-<?php endif; ?>
+
 
 <div class="tpma-reg-grid tpma-table-shared">
 
