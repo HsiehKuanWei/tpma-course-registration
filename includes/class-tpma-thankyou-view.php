@@ -274,8 +274,12 @@ echo   '</div>'; // card
 
     private static function is_tpma_order(WC_Order $order): bool
     {
-        return (bool)$order->get_meta('_tpma_reg_draft_json', true)
-            || (bool)$order->get_meta('_tpma_reg_no', true);
+        // 接受任一 TPMA 標記：draft_json / reg_no / reg_ids / course_id
+        if ((bool)$order->get_meta('_tpma_reg_draft_json', true)) return true;
+        if ((bool)$order->get_meta('_tpma_reg_no', true)) return true;
+        if ((bool)$order->get_meta('_tpma_reg_ids', true)) return true;
+        if ((int)$order->get_meta('_tpma_course_id', true) > 0) return true;
+        return false;
     }
 
     private static function get_draft_from_order(WC_Order $order): array

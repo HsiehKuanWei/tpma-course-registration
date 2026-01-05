@@ -62,9 +62,10 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-rest-admin.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-mail-dispatcher.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-import.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-admin-woo-service.php';
-require_once TPMA_CR_PATH . 'includes/class-tpma-woo-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-thankyou-view.php';
-require_once TPMA_CR_PATH . 'includes/class-tpma-woocommerce-integration.php';
+// WooCommerce 整合已移至獨立插件 tpma-woo-fields，這裡不再載入舊版：
+// require_once TPMA_CR_PATH . 'includes/class-tpma-woo-service.php';
+// require_once TPMA_CR_PATH . 'includes/class-tpma-woocommerce-integration.php';
 
 
 

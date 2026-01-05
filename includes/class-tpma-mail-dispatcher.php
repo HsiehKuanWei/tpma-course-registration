@@ -190,7 +190,7 @@ class TPMA_CR_Mail_Dispatcher
             $reg_ids = $reg_ids_json ? json_decode($reg_ids_json, true) : null;
 
             if (is_array($reg_ids) && !empty($reg_ids) && class_exists('TPMA_CR_DB')) {
-                $regs_table = TPMA_CR_DB::table('registrations');
+                $regs_table = TPMA_CR_DB::table('regs');
 
                 $ids = array_values(array_filter(array_map('intval', $reg_ids)));
                 if (!empty($ids)) {
@@ -391,7 +391,7 @@ class TPMA_CR_Mail_Dispatcher
 
         // 補齊場次
         if ((empty($session) || !is_array($session)) && !empty($draft['session_id']) && class_exists('TPMA_CR_DB')) {
-            $sessions_table = TPMA_CR_DB::table('course_sessions');
+            $sessions_table = TPMA_CR_DB::table('sessions');
             $row = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM {$sessions_table} WHERE id = %d",
                 intval($draft['session_id'])
