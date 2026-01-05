@@ -457,19 +457,43 @@ class TPMA_CR_REST_Public
         $source     = sanitize_text_field($d['source'] ?? '');
         $note       = '';
 
-        $draft = TPMA_CR_Woo_Service::build_draft($course_id, $session_id, $learners, $source, $note);
-        if (is_wp_error($draft)) {
-            return $draft;
+        $engine = 'old';
+        $draft = null;
+        $checkout_url = null;
+
+        // 優先嘗試新插件 Facade
+        if (class_exists('TPMA_Woo_Facade')) {
+            $draft = TPMA_Woo_Facade::build_draft($course_id, $session_id, $learners, $source, $note);
+            if (!is_wp_error($draft)) {
+                $checkout_url = TPMA_Woo_Facade::add_to_cart_from_draft($draft);
+                if (!is_wp_error($checkout_url)) {
+                    $engine = 'new';
+                } else {
+                    error_log('[TPMA REST] new plugin add_to_cart_from_draft failed, fallback to old');
+                    $draft = null; // 將在 fallback 中重建
+                }
+            } else {
+                error_log('[TPMA REST] new plugin build_draft failed, fallback to old: ' . $draft->get_error_message());
+                $draft = null;
+            }
         }
 
-        $checkout_url = TPMA_CR_Woo_Service::add_to_cart_from_draft($draft);
-        if (is_wp_error($checkout_url)) {
-            return $checkout_url;
+        // fallback 舊版
+        if ($engine !== 'new') {
+            $draft = TPMA_CR_Woo_Service::build_draft($course_id, $session_id, $learners, $source, $note);
+            if (is_wp_error($draft)) {
+                return $draft;
+            }
+            $checkout_url = TPMA_CR_Woo_Service::add_to_cart_from_draft($draft);
+            if (is_wp_error($checkout_url)) {
+                return $checkout_url;
+            }
         }
 
         return rest_ensure_response(array(
             'success'      => true,
             'checkout_url' => $checkout_url,
+            'engine'       => $engine, // new / old
         ));
     }
 
