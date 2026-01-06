@@ -383,6 +383,38 @@ class TPMA_Woo_Special_1083 {
         if (!self::cart_is_tpma_only()) {
             return $fields;
         }
+
+        // 標題
+        if (isset($fields['billing']['tpma_heading_contact'])) {
+            $fields['billing']['tpma_heading_contact']['label'] = '承辦人資訊';
+        } else {
+            $fields['billing']['tpma_heading_contact'] = array(
+                'type' => 'hidden',
+                'label' => '承辦人資訊',
+                'priority' => 5,
+            );
+        }
+        if (isset($fields['billing']['tpma_heading_address'])) {
+            $fields['billing']['tpma_heading_address']['label'] = '證書寄送地址';
+            $fields['billing']['tpma_heading_address']['priority'] = 59;
+        } else {
+            $fields['billing']['tpma_heading_address'] = array(
+                'type' => 'hidden',
+                'label' => '證書寄送地址',
+                'priority' => 59,
+            );
+        }
+
+        // 姓名欄位
+        if (isset($fields['billing']['billing_first_name'])) {
+            $fields['billing']['billing_first_name']['label'] = '承辦人姓名';
+            $fields['billing']['billing_first_name']['placeholder'] = '承辦人姓名';
+            $fields['billing']['billing_first_name']['priority'] = 10;
+            if (!empty($fields['billing']['billing_first_name']['class']) && is_array($fields['billing']['billing_first_name']['class'])) {
+                $fields['billing']['billing_first_name']['class'] = array_diff($fields['billing']['billing_first_name']['class'], array('form-row-first', 'form-row-last'));
+            }
+            $fields['billing']['billing_first_name']['class'][] = 'form-row-wide';
+        }
         // 1083 專用欄位覆蓋/新增
         $fields['billing']['tpma_receipt_type'] = array(
             'type'     => 'select',
@@ -398,19 +430,63 @@ class TPMA_Woo_Special_1083 {
 
         if (isset($fields['billing']['billing_company'])) {
             $fields['billing']['billing_company']['required'] = true;
+            $fields['billing']['billing_company']['priority'] = 20;
+            unset($fields['billing']['billing_company']['placeholder']);
         }
         if (isset($fields['billing']['billing_vat_id'])) {
             $fields['billing']['billing_vat_id']['required'] = true;
+            $fields['billing']['billing_vat_id']['priority'] = 22;
+            unset($fields['billing']['billing_vat_id']['placeholder']);
         }
         if (isset($fields['billing']['billing_last_name'])) {
             $fields['billing']['billing_last_name']['required'] = false;
             $fields['billing']['billing_last_name']['type'] = 'hidden';
             $fields['billing']['billing_last_name']['label'] = '';
+            $fields['billing']['billing_last_name']['priority'] = 11;
         }
 
         // 隱藏手機欄位（由本模組決定不顯示）
         if (isset($fields['billing']['tpma_mobile'])) {
             unset($fields['billing']['tpma_mobile']);
+        }
+
+        // 標籤/順序同步
+        if (isset($fields['billing']['billing_email'])) {
+            $fields['billing']['billing_email']['label'] = '聯絡信箱';
+            $fields['billing']['billing_email']['priority'] = 15;
+        }
+        if (isset($fields['billing']['tpma_phone_area'])) {
+            $fields['billing']['tpma_phone_area']['priority'] = 30;
+        }
+        if (isset($fields['billing']['tpma_phone_number'])) {
+            $fields['billing']['tpma_phone_number']['priority'] = 32;
+        }
+        if (isset($fields['billing']['tpma_phone_ext'])) {
+            $fields['billing']['tpma_phone_ext']['priority'] = 34;
+        }
+        if (isset($fields['billing']['tpma_postcode'])) {
+            $fields['billing']['tpma_postcode']['priority'] = 60;
+        }
+        if (isset($fields['billing']['tpma_state'])) {
+            $fields['billing']['tpma_state']['priority'] = 70;
+        }
+        if (isset($fields['billing']['tpma_city'])) {
+            $fields['billing']['tpma_city']['priority'] = 80;
+        }
+        if (isset($fields['billing']['tpma_street'])) {
+            $fields['billing']['tpma_street']['priority'] = 90;
+        }
+        // 發票類型：隱藏且不必填，預設三聯，避免畫面干擾
+        if (isset($fields['billing']['tpma_invoice_type'])) {
+            $fields['billing']['tpma_invoice_type']['type'] = 'hidden';
+            $fields['billing']['tpma_invoice_type']['required'] = false;
+            $fields['billing']['tpma_invoice_type']['priority'] = 95;
+            $fields['billing']['tpma_invoice_type']['default'] = $fields['billing']['tpma_invoice_type']['default'] ?? 'three';
+            $fields['billing']['tpma_invoice_type']['label'] = '';
+        }
+        // 收據類型排在最後
+        if (isset($fields['billing']['tpma_receipt_type'])) {
+            $fields['billing']['tpma_receipt_type']['priority'] = 105;
         }
         return $fields;
     }
@@ -785,4 +861,3 @@ class TPMA_Woo_Special_1083 {
         return (int)$uid;
     }
 }
-
