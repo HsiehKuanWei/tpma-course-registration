@@ -18,6 +18,8 @@ class TPMA_Woo_Special_1083 {
         add_action('woocommerce_checkout_process', [__CLASS__, 'validate_checkout_fields'], 50);
         add_action('woocommerce_checkout_create_order', [__CLASS__, 'save_checkout_fields'], 50, 2);
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_marker'], 15);
+        add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_styles'], 16);
+        add_filter('woocommerce_form_field', [__CLASS__, 'wrap_form_field_groups'], 18, 4);
 
         // 下單後 regs 寫入（內含虛擬帳號）
         add_action('woocommerce_checkout_order_processed', [__CLASS__, 'process_order_from_draft'], 10, 1);
@@ -42,6 +44,54 @@ class TPMA_Woo_Special_1083 {
         add_filter('woocommerce_bacs_process_payment_order_status', [__CLASS__, 'filter_bacs_status'], 10, 2);
         add_action('woocommerce_checkout_order_processed', [__CLASS__, 'send_tpma_mails_after_order_created'], 12, 1);
         add_action('woocommerce_order_status_completed', [__CLASS__, 'send_tpma_mails_after_order_completed'], 10, 1);
+    }
+
+    /**
+     * 1083 專用：若通用欄位模組未作用，仍包裝區塊與群組（h3 + div）。
+     * 若通用模組已掛載 wrap，直接沿用，避免重複包裹。
+     */
+    public static function wrap_form_field_groups($field_html, $key, $args, $value) {
+        // 若通用模組已提供 wrap，避免重複
+        if (class_exists('TPMA_Woo_Common_Fields')) {
+            return $field_html;
+        }
+        if (!self::cart_is_tpma_only()) {
+            return $field_html;
+        }
+
+        static $section_open = false;
+
+        if ($key === 'tpma_heading_contact' || $key === 'tpma_heading_address') {
+            $label = isset($args['label']) ? esc_html($args['label']) : '';
+            $html = '';
+            if ($section_open) {
+                $html .= '</div>';
+            }
+            $html .= '<div class="tpma-checkout-section"><h3 class="tpma-checkout-title">' . $label . '</h3>';
+            $section_open = true;
+            return $html;
+        }
+
+        if ($key === 'tpma_postcode') {
+            $field_html = '<div class="tpma-checkout-group tpma-checkout-group--address">' . $field_html;
+        }
+        if ($key === 'tpma_street') {
+            $field_html .= '</div>';
+        }
+        if ($key === 'tpma_phone_area') {
+            $field_html = '<div class="tpma-checkout-group tpma-checkout-group--phone">' . $field_html;
+        }
+        if ($key === 'tpma_phone_ext') {
+            $field_html .= '</div>';
+        }
+
+        // 在地址尾收斂區塊
+        if ($key === 'tpma_street' && $section_open) {
+            $field_html .= '</div>';
+            $section_open = false;
+        }
+
+        return $field_html;
     }
 
     /* --------- 判斷/設定 --------- */
@@ -430,13 +480,15 @@ class TPMA_Woo_Special_1083 {
 
         if (isset($fields['billing']['billing_company'])) {
             $fields['billing']['billing_company']['required'] = true;
-            $fields['billing']['billing_company']['priority'] = 20;
-            unset($fields['billing']['billing_company']['placeholder']);
+            $fields['billing']['billing_company']['priority'] = 40;
+            $fields['billing']['billing_company']['placeholder'] = '';
+            $fields['billing']['billing_company']['class'][] = 'validate-required';
         }
         if (isset($fields['billing']['billing_vat_id'])) {
             $fields['billing']['billing_vat_id']['required'] = true;
-            $fields['billing']['billing_vat_id']['priority'] = 22;
-            unset($fields['billing']['billing_vat_id']['placeholder']);
+            $fields['billing']['billing_vat_id']['priority'] = 42;
+            $fields['billing']['billing_vat_id']['placeholder'] = '';
+            $fields['billing']['billing_vat_id']['class'][] = 'validate-required';
         }
         if (isset($fields['billing']['billing_last_name'])) {
             $fields['billing']['billing_last_name']['required'] = false;
@@ -476,17 +528,48 @@ class TPMA_Woo_Special_1083 {
         if (isset($fields['billing']['tpma_street'])) {
             $fields['billing']['tpma_street']['priority'] = 90;
         }
-        // 發票類型：隱藏且不必填，預設三聯，避免畫面干擾
-        if (isset($fields['billing']['tpma_invoice_type'])) {
-            $fields['billing']['tpma_invoice_type']['type'] = 'hidden';
-            $fields['billing']['tpma_invoice_type']['required'] = false;
-            $fields['billing']['tpma_invoice_type']['priority'] = 95;
-            $fields['billing']['tpma_invoice_type']['default'] = $fields['billing']['tpma_invoice_type']['default'] ?? 'three';
-            $fields['billing']['tpma_invoice_type']['label'] = '';
+
+        // 調整部分欄位至「額外資訊」(order) 區塊
+        if (!isset($fields['order']) || !is_array($fields['order'])) {
+            $fields['order'] = array();
         }
-        // 收據類型排在最後
+        // 收據類型移至額外資訊
         if (isset($fields['billing']['tpma_receipt_type'])) {
-            $fields['billing']['tpma_receipt_type']['priority'] = 105;
+            $fields['order']['tpma_receipt_type'] = $fields['billing']['tpma_receipt_type'];
+            $fields['order']['tpma_receipt_type']['priority'] = 10;
+            unset($fields['billing']['tpma_receipt_type']);
+        }
+        // 發票類型（預設三聯）移至額外資訊，隱藏但保留值
+        if (isset($fields['billing']['tpma_invoice_type'])) {
+            $fields['order']['tpma_invoice_type'] = $fields['billing']['tpma_invoice_type'];
+            $fields['order']['tpma_invoice_type']['priority'] = 11;
+            $fields['order']['tpma_invoice_type']['type'] = 'hidden';
+            $fields['order']['tpma_invoice_type']['options'] = array();
+            $fields['order']['tpma_invoice_type']['required'] = false;
+            $fields['order']['tpma_invoice_type']['default'] = $fields['order']['tpma_invoice_type']['default'] ?? 'three';
+            $fields['order']['tpma_invoice_type']['label'] = '';
+            $fields['order']['tpma_invoice_type']['class'][] = 'tpma-hidden-field';
+            $fields['order']['tpma_invoice_type']['class'][] = 'hidden';
+            $fields['order']['tpma_invoice_type']['input_class'][] = 'tpma-hidden-field';
+            $fields['order']['tpma_invoice_type']['custom_attributes'] = array_merge(
+                $fields['order']['tpma_invoice_type']['custom_attributes'] ?? array(),
+                array('style' => 'display:none;', 'aria-hidden' => 'true', 'value' => 'three')
+            );
+            unset($fields['billing']['tpma_invoice_type']);
+        }
+        // 確保公司/統編回到承辦人區塊（避免被通用模組移到額外資訊）
+        foreach (array('billing_company' => 40, 'billing_vat_id' => 42) as $k => $p) {
+            // 若被放到 order，移回 billing
+            if (isset($fields['order'][$k])) {
+                $fields['billing'][$k] = $fields['order'][$k];
+                unset($fields['order'][$k]);
+            }
+            if (isset($fields['billing'][$k])) {
+                $fields['billing'][$k]['priority'] = $p;
+                $fields['billing'][$k]['required'] = true;
+                $fields['billing'][$k]['placeholder'] = '';
+                $fields['billing'][$k]['class'][] = 'validate-required';
+            }
         }
         return $fields;
     }
@@ -675,6 +758,18 @@ class TPMA_Woo_Special_1083 {
         wp_register_script('tpma-woo-special-marker', '', [], defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null, true);
         wp_enqueue_script('tpma-woo-special-marker');
         wp_add_inline_script('tpma-woo-special-marker', 'console.log("[TPMA Woo] using NEW plugin (1083 special)");');
+    }
+
+    /**
+     * 隱藏預設 Woo 帳單標題（1083 單獨啟用時仍生效）。
+     */
+    public static function enqueue_styles() {
+        if (!function_exists('is_checkout') || !is_checkout()) {
+            return;
+        }
+        wp_register_style('tpma-woo-1083-inline', false);
+        wp_enqueue_style('tpma-woo-1083-inline');
+        wp_add_inline_style('tpma-woo-1083-inline', '.woocommerce-billing-fields > h3{display:none!important;} .woocommerce-additional-fields #tpma_invoice_type_field{display:none!important;}');
     }
 
     /* --------- Helper functions --------- */
