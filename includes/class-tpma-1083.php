@@ -767,6 +767,9 @@ class TPMA_Woo_Special_1083 {
         if (!function_exists('is_checkout') || !is_checkout()) {
             return;
         }
+        if (!self::cart_is_tpma_only()) {
+            return;
+        }
         wp_register_style('tpma-woo-1083-inline', false);
         wp_enqueue_style('tpma-woo-1083-inline');
         wp_add_inline_style('tpma-woo-1083-inline', '.woocommerce-billing-fields > h3{display:none!important;} .woocommerce-additional-fields #tpma_invoice_type_field{display:none!important;}');
