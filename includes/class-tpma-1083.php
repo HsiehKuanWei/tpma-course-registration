@@ -20,6 +20,7 @@ class TPMA_Woo_Special_1083 {
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_marker'], 15);
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_styles'], 16);
         add_filter('woocommerce_form_field', [__CLASS__, 'wrap_form_field_groups'], 18, 4);
+        add_filter('body_class', [__CLASS__, 'filter_body_class'], 20, 1);
 
         // 下單後 regs 寫入（內含虛擬帳號）
         add_action('woocommerce_checkout_order_processed', [__CLASS__, 'process_order_from_draft'], 10, 1);
@@ -770,9 +771,24 @@ class TPMA_Woo_Special_1083 {
         if (!self::cart_is_tpma_only()) {
             return;
         }
-        wp_register_style('tpma-woo-1083-inline', false);
-        wp_enqueue_style('tpma-woo-1083-inline');
-        wp_add_inline_style('tpma-woo-1083-inline', '.woocommerce-billing-fields > h3{display:none!important;} .woocommerce-additional-fields #tpma_invoice_type_field{display:none!important;}');
+        if (!defined('TPMA_WOO_NEW_LOADED')) {
+            wp_register_style('tpma-woo-1083-inline', false);
+            wp_enqueue_style('tpma-woo-1083-inline');
+            wp_add_inline_style('tpma-woo-1083-inline', '.woocommerce-billing-fields > h3{display:none!important;} .woocommerce-additional-fields #tpma_invoice_type_field{display:none!important;}');
+        }
+    }
+
+    public static function filter_body_class($classes) {
+        if (!function_exists('is_checkout') || !function_exists('is_cart')) {
+            return $classes;
+        }
+        if (!is_checkout() && !is_cart()) {
+            return $classes;
+        }
+        if (self::cart_is_tpma_only()) {
+            $classes[] = 'tpma-checkout-1083';
+        }
+        return $classes;
     }
 
     /* --------- Helper functions --------- */

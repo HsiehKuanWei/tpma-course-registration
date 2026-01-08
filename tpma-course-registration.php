@@ -204,12 +204,17 @@ add_action('wp_enqueue_scripts', function () {
     if (!is_checkout() && !is_cart()) {
         return;
     }
-    wp_enqueue_style(
-        'tpma-cr-checkout',
-        TPMA_CR_URL . 'assets/css/checkout.css',
-        array(),
-        defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null
-    );
+    if (defined('TPMA_WOO_NEW_LOADED') && is_checkout()) {
+        return;
+    }
+    $woo_css_rel = 'tpma-woo-fields/assets/css/checkout.css';
+    $woo_css_abs = rtrim(WP_PLUGIN_DIR, '/\\') . '/' . $woo_css_rel;
+    $use_woo_css = file_exists($woo_css_abs);
+    $css_url = $use_woo_css ? plugins_url($woo_css_rel) : TPMA_CR_URL . 'assets/css/checkout.css';
+    $css_ver = $use_woo_css
+        ? (defined('TPMA_WOO_FIELDS_VERSION') ? TPMA_WOO_FIELDS_VERSION : @filemtime($woo_css_abs))
+        : (defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null);
+    wp_enqueue_style('tpma-cr-checkout', $css_url, array(), $css_ver);
 }, 20);
 
 add_action('rest_api_init', function () {

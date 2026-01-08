@@ -1085,10 +1085,7 @@ class TPMA_CR_Woo_Service {
             return;
         }
         ?>
-        <style>
-            .tpma-hide-lastname { display: none !important; }
-        </style>
-        <div class="tpma-autofill" style="margin-bottom:10px;">
+        <div class="tpma-autofill">
             <label><input type="checkbox" id="tpma-fill-first-learner"> 套用第一位學員</label>
         </div>
         <script>
