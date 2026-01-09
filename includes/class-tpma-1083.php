@@ -14,7 +14,7 @@ class TPMA_Woo_Special_1083 {
 
     public static function init() {
         // 專用欄位/驗證/儲存
-        add_filter('woocommerce_checkout_fields', [__CLASS__, 'filter_checkout_fields'], 50, 1);
+        add_filter('woocommerce_checkout_fields', [__CLASS__, 'filter_checkout_fields'], 999, 1);
         add_action('woocommerce_checkout_process', [__CLASS__, 'prime_invoice_type_for_tpma'], 1);
         add_action('woocommerce_checkout_process', [__CLASS__, 'validate_checkout_fields'], 50);
         add_action('woocommerce_checkout_create_order', [__CLASS__, 'prime_invoice_type_for_tpma'], 1, 2);
@@ -536,6 +536,10 @@ class TPMA_Woo_Special_1083 {
             $fields['billing']['tpma_phone_ext']['required'] = false;
             if (!empty($fields['billing']['tpma_phone_ext']['class']) && is_array($fields['billing']['tpma_phone_ext']['class'])) {
                 $fields['billing']['tpma_phone_ext']['class'] = array_values(array_diff($fields['billing']['tpma_phone_ext']['class'], array('validate-required')));
+            }
+            if (!empty($fields['billing']['tpma_phone_ext']['custom_attributes']) && is_array($fields['billing']['tpma_phone_ext']['custom_attributes'])) {
+                unset($fields['billing']['tpma_phone_ext']['custom_attributes']['required']);
+                unset($fields['billing']['tpma_phone_ext']['custom_attributes']['aria-required']);
             }
         }
         if (isset($fields['billing']['tpma_postcode'])) {

@@ -7,6 +7,8 @@ class TPMA_CR_Thankyou_View
     {
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_assets']);
         add_action('woocommerce_thankyou', [self::class, 'render'], 5, 1);
+        add_action('woocommerce_thankyou_bacs', [self::class, 'maybe_disable_default_bacs'], 1, 1);
+        add_filter('woocommerce_bacs_accounts', [self::class, 'filter_bacs_accounts'], 10, 2);
     }
 
     /**
@@ -129,6 +131,8 @@ class TPMA_CR_Thankyou_View
             echo     '</tbody></table>';
             echo '</div>';
         }
+
+        self::render_bacs_details($order);
 
         // 前端日期格式化：使用 TPMAPublic.datetime.formatRange()
         // 00.tpma-datetime.js 會掛在 window.TPMAPublic.datetime :contentReference[oaicite:1]{index=1}
@@ -282,6 +286,67 @@ echo   '</div>'; // card
         return false;
     }
 
+    public static function filter_bacs_accounts($accounts, $order_id)
+    {
+        if (empty($accounts) || !is_array($accounts)) return $accounts;
+        if (!self::is_order_page_context()) return $accounts;
+        if (!function_exists('wc_get_order')) return $accounts;
+
+        $order = $order_id ? wc_get_order($order_id) : null;
+        if (!$order) {
+            $order = self::get_order_from_query();
+        }
+        if (!$order || !self::is_tpma_order($order)) return $accounts;
+
+        $target_name = '社團法人台灣專案管理學會';
+        $filtered = array();
+        foreach ($accounts as $account) {
+            $name = isset($account['account_name']) ? trim((string)$account['account_name']) : '';
+            if ($name === $target_name) {
+                $filtered[] = $account;
+            }
+        }
+
+        return !empty($filtered) ? $filtered : $accounts;
+    }
+
+    public static function maybe_disable_default_bacs($order_id)
+    {
+        if (!$order_id || !function_exists('wc_get_order')) return;
+        $order = wc_get_order($order_id);
+        if (!$order || !self::is_tpma_order($order)) return;
+
+        if (!function_exists('WC')) return;
+        $gateways = WC()->payment_gateways();
+        if (!$gateways || !method_exists($gateways, 'payment_gateways')) return;
+
+        $all = $gateways->payment_gateways();
+        $bacs = $all['bacs'] ?? null;
+        if (!$bacs) return;
+
+        remove_action('woocommerce_thankyou_bacs', [$bacs, 'thankyou_page'], 10);
+    }
+
+    private static function is_order_page_context(): bool
+    {
+        if (function_exists('is_order_received_page') && is_order_received_page()) return true;
+        if (function_exists('is_view_order_page') && is_view_order_page()) return true;
+        return false;
+    }
+
+    private static function get_order_from_query()
+    {
+        $order_id = 0;
+        if (function_exists('is_order_received_page') && is_order_received_page()) {
+            $order_id = absint(get_query_var('order-received'));
+        } elseif (function_exists('is_view_order_page') && is_view_order_page()) {
+            $order_id = absint(get_query_var('view-order'));
+        }
+        if (!$order_id || !function_exists('wc_get_order')) return null;
+        $order = wc_get_order($order_id);
+        return $order instanceof WC_Order ? $order : null;
+    }
+
     private static function get_draft_from_order(WC_Order $order): array
     {
         $draft_json = (string)$order->get_meta('_tpma_reg_draft_json', true);
@@ -300,5 +365,25 @@ echo   '</div>'; // card
         return function_exists('wc_get_order_status_name')
             ? wc_get_order_status_name($status)
             : $status;
+    }
+
+    private static function render_bacs_details(WC_Order $order)
+    {
+        if (!$order || $order->get_payment_method() !== 'bacs') return;
+        if (!function_exists('WC')) return;
+
+        $gateways = WC()->payment_gateways();
+        if (!$gateways || !method_exists($gateways, 'payment_gateways')) return;
+
+        $all = $gateways->payment_gateways();
+        $bacs = $all['bacs'] ?? null;
+        if (!$bacs || !method_exists($bacs, 'thankyou_page')) return;
+
+        ob_start();
+        $bacs->thankyou_page($order->get_id());
+        $html = trim((string)ob_get_clean());
+        if ($html === '') return;
+
+        echo '<div class="tpma-thankyou-bacs">' . $html . '</div>';
     }
 }

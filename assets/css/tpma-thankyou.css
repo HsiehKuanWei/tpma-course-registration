@@ -6,6 +6,14 @@
   display: none !important;
 }
 
+/* 1.1) 仍顯示 BACS 匯款帳號資訊 */
+/* BACS details 由自訂卡片渲染，避免重複出現在原生區塊 */
+.tpma-thankyou-bacs { margin: 8px 0 12px; }
+.tpma-thankyou-bacs .woocommerce-order-details,
+.tpma-thankyou-bacs ul.order_details {
+  display: block !important;
+}
+
 /* 2) 你的自訂內容樣式 */
 .tpma-thankyou-root { margin: 18px 0; }
 .tpma-thankyou-card {
