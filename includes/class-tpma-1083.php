@@ -105,7 +105,7 @@ class TPMA_Woo_Special_1083 {
             return;
         }
         if (empty($_POST['tpma_invoice_type'])) {
-            $_POST['tpma_invoice_type'] = 'three';
+            $_POST['tpma_invoice_type'] = 'na';
         }
     }
 
@@ -623,7 +623,7 @@ class TPMA_Woo_Special_1083 {
         // 1083：預設發票類型為三聯，避免缺值
         $invoice_type = sanitize_text_field($_POST['tpma_invoice_type'] ?? '');
         if ($invoice_type === '') {
-            $invoice_type = 'three';
+            $invoice_type = 'na';
         }
         $order->update_meta_data('_tpma_invoice_type', $invoice_type);
 
