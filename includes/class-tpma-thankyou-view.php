@@ -5,6 +5,12 @@ class TPMA_CR_Thankyou_View
 {
     public static function init()
     {
+        if (class_exists('TPMA_Woo_Thankyou_View')) {
+            add_action('tpma_thankyou_after_summary', [self::class, 'render_1083_table'], 10, 2);
+            return;
+        }
+
+        // Legacy fallback when common thankyou view is not available.
         add_action('wp_enqueue_scripts', [self::class, 'enqueue_assets']);
         add_action('woocommerce_thankyou', [self::class, 'render'], 5, 1);
         add_action('woocommerce_thankyou_bacs', [self::class, 'maybe_disable_default_bacs'], 1, 1);
@@ -50,6 +56,61 @@ class TPMA_CR_Thankyou_View
             defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null,
             true
         );
+    }
+
+    public static function render_1083_table($order, $context = array())
+    {
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+        if (!self::is_1083_order($order)) {
+            return;
+        }
+
+        $draft = $context['draft'] ?? self::get_draft_from_order($order);
+        $learners = $draft['learners'] ?? [];
+
+        echo '<h3 class="tpma-thankyou-subtitle">學員名單</h3>';
+
+        if (empty($learners) || !is_array($learners)) {
+            echo '<p>（無學員資料）</p>';
+            return;
+        }
+
+        echo '<div class="tpma-thankyou-tablewrap">';
+        echo   '<div class="tpma-container">';
+        echo     '<div class="tpma-list-header tpma-grid-layout tpma-grid-layout--learners">';
+        echo       '<div class="tpma-list-header-item">#</div>';
+        echo       '<div class="tpma-list-header-item">姓名</div>';
+        echo       '<div class="tpma-list-header-item">部門</div>';
+        echo       '<div class="tpma-list-header-item">職稱</div>';
+        echo       '<div class="tpma-list-header-item">Email</div>';
+        echo       '<div class="tpma-list-header-item">手機</div>';
+        echo     '</div>';
+
+        echo     '<div class="tpma-body">';
+        $i = 1;
+        foreach ($learners as $lr) {
+            $name  = $lr['student_name'] ?? '';
+            $dept  = $lr['department'] ?? '';
+            $title = $lr['job_title'] ?? '';
+            $email = $lr['emails'] ?? ($lr['student_email'] ?? ($lr['email'] ?? ''));
+            $phone = $lr['mobile'] ?? ($lr['phone'] ?? '');
+
+            echo '<div class="tpma-table-card item-row">';
+            echo   '<div class="tpma-card-summary tpma-grid-layout tpma-grid-layout--learners">';
+            echo     '<div class="cell" data-label="#">' . esc_html($i++) . '</div>';
+            echo     '<div class="cell" data-label="姓名">' . esc_html($name) . '</div>';
+            echo     '<div class="cell" data-label="部門">' . esc_html($dept) . '</div>';
+            echo     '<div class="cell" data-label="職稱">' . esc_html($title) . '</div>';
+            echo     '<div class="cell" data-label="Email">' . esc_html($email) . '</div>';
+            echo     '<div class="cell" data-label="手機">' . esc_html($phone) . '</div>';
+            echo   '</div>';
+            echo '</div>';
+        }
+        echo     '</div>';
+        echo   '</div>';
+        echo '</div>';
     }
 
     public static function render($order_id)
@@ -283,6 +344,27 @@ echo   '</div>'; // card
         if ((bool)$order->get_meta('_tpma_reg_no', true)) return true;
         if ((bool)$order->get_meta('_tpma_reg_ids', true)) return true;
         if ((int)$order->get_meta('_tpma_course_id', true) > 0) return true;
+        return false;
+    }
+
+    private static function is_1083_order(WC_Order $order): bool
+    {
+        $target_id = 1083;
+        if (class_exists('TPMA_Woo_Special_1083')) {
+            $target_id = apply_filters('tpma_special_product_id', TPMA_Woo_Special_1083::PRODUCT_ID);
+        } else {
+            $target_id = apply_filters('tpma_special_product_id', $target_id);
+        }
+
+        foreach ($order->get_items() as $item) {
+            if (!$item instanceof WC_Order_Item_Product) {
+                continue;
+            }
+            $pid = (int) $item->get_product_id();
+            if ($pid && $pid === (int) $target_id) {
+                return true;
+            }
+        }
         return false;
     }
 

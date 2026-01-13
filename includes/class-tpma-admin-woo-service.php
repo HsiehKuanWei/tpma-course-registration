@@ -35,6 +35,10 @@ class TPMA_CR_Admin_Woo_Service
             if (!$order) {
                 continue;
             }
+            $remit_paid_at = $order->get_meta('_tpma_remit_paid_at', true);
+            if ($remit_paid_at === '' || $remit_paid_at === null) {
+                $remit_paid_at = $order->get_meta('_tpma_remit_date', true);
+            }
             $orders_map[$oid] = array(
                 'status'             => $order->get_status(),
                 'total'              => $order->get_total(),
@@ -61,7 +65,7 @@ class TPMA_CR_Admin_Woo_Service
                 'receipt_type'       => $order->get_meta('_tpma_receipt_type', true),
                 'tax_id'             => $order->get_meta('_billing_vat_id', true),
                 'remit_amount_total' => $order->get_meta('_tpma_remit_amount_total', true),
-                'remit_paid_at'      => $order->get_meta('_tpma_remit_paid_at', true),
+                'remit_paid_at'      => $remit_paid_at,
                 'remit_account'      => $order->get_meta('_tpma_remit_account', true),
                 'note'              => (string) $order->get_customer_note(),
             );
@@ -122,6 +126,8 @@ class TPMA_CR_Admin_Woo_Service
             'receiver'         => array('type' => 'shipping', 'field' => 'first_name'),
             'receipt_type'     => array('type' => 'meta',    'field' => '_tpma_receipt_type'),
             'tax_id'           => array('type' => 'meta',    'field' => '_billing_vat_id'),
+            'remit_account'    => array('type' => 'meta',    'field' => '_tpma_remit_account'),
+            'remit_paid_at'    => array('type' => 'meta',    'field' => '_tpma_remit_paid_at'),
             // ✅ Woo 備註（顧客下單備註 / customer note）
             'note'             => array('type' => 'customer_note', 'field' => 'customer_note'),
         );

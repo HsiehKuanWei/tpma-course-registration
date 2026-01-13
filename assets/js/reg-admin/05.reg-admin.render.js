@@ -443,7 +443,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   ]);
   
   appendEditField(receiptSection, '匯款金額（元）', 'remit_amount', 'text', U.formatAmount(row.remit_amount));
-  appendEditField(receiptSection, '匯款帳號','remit_account','text',row.remit_account,[],true);
+  appendEditField(receiptSection, '匯款帳號', 'remit_account', 'text', row.remit_account);
   appendEditField(receiptSection, '匯款日期', 'remit_paid_at', 'date', row.remit_paid_at);
   detailContainer.appendChild(receiptSection);
 

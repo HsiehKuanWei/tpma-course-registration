@@ -1,78 +1,43 @@
 <?php
-
 if (!defined('ABSPATH')) {
-
     exit;
-
 }
 
 class TPMA_CR_REST_Public
-
 {
-
     public static function register_routes()
-
     {
-
         $ns = 'tpma/v1';
 
-
-
         register_rest_route($ns, '/courses', array(
-
             'methods'  => 'GET',
-
             'callback' => array(__CLASS__, 'get_courses'),
-
             'permission_callback' => '__return_true',
-
         ));
 
-
-
         register_rest_route($ns, '/register', array(
-
             'methods'  => 'POST',
-
             'callback' => array(__CLASS__, 'register'),
-
             'permission_callback' => '__return_true',
-
         ));
 
         // Checkout init：暫存學員資料、加車並回傳 Woo 結帳網址
         register_rest_route($ns, '/checkout-init', array(
-
             'methods'  => ['POST'],
-
             'callback' => array(__CLASS__, 'checkout_init'),
-
             'permission_callback' => '__return_true',
-
         ));
-
-
 
         register_rest_route($ns, '/registration/search', array(
-
             'methods'  => 'POST',
-
             'callback' => array(__CLASS__, 'search_registration'),
-
             'permission_callback' => '__return_true',
-
         ));
 
-
-
         register_rest_route($ns, '/payment', array(
-
             'methods'  => 'POST',
-
             'callback' => array(__CLASS__, 'submit_payment'),
-
             'permission_callback' => '__return_true',
-
         ));
 
         // 匯款回報（thankyou 頁用）
@@ -81,21 +46,12 @@ class TPMA_CR_REST_Public
             'callback' => array(__CLASS__, 'submit_remit_report'),
             'permission_callback' => '__return_true',
         ));
-
-
-	}
-	
-
-
+    }
 
     /**
-
      * GET /courses
-
      * 僅回傳：開課中 + 未來場次
-
      */
-
     public static function get_courses($request)
     {
         global $wpdb;
@@ -150,17 +106,12 @@ class TPMA_CR_REST_Public
         return rest_ensure_response($rows);
     }
 
-
-
     /**
-
      * POST /register
-
      */
-
     public static function register($request)
     {
-        // ✅ 舊版路徑相容：避免「未下單就落庫」造成髒資料，/register 一律導向 checkout-init 流程
+        // ? 舊版路徑相容：避免「未下單就落庫」造成髒資料，/register 一律導向 checkout-init 流程
         $d = $request->get_json_params();
 
         // 舊版 payload 可能是：
@@ -188,16 +139,9 @@ class TPMA_CR_REST_Public
         return self::checkout_init($req);
     }
 
-
-
-
-
     /**
-
      * POST /registration/search
-
      */
-
     public static function search_registration($request)
     {
         global $wpdb;
@@ -266,86 +210,51 @@ class TPMA_CR_REST_Public
         return rest_ensure_response($rows);
     }
 
-
-
-
     /**
-
      * POST /payment
-
      */
-
     public static function submit_payment($request)
-
     {
-
         global $wpdb;
 
         $regs_table = TPMA_CR_DB::table('regs');
 
         $p = $request->get_json_params();
 
-
-
         $id = intval($p['id'] ?? 0);
-
         if (!$id) {
-
             return new WP_Error('invalid', '缺少 id', array('status' => 400));
-
         }
-
-
 
         $row = $wpdb->get_row(
-
             $wpdb->prepare("SELECT * FROM {$regs_table} WHERE id = %d", $id)
-
         );
-
         if (!$row) {
-
             return new WP_Error('not_found', '查無報名資料', array('status' => 404));
-
         }
-
-
 
         if (in_array($row->status, array('submitted', 'paid', 'cancelled'), true)) {
-
             return new WP_Error('not_allowed', '此報名狀態不可更新繳費資訊', array('status' => 400));
-
         }
 
-
-
         $wpdb->update(
-
             $regs_table,
-
             array(
-
                 'remit_account' => sanitize_text_field($p['remit_account'] ?? ''),
-            //    'remit_date'    => sanitize_text_field($p['remit_date'] ?? ''),
+                //    'remit_date'    => sanitize_text_field($p['remit_date'] ?? ''),
                 'remit_paid_at' => sanitize_text_field($p['remit_date'] ?? null),
                 'remit_amount'  => floatval($p['remit_amount'] ?? 0),
                 'status'        => 'submitted',
-
             ),
-
             array('id' => $id)
-
         );
 
-
-
         return rest_ensure_response(array('success' => true));
-
     }
 
     /**
      * POST /remit-report
-     * thankyou 頁匯款回報：寫入 regs（同一筆訂單下所有學員）+ 通知管理員 + Woo 訂單改為 processing
+     * thankyou 頁匯款回報：寫入 Woo 訂單 meta + 通知管理員 + Woo 訂單改為 processing
      *
      * 參數：
      * - order_id
@@ -365,7 +274,7 @@ class TPMA_CR_REST_Public
         $order_key  = sanitize_text_field($p['order_key'] ?? '');
         $remit_date = sanitize_text_field($p['remit_date'] ?? '');
 
-        // ✅ 允許「公司戶名」或「末五碼」：不再只保留數字
+        // ? 允許「公司戶名」或「末五碼」：不再只保留數字
         $remit_account_raw = (string)($p['remit_account'] ?? '');
         $remit_account     = sanitize_text_field(trim($remit_account_raw));
 
@@ -376,7 +285,7 @@ class TPMA_CR_REST_Public
             return new WP_Error('bad_request', '匯款日期格式錯誤', array('status' => 400));
         }
 
-        // ✅ 驗證：5 碼數字 OR 公司戶名（2~50字）
+        // ? 驗證：5 碼數字 OR 公司戶名（2~50字）
         $is_last5 = (bool)preg_match('/^\d{5}$/', $remit_account);
         $is_name  = (mb_strlen($remit_account, 'UTF-8') >= 2 && mb_strlen($remit_account, 'UTF-8') <= 50);
 
@@ -400,32 +309,11 @@ class TPMA_CR_REST_Public
             return new WP_Error('not_allowed', '此訂單狀態不可回報匯款', array('status' => 400));
         }
 
-        global $wpdb;
-        $regs_table = TPMA_CR_DB::table('regs');
-
-        // ✅ 寫入 regs：同一筆訂單下所有學員
-        $updated = $wpdb->update(
-            $regs_table,
-            array(
-                'remit_account'  => $remit_account,
-                // 'remit_date'   => $remit_date,   // 你先前 DB 沒有 remit_date 就先別寫
-                'remit_paid_at'  => $remit_date,
-                'payment_status' => 'processing',
-            ),
-            array('woocommerce_order_id' => (int)$order_id),
-            array('%s','%s','%s'),
-            array('%d')
-        );
-
-        if ($updated === false) {
-            return new WP_Error('db_error', '資料表寫入失敗：' . $wpdb->last_error, array('status' => 500));
-        }
-
-        // ✅ 寫入 order meta（方便追溯）
-        $order->update_meta_data('_tpma_remit_date', $remit_date);
+        // ? 寫入 order meta（改由 Woo 訂單承接匯款回報）
+        $order->update_meta_data('_tpma_remit_paid_at', $remit_date);
         $order->update_meta_data('_tpma_remit_account', $remit_account);
 
-        // ✅ 先把 Woo 訂單改為「處理中」
+        // ? 先把 Woo 訂單改為「處理中」
         if ($st !== 'processing') {
             $order->update_status('processing', '學員於 thankyou 頁回報匯款：' . $remit_date . ' / ' . $remit_account);
         } else {
@@ -439,8 +327,6 @@ class TPMA_CR_REST_Public
 
         return rest_ensure_response(array('success' => true));
     }
-
-	
 
     /**
      * checkout-init：暫存學員資料到 Woo session、加車並回傳 checkout URL
@@ -481,5 +367,4 @@ class TPMA_CR_REST_Public
 
         return new WP_Error('tpma_woo_missing', 'TPMA Woo 新插件未載入，請確認 tpma-woo-fields 已啟用', array('status' => 500));
     }
-
 }
