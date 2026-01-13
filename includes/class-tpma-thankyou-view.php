@@ -7,55 +7,15 @@ class TPMA_CR_Thankyou_View
     {
         if (class_exists('TPMA_Woo_Thankyou_View')) {
             add_action('tpma_thankyou_after_summary', [self::class, 'render_1083_table'], 10, 2);
+            add_filter('tpma_thankyou_summary_flags', [self::class, 'filter_summary_flags'], 10, 2);
+            add_filter('tpma_thankyou_meta_rows', [self::class, 'filter_meta_rows'], 10, 3);
             return;
         }
 
         // Legacy fallback when common thankyou view is not available.
-        add_action('wp_enqueue_scripts', [self::class, 'enqueue_assets']);
         add_action('woocommerce_thankyou', [self::class, 'render'], 5, 1);
         add_action('woocommerce_thankyou_bacs', [self::class, 'maybe_disable_default_bacs'], 1, 1);
         add_filter('woocommerce_bacs_accounts', [self::class, 'filter_bacs_accounts'], 10, 2);
-    }
-
-    /**
-     * 只在 TPMA 訂單的 thankyou 頁載入資源
-     */
-    public static function enqueue_assets()
-    {
-        if (!function_exists('is_order_received_page') || !is_order_received_page()) return;
-
-        $order_id = absint(get_query_var('order-received'));
-        if (!$order_id) return;
-
-        $order = wc_get_order($order_id);
-        if (!$order) return;
-
-        if (!self::is_tpma_order($order)) return;
-
-        // thankyou 專用樣式
-        wp_enqueue_style(
-            'tpma-thankyou',
-            TPMA_CR_URL . 'assets/css/tpma-thankyou.css',
-            [],
-            defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null
-        );
-
-        // ✅ 你要引入的共用樣式（注意：這是 admin-common，但你指定要在 thankyou 用）
-        wp_enqueue_style(
-            'tpma-admin-common',
-            TPMA_CR_URL . 'assets/css/admin-common.css',
-            [],
-            defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null
-        );
-
-        // ✅ 課程日期格式化（前端）
-        wp_enqueue_script(
-            'tpma-public-datetime',
-            TPMA_CR_URL . 'assets/js/public/00.tpma-datetime.js',
-            [],
-            defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null,
-            true
-        );
     }
 
     public static function render_1083_table($order, $context = array())
@@ -111,6 +71,58 @@ class TPMA_CR_Thankyou_View
         echo     '</div>';
         echo   '</div>';
         echo '</div>';
+    }
+
+    public static function filter_summary_flags($flags, $order)
+    {
+        if (!$order instanceof WC_Order) {
+            return $flags;
+        }
+        if (!self::is_1083_order($order)) {
+            return $flags;
+        }
+        if (!is_array($flags)) {
+            $flags = array();
+        }
+        $flags['show_subtotal'] = false;
+        $flags['show_tax'] = false;
+        return $flags;
+    }
+
+    public static function filter_meta_rows($rows, $order, $context = array())
+    {
+        if (!$order instanceof WC_Order) {
+            return $rows;
+        }
+        if (!self::is_1083_order($order)) {
+            return $rows;
+        }
+
+        $draft = $context['draft'] ?? self::get_draft_from_order($order);
+        $course_name      = $draft['course_name'] ?? ($draft['course']['course_name'] ?? '');
+        $lecturer_display = $draft['lecturer'] ?? ($draft['lecturer_name'] ?? '');
+        $session_dt       = $draft['session_datetime'] ?? ($draft['session']['session_datetime'] ?? '');
+        $duration_minutes = isset($draft['duration_minutes']) ? (int) $draft['duration_minutes'] : 0;
+
+        if (!is_array($rows)) {
+            $rows = array();
+        }
+
+        if ($course_name) {
+            $rows[] = array('label' => '課程名稱', 'value' => $course_name);
+        }
+        if ($lecturer_display) {
+            $rows[] = array('label' => '授課講師', 'value' => $lecturer_display);
+        }
+        if ($session_dt) {
+            $rows[] = array(
+                'label' => '課程日期',
+                'value' => '<span class="tpma-session-dt" data-session-dt="' . esc_attr($session_dt) . '" data-duration="' . esc_attr((string) $duration_minutes) . '">' . esc_html($session_dt) . '</span>',
+                'html'  => true,
+            );
+        }
+
+        return $rows;
     }
 
     public static function render($order_id)
