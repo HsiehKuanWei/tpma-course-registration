@@ -4,6 +4,9 @@ const Util = (window.TPMAPublic = window.TPMAPublic || {}).util || {};
 const TPMA_CR_API_BASE_PHP = window.TPMAPublicConfig?.apiBase || '';
 const REG_FORM_URL = window.TPMAPublicConfig?.formUrl || '';
 const TPMA_API_BASE = Util.getApiBase(TPMA_CR_API_BASE_PHP);
+const UPCOMING_HIDE_DAYS = 7;
+const LOW_ENROLLMENT_THRESHOLD = 4;
+const UPCOMING_HIDE_MS = UPCOMING_HIDE_DAYS * 24 * 60 * 60 * 1000;
 
 function formatClassTime(startRaw, durationMinutes) {
   if (DateUtil.formatRange) {
@@ -39,6 +42,13 @@ function getStartTimestamp(startRaw) {
   if (!startRaw) return 0;
   const d = new Date(startRaw.replace(' ', 'T'));
   return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+function shouldHideLowEnrollment(row, nowTs) {
+  if (!row.start_ts) return false;
+  const diff = row.start_ts - nowTs;
+  if (diff < 0 || diff >= UPCOMING_HIDE_MS) return false;
+  return row.registration_count < LOW_ENROLLMENT_THRESHOLD;
 }
 
 /**
@@ -117,6 +127,9 @@ async function loadCourseRows() {
       const duration = row.duration_minutes || 0;
       const lecturerName = row.lecturer || row.lecturers_name || '';
       const sessionId = row.session_id || '';
+      const regCountRaw = row.registration_count ?? row.reg_count ?? row.registrations_count ?? 0;
+      const regCount = parseInt(regCountRaw, 10);
+      const registrationCount = Number.isNaN(regCount) ? 0 : regCount;
 
       rows.push({
         course_id: courseId,
@@ -127,6 +140,7 @@ async function loadCourseRows() {
         duration_minutes: duration,
         start_ts: getStartTimestamp(startRaw),
         display_time: formatClassTime(startRaw, duration),
+        registration_count: registrationCount,
         category: row.category || '', // 新增課程分類
         intro: row.intro || '',       // 新增課程簡介
         outline: row.outline || ''    // 新增課程大綱
@@ -152,8 +166,10 @@ async function loadCourseRows() {
 
 // ===== 篩選 + 排序 =====
 function applyFilterAndSort() {
+  const nowTs = Date.now();
   // 篩選
   let rows = allRows.filter(r => {
+    if (shouldHideLowEnrollment(r, nowTs)) return false;
     // time
     if (filters.time) {
       const t = filters.time.toLowerCase();

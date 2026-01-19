@@ -316,6 +316,7 @@ public static function admin_update_reg($request)
 
     // TPMA-only 欄位（不含 Woo 專責欄位、金額另行處理）
     $tpma_fields = array(
+        'course_id',
         'class_date',
         'student_name',
         'department',
@@ -330,9 +331,28 @@ public static function admin_update_reg($request)
 
     $tpma_update = array();
     foreach ($tpma_fields as $f) {
-        if (isset($d[$f])) {
-            $tpma_update[$f] = sanitize_text_field($d[$f]);
+        if (!array_key_exists($f, $d)) {
+            continue;
         }
+
+        if ($f === 'course_id') {
+            $course_id = intval($d[$f]);
+            if ($course_id > 0) {
+                $tpma_update[$f] = $course_id;
+            }
+            continue;
+        }
+
+        if ($f === 'class_date') {
+            $class_date = sanitize_text_field($d[$f]);
+            if ($class_date != '') {
+                $class_date = substr($class_date, 0, 10);
+            }
+            $tpma_update[$f] = $class_date;
+            continue;
+        }
+
+        $tpma_update[$f] = sanitize_text_field($d[$f]);
     }
 
     $has_change = !empty($tpma_update);

@@ -59,6 +59,8 @@ class TPMA_CR_REST_Public
         $courses_table   = TPMA_CR_DB::table('courses');
         $sessions_table  = TPMA_CR_DB::table('sessions');
         $lecturers_table = TPMA_CR_DB::table('lecturers');
+        $regs_table      = TPMA_CR_DB::table('regs');
+        $orders_table    = $wpdb->posts;
 
         $now = current_time('mysql');
 
@@ -82,7 +84,21 @@ class TPMA_CR_REST_Public
                 c.outline,
                 c.duration_minutes,
                 s.id             AS session_id,
-                s.session_datetime
+                s.session_datetime,
+                (
+                    SELECT COUNT(*)
+                    FROM {$regs_table} r
+                    LEFT JOIN {$orders_table} o
+                        ON o.ID = r.woocommerce_order_id
+                    WHERE r.course_id = c.id
+                    AND r.class_date = DATE(s.session_datetime)
+                    AND (
+                        r.woocommerce_order_id IS NULL
+                        OR r.woocommerce_order_id = 0
+                        OR o.post_status IS NULL
+                        OR o.post_status <> 'wc-cancelled'
+                    )
+                ) AS registration_count
             FROM {$courses_table}  c
             INNER JOIN {$sessions_table} s
                 ON s.course_id = c.id
