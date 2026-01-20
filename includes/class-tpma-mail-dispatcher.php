@@ -306,6 +306,10 @@ class TPMA_CR_Mail_Dispatcher
         $templates   = $draft['mail_templates'] ?? array();
         $tpl_student = (string)($templates['student'] ?? '');
         $tpl_order   = (string)($templates['order'] ?? '');
+        $flow_key    = self::normalize_flow_key($order->get_status() ?: 'on-hold');
+
+        $tpl_student = self::resolve_template_for_flow($order, $flow_key, $tpl_student);
+        $tpl_order   = self::resolve_template_for_flow($order, $flow_key, $tpl_order);
 
         $learners = $draft['learners'] ?? array();
 
@@ -633,6 +637,151 @@ class TPMA_CR_Mail_Dispatcher
     }
 
     // =========================================================
+    // Mailer assignments (products + flows)
+    // =========================================================
+
+    private static function normalize_flow_key(string $flow_key): string
+    {
+        $flow_key = strtolower(trim($flow_key));
+        if (strpos($flow_key, 'wc-') === 0) {
+            $flow_key = substr($flow_key, 3);
+        }
+        return sanitize_key($flow_key);
+    }
+
+    private static function get_mailer_products(): array
+    {
+        if (!function_exists('get_posts')) return array();
+
+        $statuses = array('publish', 'private', 'draft', 'pending', 'future', 'trash');
+        $post_ids = get_posts(array(
+            'post_type'      => 'product',
+            'post_status'    => $statuses,
+            'posts_per_page' => -1,
+            'orderby'        => 'title',
+            'order'          => 'ASC',
+            'fields'         => 'ids',
+        ));
+
+        $products = array();
+        foreach ((array)$post_ids as $pid) {
+            $post = get_post($pid);
+            if (!$post) continue;
+
+            $status = $post->post_status ?: 'publish';
+            $status_obj = get_post_status_object($status);
+            $status_label = ($status_obj && !empty($status_obj->label)) ? $status_obj->label : $status;
+            $note = $status !== 'publish' ? '狀態：' . $status_label : '';
+
+            $products[] = array(
+                'id'           => (int)$post->ID,
+                'name'         => (string)$post->post_title,
+                'status'       => (string)$status,
+                'status_label' => (string)$status_label,
+                'status_note'  => (string)$note,
+            );
+        }
+
+        return $products;
+    }
+
+    private static function get_mailer_flows(): array
+    {
+        $flows = array();
+
+        if (function_exists('wc_get_order_statuses')) {
+            foreach (wc_get_order_statuses() as $key => $label) {
+                $flow_key = self::normalize_flow_key((string)$key);
+                $flows[] = array(
+                    'key'    => $flow_key,
+                    'label'  => (string)$label,
+                    'source' => 'woocommerce',
+                    'note'   => $flow_key === 'on-hold' ? '訂單建立' : '',
+                );
+            }
+        }
+
+        $flows[] = array(
+            'key'    => 'admin_remit_report',
+            'label'  => '匯款回報通知',
+            'source' => 'custom',
+            'note'   => 'thankyou',
+        );
+
+        return $flows;
+    }
+
+    private static function normalize_assign($assign): array
+    {
+        $products = is_array($assign['products'] ?? null) ? $assign['products'] : array();
+        $flows    = is_array($assign['flows'] ?? null) ? $assign['flows'] : array();
+
+        $products = array_values(array_unique(array_filter(array_map('intval', $products))));
+        $flows = array_values(array_unique(array_filter(array_map(function ($flow) {
+            return self::normalize_flow_key((string)$flow);
+        }, $flows))));
+
+        return array(
+            'products' => $products,
+            'flows'    => $flows,
+        );
+    }
+
+    private static function normalize_config_assignments(array $config): array
+    {
+        if (!isset($config['templates']) || !is_array($config['templates'])) {
+            return $config;
+        }
+
+        foreach ($config['templates'] as $tpl_key => $tpl_cfg) {
+            $assign = self::normalize_assign($tpl_cfg['assign'] ?? array());
+            $config['templates'][$tpl_key]['assign'] = $assign;
+        }
+
+        return $config;
+    }
+
+    private static function get_order_product_ids(WC_Order $order): array
+    {
+        $ids = array();
+        foreach ($order->get_items() as $item) {
+            if (!is_a($item, 'WC_Order_Item_Product')) continue;
+            $pid = (int)$item->get_product_id();
+            if ($pid) $ids[] = $pid;
+        }
+        return array_values(array_unique($ids));
+    }
+
+    private static function resolve_template_for_flow(WC_Order $order, string $flow_key, string $fallback): string
+    {
+        if (!class_exists('TPMA_CR_Mail_Config')) return $fallback;
+
+        $flow_key = self::normalize_flow_key($flow_key);
+        if (!$flow_key) return $fallback;
+
+        $config = TPMA_CR_Mail_Config::get_config();
+        $tpl_cfgs = is_array($config['templates'] ?? null) ? $config['templates'] : array();
+        if (empty($tpl_cfgs)) return $fallback;
+
+        $product_ids = self::get_order_product_ids($order);
+        if (empty($product_ids)) return $fallback;
+
+        foreach ($tpl_cfgs as $tpl_key => $cfg) {
+            $assign = self::normalize_assign($cfg['assign'] ?? array());
+            if (empty($assign['products']) || empty($assign['flows'])) continue;
+            if (!in_array($flow_key, $assign['flows'], true)) continue;
+
+            foreach ($product_ids as $pid) {
+                if (in_array($pid, $assign['products'], true)) {
+                    return (string)$tpl_key;
+                }
+            }
+        }
+
+        return $fallback;
+    }
+
+    // =========================================================
     // REST (保留原有介面；只加 available_vars，並維持 update_all/update_config)
     // =========================================================
 
@@ -643,12 +792,15 @@ class TPMA_CR_Mail_Dispatcher
 
         $templates = TPMA_CR_Mail_Templates::get_all();
         $config    = TPMA_CR_Mail_Config::get_config();
+        $config    = self::normalize_config_assignments($config);
 
         return rest_ensure_response(array(
             'templates' => $templates,
             'config'    => $config,
             // ✅ 新增：讓 mail-modal 顯示可用變數（不破壞既有 keys）
             'available_vars' => self::get_available_vars(),
+            'products' => self::get_mailer_products(),
+            'flows'    => self::get_mailer_flows(),
         ));
     }
 
@@ -661,6 +813,7 @@ class TPMA_CR_Mail_Dispatcher
 
         $templates = isset($d['templates']) && is_array($d['templates']) ? $d['templates'] : array();
         $config    = isset($d['config']) && is_array($d['config']) ? $d['config'] : array();
+        $config    = self::normalize_config_assignments($config);
 
         // ✅ 維持你原本的 method 名稱（update_all/update_config）
         TPMA_CR_Mail_Templates::update_all($templates);
@@ -770,6 +923,7 @@ class TPMA_CR_Mail_Dispatcher
         // 模板 key
         $defaults = self::get_default_templates();
         $template_key = $defaults['admin_remit_report'] ?? 'admin_remit_report';
+        $template_key = self::resolve_template_for_flow($order, 'admin_remit_report', $template_key);
 
         // draft/context
         $draft = self::get_draft_from_order($order);
@@ -818,6 +972,8 @@ class TPMA_CR_Mail_Dispatcher
         $templates = is_array($draft['mail_templates'] ?? null) ? $draft['mail_templates'] : array();
         // ✅ 沒有就用預設模板 key（避免 draft 沒帶 completed 造成完全不寄）
         $tpl_completed = trim((string)($templates['completed'] ?? self::get_default_templates()['completed'] ?? 'registration_completed'));
+        $flow_key = self::normalize_flow_key($order->get_status() ?: 'completed');
+        $tpl_completed = self::resolve_template_for_flow($order, $flow_key, $tpl_completed);
 
         // 如果你想要「必須存在模板才寄」，可在 TPMA_Mailer 內處理；這裡先嘗試寄
         $ctx = self::build_context($order, $draft);
