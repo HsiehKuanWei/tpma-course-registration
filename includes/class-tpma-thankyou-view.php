@@ -9,6 +9,8 @@ class TPMA_CR_Thankyou_View
             add_action('tpma_thankyou_after_summary', [self::class, 'render_1083_table'], 10, 2);
             add_filter('tpma_thankyou_summary_flags', [self::class, 'filter_summary_flags'], 10, 2);
             add_filter('tpma_thankyou_meta_rows', [self::class, 'filter_meta_rows'], 10, 3);
+            remove_filter('woocommerce_bacs_accounts', ['TPMA_Woo_Thankyou_View', 'filter_bacs_accounts'], 10);
+            add_filter('woocommerce_bacs_accounts', [self::class, 'filter_bacs_accounts'], 10, 2);
             return;
         }
 
@@ -351,12 +353,20 @@ echo   '</div>'; // card
 
     private static function is_tpma_order(WC_Order $order): bool
     {
-        // 接受任一 TPMA 標記：draft_json / reg_no / reg_ids / course_id
-        if ((bool)$order->get_meta('_tpma_reg_draft_json', true)) return true;
-        if ((bool)$order->get_meta('_tpma_reg_no', true)) return true;
-        if ((bool)$order->get_meta('_tpma_reg_ids', true)) return true;
-        if ((int)$order->get_meta('_tpma_course_id', true) > 0) return true;
-        return false;
+        $is_tpma = false;
+
+        if ((bool)$order->get_meta('_tpma_reg_draft_json', true)) $is_tpma = true;
+        if ((bool)$order->get_meta('_tpma_reg_no', true)) $is_tpma = true;
+        if ((bool)$order->get_meta('_tpma_reg_ids', true)) $is_tpma = true;
+        if ((int)$order->get_meta('_tpma_course_id', true) > 0) $is_tpma = true;
+        if ((string)$order->get_meta('_tpma_invoice_type', true) !== '') $is_tpma = true;
+        if ((string)$order->get_meta('_billing_tpma_invoice_type', true) !== '') $is_tpma = true;
+        if ((string)$order->get_meta('_tpma_postcode', true) !== '') $is_tpma = true;
+        if ((string)$order->get_meta('_tpma_state', true) !== '') $is_tpma = true;
+        if ((string)$order->get_meta('_tpma_city', true) !== '') $is_tpma = true;
+        if ((string)$order->get_meta('_tpma_street', true) !== '') $is_tpma = true;
+
+        return (bool) apply_filters('tpma_is_tpma_order', $is_tpma, $order);
     }
 
     private static function is_1083_order(WC_Order $order): bool
@@ -392,7 +402,9 @@ echo   '</div>'; // card
         }
         if (!$order || !self::is_tpma_order($order)) return $accounts;
 
-        $target_name = '社團法人台灣專案管理學會';
+        $target_name = self::is_1083_order($order)
+            ? '社團法人台灣專案管理學會'
+            : '清華國際事業股份有限公司';
         $filtered = array();
         foreach ($accounts as $account) {
             $name = isset($account['account_name']) ? trim((string)$account['account_name']) : '';
