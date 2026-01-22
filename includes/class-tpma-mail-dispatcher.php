@@ -298,6 +298,12 @@ class TPMA_CR_Mail_Dispatcher
             return;
         }
 
+        $flow_key = self::normalize_flow_key($order->get_status() ?: 'on-hold');
+        if (self::has_template_mapping($order, $flow_key)
+            && apply_filters('tpma_mailer_skip_tpma_order_flow', true, $order, $flow_key)) {
+            return;
+        }
+
         if (!is_array($draft)) {
             $draft = self::get_draft_from_order($order);
         }
@@ -306,7 +312,7 @@ class TPMA_CR_Mail_Dispatcher
         $templates   = $draft['mail_templates'] ?? array();
         $tpl_student = (string)($templates['student'] ?? '');
         $tpl_order   = (string)($templates['order'] ?? '');
-        $flow_key    = self::normalize_flow_key($order->get_status() ?: 'on-hold');
+        $flow_key    = $flow_key ?: self::normalize_flow_key($order->get_status() ?: 'on-hold');
 
         $tpl_student = self::resolve_template_for_flow($order, $flow_key, $tpl_student);
         $tpl_order   = self::resolve_template_for_flow($order, $flow_key, $tpl_order);
@@ -379,6 +385,8 @@ class TPMA_CR_Mail_Dispatcher
         global $wpdb;
 
         $order_id = $order->get_id();
+        $date_created = $order->get_date_created();
+        $order_date = $date_created ? wc_format_datetime($date_created, 'Y/m/d') : '';
 
         $course  = $draft['course'] ?? array();
         $session = $draft['session'] ?? array();
@@ -498,6 +506,34 @@ class TPMA_CR_Mail_Dispatcher
         $reg_nos = array_values(array_unique($reg_nos));
         $reg_nos_text = implode(', ', $reg_nos);
 
+        $invoice_type_raw = (string) $order->get_meta('_tpma_invoice_type', true);
+        if ($invoice_type_raw === '') {
+            $invoice_type_raw = (string) $order->get_meta('_billing_tpma_invoice_type', true);
+        }
+        $invoice_type_map = array(
+            'two'   => '二聯式',
+            'three' => '三聯式',
+            'na'    => '不適用',
+        );
+        $invoice_type_label = $invoice_type_map[$invoice_type_raw] ?? $invoice_type_raw;
+        $invoice_company = (string) $order->get_billing_company();
+        $invoice_vat_id = (string) $order->get_meta('_billing_vat_id', true);
+        $invoice_type_display = $invoice_type_label;
+        if ($invoice_type_raw === 'three') {
+            $invoice_type_display .= '（公司抬頭：' . ($invoice_company !== '' ? $invoice_company : '—')
+                . '｜公司統編：' . ($invoice_vat_id !== '' ? $invoice_vat_id : '—') . '）';
+        }
+
+        $billing_address = self::build_address_text($order, 'billing');
+        $shipping_address = self::build_address_text($order, 'shipping');
+        $order_address = $shipping_address !== '' ? $shipping_address : $billing_address;
+
+        $remit_date = (string) $order->get_meta('_tpma_remit_paid_at', true);
+        if ($remit_date === '') {
+            $remit_date = (string) $order->get_meta('_tpma_remit_date', true);
+        }
+        $remit_account = (string) $order->get_meta('_tpma_remit_account', true);
+
         $context = array_merge(
             array(
                 // draft / registration
@@ -527,23 +563,34 @@ class TPMA_CR_Mail_Dispatcher
                 // order / woo
                 'order_id'              => $order_id,
                 'order_number'          => $order->get_order_number(),
+                'order_date'            => $order_date,
                 'order_status'          => $order->get_status(),
                 'order_total'           => $order->get_total(),
                 'currency'              => $order->get_currency(),
+                'order_items_table'     => self::build_order_items_table($order),
 
                 'payment_method'        => $order->get_payment_method(),
                 'payment_method_title'  => $order->get_payment_method_title(),
+                'remit_date'            => $remit_date,
+                'remit_account'         => $remit_account,
+                'invoice_type'          => $invoice_type_label,
+                'invoice_type_display'  => $invoice_type_display,
+                'invoice_company'       => $invoice_company,
+                'invoice_vat_id'        => $invoice_vat_id,
 
                 // billing（保留你原本姓/名順序邏輯）
                 'billing_name'          => trim($order->get_billing_last_name() . ' ' . $order->get_billing_first_name()),
                 'billing_email'         => $order->get_billing_email(),
                 'billing_phone'         => $order->get_billing_phone(),
+                'billing_address'       => $billing_address,
 
                 'shipping_name'         => trim($order->get_shipping_last_name() . ' ' . $order->get_shipping_first_name()),
                 'shipping_address_1'    => $order->get_shipping_address_1(),
                 'shipping_address_2'    => $order->get_shipping_address_2(),
                 'shipping_city'         => $order->get_shipping_city(),
                 'shipping_postcode'     => $order->get_shipping_postcode(),
+                'shipping_address'      => $shipping_address,
+                'order_address'         => $order_address,
 
                 // 你要的「訂單查詢連結」（order-received/?key=...）
                 'order_public_url'      => method_exists($order, 'get_checkout_order_received_url') ? $order->get_checkout_order_received_url() : '',
@@ -586,6 +633,147 @@ class TPMA_CR_Mail_Dispatcher
         return $context;
     }
 
+    private static function build_order_items_table(WC_Order $order): string
+    {
+        $items = $order->get_items();
+        if (empty($items)) {
+            return '';
+        }
+
+        $currency = $order->get_currency();
+        $subtotal = 0;
+        foreach ($items as $item) {
+            if (!$item instanceof WC_Order_Item_Product) {
+                continue;
+            }
+            $subtotal += (float) $item->get_subtotal();
+        }
+        $tax_total = (float) $order->get_total_tax();
+        $shipping_total = (float) $order->get_shipping_total();
+        $shipping_tax = (float) $order->get_shipping_tax();
+        $shipping_amount = $shipping_total + $shipping_tax;
+        $total = (float) $order->get_total();
+        $summary_flags = apply_filters('tpma_thankyou_summary_flags', array(
+            'show_subtotal' => true,
+            'show_shipping' => true,
+            'show_tax'      => true,
+        ), $order);
+        $show_subtotal = !empty($summary_flags['show_subtotal']);
+        $show_shipping = !empty($summary_flags['show_shipping']);
+        $show_tax = !empty($summary_flags['show_tax']);
+
+        $rows = '';
+        foreach ($items as $item) {
+            if (!$item instanceof WC_Order_Item_Product) {
+                continue;
+            }
+            $product_name = $item->get_name();
+            $qty = (int) $item->get_quantity();
+            $line_total = (float) $item->get_total();
+
+            $rows .= '<tr>';
+            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
+                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">商品名稱</span>'
+                . '<span class="tpma-mail-value">' . esc_html($product_name) . '</span>'
+                . '</td>';
+            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
+                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">數量</span>'
+                . '<span class="tpma-mail-value">' . esc_html((string) $qty) . '</span>'
+                . '</td>';
+            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
+                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">金額</span>'
+                . '<span class="tpma-mail-value">' . wp_kses_post(wc_price($line_total, ['currency' => $currency])) . '</span>'
+                . '</td>';
+
+            $meta_html = '';
+            if (function_exists('wc_display_item_meta')) {
+                ob_start();
+                wc_display_item_meta($item);
+                $meta_html = trim((string) ob_get_clean());
+            }
+            $meta_text = $meta_html !== '' ? wp_strip_all_tags($meta_html) : '-';
+
+            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
+                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">備註</span>'
+                . '<span class="tpma-mail-value">' . esc_html($meta_text) . '</span>'
+                . '</td>';
+            $rows .= '</tr>';
+        }
+
+        if ($rows === '') {
+            return '';
+        }
+
+        $style = '<style>
+            @media only screen and (max-width: 620px) {
+                .tpma-mail-table thead { display: none !important; }
+                .tpma-mail-table tr { display: block !important; margin-bottom: 12px; border: 1px solid #e5e7eb; }
+                .tpma-mail-table td { display: block !important; width: 100% !important; box-sizing: border-box; border: none !important; border-bottom: 1px solid #e5e7eb !important; }
+                .tpma-mail-table td:last-child { border-bottom: none !important; }
+                .tpma-mail-label { display: block !important; }
+            }
+        </style>';
+
+        $table = $style;
+        $table .= '<table class="tpma-mail-table" style="width:100%;border-collapse:collapse;">';
+        $table .= '<thead><tr style="background:#f3f4f6;">';
+        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">商品名稱</th>';
+        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">數量</th>';
+        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">金額</th>';
+        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">備註</th>';
+        $table .= '</tr></thead>';
+        $table .= '<tbody>' . $rows;
+        if ($show_subtotal) {
+            $table .= '<tr>';
+            $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:600;">合計</td>';
+            $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:600;">' . wp_kses_post(wc_price($subtotal, ['currency' => $currency])) . '</td>';
+            $table .= '</tr>';
+        }
+        if ($show_shipping && $shipping_amount > 0) {
+            $table .= '<tr>';
+            $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:600;">運費</td>';
+            $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:600;">' . wp_kses_post(wc_price($shipping_amount, ['currency' => $currency])) . '</td>';
+            $table .= '</tr>';
+        }
+        if ($show_tax) {
+            $table .= '<tr>';
+            $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:600;">營業稅</td>';
+            $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:600;">' . wp_kses_post(wc_price($tax_total, ['currency' => $currency])) . '</td>';
+            $table .= '</tr>';
+        }
+        $table .= '<tr>';
+        $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:700;">總計金額</td>';
+        $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:700;">' . wp_kses_post(wc_price($total, ['currency' => $currency])) . '</td>';
+        $table .= '</tr>';
+        $table .= '</tbody></table>';
+
+        return $table;
+    }
+
+    private static function build_address_text(WC_Order $order, string $type): string
+    {
+        if ($type === 'shipping') {
+            $parts = array(
+                (string) $order->get_shipping_postcode(),
+                (string) $order->get_shipping_state(),
+                (string) $order->get_shipping_city(),
+                (string) $order->get_shipping_address_1(),
+                (string) $order->get_shipping_address_2(),
+            );
+        } else {
+            $parts = array(
+                (string) $order->get_billing_postcode(),
+                (string) $order->get_billing_state(),
+                (string) $order->get_billing_city(),
+                (string) $order->get_billing_address_1(),
+                (string) $order->get_billing_address_2(),
+            );
+        }
+
+        $parts = array_values(array_filter(array_map('trim', $parts)));
+        return implode(' ', $parts);
+    }
+
     // =========================================================
     // Available vars for mail-modal
     // =========================================================
@@ -613,11 +801,21 @@ class TPMA_CR_Mail_Dispatcher
             // 訂單
             'order_id' => 'Woo 訂單ID',
             'order_number' => 'Woo 訂單顯示編號',
+            'order_date' => '訂單日期',
             'order_total' => '訂單總額',
             'remit_amount' => '訂單總額（order_total）',
+            'order_items_table' => '訂購項目',
+            'payment_method_title' => '付款方式',
+            'invoice_type' => '發票類型',
+            'invoice_type_display' => '發票類型（含抬頭/統編）',
+            'invoice_company' => '公司抬頭',
+            'invoice_vat_id' => '公司統編',
             'billing_name' => '帳單姓名（Woo 結帳填寫）',
             'billing_email' => '帳單 Email（Woo 結帳填寫）',
             'billing_phone' => '帳單電話（Woo 結帳填寫）',
+            'billing_address' => '帳單地址',
+            'shipping_address' => '寄送地址',
+            'order_address' => '帳單或寄送地址',
 
             // 匯款回報（thankyou 回報專用）
             'remit_date' => '匯款日期（thankyou 回報）',
@@ -754,17 +952,23 @@ class TPMA_CR_Mail_Dispatcher
 
     private static function resolve_template_for_flow(WC_Order $order, string $flow_key, string $fallback): string
     {
-        if (!class_exists('TPMA_CR_Mail_Config')) return $fallback;
+        $template_key = self::find_template_for_flow($order, $flow_key);
+        return $template_key !== '' ? $template_key : $fallback;
+    }
+
+    private static function find_template_for_flow(WC_Order $order, string $flow_key): string
+    {
+        if (!class_exists('TPMA_CR_Mail_Config')) return '';
 
         $flow_key = self::normalize_flow_key($flow_key);
-        if (!$flow_key) return $fallback;
+        if (!$flow_key) return '';
 
         $config = TPMA_CR_Mail_Config::get_config();
         $tpl_cfgs = is_array($config['templates'] ?? null) ? $config['templates'] : array();
-        if (empty($tpl_cfgs)) return $fallback;
+        if (empty($tpl_cfgs)) return '';
 
         $product_ids = self::get_order_product_ids($order);
-        if (empty($product_ids)) return $fallback;
+        if (empty($product_ids)) return '';
 
         foreach ($tpl_cfgs as $tpl_key => $cfg) {
             $assign = self::normalize_assign($cfg['assign'] ?? array());
@@ -778,7 +982,90 @@ class TPMA_CR_Mail_Dispatcher
             }
         }
 
-        return $fallback;
+        return '';
+    }
+
+    private static function is_tpma_order_like(WC_Order $order): bool
+    {
+        if ((bool) $order->get_meta('_tpma_reg_draft_json', true)) return true;
+        if ((bool) $order->get_meta('_tpma_reg_no', true)) return true;
+        if ((bool) $order->get_meta('_tpma_reg_ids', true)) return true;
+        if ((int) $order->get_meta('_tpma_course_id', true) > 0) return true;
+        if ((string) $order->get_meta('_tpma_invoice_type', true) !== '') return true;
+        if ((string) $order->get_meta('_billing_tpma_invoice_type', true) !== '') return true;
+        if ((string) $order->get_meta('_tpma_postcode', true) !== '') return true;
+        if ((string) $order->get_meta('_tpma_state', true) !== '') return true;
+        if ((string) $order->get_meta('_tpma_city', true) !== '') return true;
+        if ((string) $order->get_meta('_tpma_street', true) !== '') return true;
+
+        return (bool) apply_filters('tpma_is_tpma_order', false, $order);
+    }
+
+    public static function has_template_mapping(WC_Order $order, string $flow_key): bool
+    {
+        return self::find_template_for_flow($order, $flow_key) !== '';
+    }
+
+    public static function send_for_order_flow(WC_Order $order, string $flow_key, array $options = array()): bool
+    {
+        if (!class_exists('TPMA_Mailer')) return false;
+
+        $opt = wp_parse_args($options, array(
+            'skip_tpma' => true,
+        ));
+        if (!empty($opt['skip_tpma']) && self::is_tpma_order_like($order)) {
+            return false;
+        }
+
+        $flow_key = self::normalize_flow_key($flow_key);
+        if (!$flow_key) return false;
+
+        $template_key = self::find_template_for_flow($order, $flow_key);
+        if ($template_key === '') return false;
+
+        $sent_flag = '_tpma_mailer_sent_' . $flow_key;
+        if ($order->get_meta($sent_flag, true) === 'yes') {
+            return false;
+        }
+
+        $draft = self::get_draft_from_order($order);
+        $ctx = self::build_context($order, is_array($draft) ? $draft : array());
+
+        $sent = false;
+        $billing_email = trim((string)$order->get_billing_email());
+        if ($billing_email && is_email($billing_email)) {
+            try {
+                if (TPMA_Mailer::send_template($template_key, $billing_email, array(
+                    'reg_context' => $ctx,
+                ))) {
+                    $sent = true;
+                }
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+
+        $copies = self::get_copy_recipients_from_config($template_key);
+        foreach ((array)$copies as $copy) {
+            $copy = trim((string)$copy);
+            if (!$copy || !is_email($copy)) continue;
+            try {
+                if (TPMA_Mailer::send_template($template_key, $copy, array(
+                    'reg_context' => $ctx,
+                ))) {
+                    $sent = true;
+                }
+            } catch (Exception $e) {
+                return false;
+            }
+        }
+
+        if ($sent) {
+            $order->update_meta_data($sent_flag, 'yes');
+            $order->save();
+        }
+
+        return $sent;
     }
 
     // =========================================================
@@ -844,9 +1131,14 @@ class TPMA_CR_Mail_Dispatcher
 
         // 簡單版變數替換（沿用你原本的行為）
         $replace = array();
+        $raw_keys = apply_filters('tpma_mailer_raw_vars', array('order_items_table'), $context);
         foreach ($context as $k => $v) {
             if (is_array($v)) $v = 'Array';
-            $replace['{{' . $k . '}}'] = esc_html((string)$v);
+            if (in_array($k, $raw_keys, true)) {
+                $replace['{{' . $k . '}}'] = (string)$v;
+            } else {
+                $replace['{{' . $k . '}}'] = esc_html((string)$v);
+            }
         }
 
         $subject = strtr($subject_raw, $replace);
@@ -964,6 +1256,12 @@ class TPMA_CR_Mail_Dispatcher
     {
         if (!class_exists('TPMA_Mailer')) return false;
 
+        $flow_key = self::normalize_flow_key($order->get_status() ?: 'completed');
+        if (self::has_template_mapping($order, $flow_key)
+            && apply_filters('tpma_mailer_skip_tpma_order_flow', true, $order, $flow_key)) {
+            return false;
+        }
+
         if (!is_array($draft)) {
             $draft = self::get_draft_from_order($order);
         }
@@ -972,7 +1270,7 @@ class TPMA_CR_Mail_Dispatcher
         $templates = is_array($draft['mail_templates'] ?? null) ? $draft['mail_templates'] : array();
         // ✅ 沒有就用預設模板 key（避免 draft 沒帶 completed 造成完全不寄）
         $tpl_completed = trim((string)($templates['completed'] ?? self::get_default_templates()['completed'] ?? 'registration_completed'));
-        $flow_key = self::normalize_flow_key($order->get_status() ?: 'completed');
+        $flow_key = $flow_key ?: self::normalize_flow_key($order->get_status() ?: 'completed');
         $tpl_completed = self::resolve_template_for_flow($order, $flow_key, $tpl_completed);
 
         // 如果你想要「必須存在模板才寄」，可在 TPMA_Mailer 內處理；這裡先嘗試寄
