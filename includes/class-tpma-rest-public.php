@@ -60,7 +60,26 @@ class TPMA_CR_REST_Public
         $sessions_table  = TPMA_CR_DB::table('sessions');
         $lecturers_table = TPMA_CR_DB::table('lecturers');
         $regs_table      = TPMA_CR_DB::table('regs');
-        $orders_table    = $wpdb->posts;
+        $orders_table_posts = $wpdb->posts;
+        $orders_table_hpos  = $wpdb->prefix . 'wc_orders';
+
+        $use_hpos = $wpdb->get_var(
+            $wpdb->prepare("SHOW TABLES LIKE %s", $orders_table_hpos)
+        );
+
+        if ($use_hpos) {
+            $orders_table = $orders_table_hpos;
+            $orders_join  = "LEFT JOIN {$orders_table} o ON o.id = r.woocommerce_order_id";
+            // HPOS: status may not be prefixed; exclude cancelled + non-order placeholders.
+            $orders_where = "AND o.status IS NOT NULL
+                             AND o.status NOT IN ('cancelled', 'wc-cancelled', 'trash', 'auto-draft', 'draft')";
+        } else {
+            $orders_table = $orders_table_posts;
+            $orders_join  = "LEFT JOIN {$orders_table} o ON o.ID = r.woocommerce_order_id";
+            // Legacy posts table: only count real Woo orders with non-cancelled statuses.
+            $orders_where = "AND o.post_type = 'shop_order'
+                             AND o.post_status NOT IN ('wc-cancelled', 'trash', 'auto-draft', 'draft')";
+        }
 
         $now = current_time('mysql');
 
@@ -88,16 +107,10 @@ class TPMA_CR_REST_Public
                 (
                     SELECT COUNT(*)
                     FROM {$regs_table} r
-                    LEFT JOIN {$orders_table} o
-                        ON o.ID = r.woocommerce_order_id
+                    {$orders_join}
                     WHERE r.course_id = c.id
                     AND r.class_date = DATE(s.session_datetime)
-                    AND (
-                        r.woocommerce_order_id IS NULL
-                        OR r.woocommerce_order_id = 0
-                        OR o.post_status IS NULL
-                        OR o.post_status <> 'wc-cancelled'
-                    )
+                    {$orders_where}
                 ) AS registration_count
             FROM {$courses_table}  c
             INNER JOIN {$sessions_table} s

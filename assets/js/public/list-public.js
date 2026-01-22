@@ -7,6 +7,7 @@ const TPMA_API_BASE = Util.getApiBase(TPMA_CR_API_BASE_PHP);
 const UPCOMING_HIDE_DAYS = 7;
 const LOW_ENROLLMENT_THRESHOLD = 4;
 const UPCOMING_HIDE_MS = UPCOMING_HIDE_DAYS * 24 * 60 * 60 * 1000;
+const DEBUG_HIDE_REASON = true;
 
 function formatClassTime(startRaw, durationMinutes) {
   if (DateUtil.formatRange) {
@@ -45,10 +46,45 @@ function getStartTimestamp(startRaw) {
 }
 
 function shouldHideLowEnrollment(row, nowTs) {
-  if (!row.start_ts) return false;
-  const diff = row.start_ts - nowTs;
-  if (diff < 0 || diff >= UPCOMING_HIDE_MS) return false;
-  return row.registration_count < LOW_ENROLLMENT_THRESHOLD;
+  let reason = '';
+  let shouldHide = false;
+
+  if (!row.start_ts) {
+    reason = 'missing start_ts';
+  } else {
+    const diff = row.start_ts - nowTs;
+    if (diff < 0) {
+      reason = 'already started';
+    } else if (diff >= UPCOMING_HIDE_MS) {
+      reason = 'not within hide window';
+    } else if (row.registration_count < LOW_ENROLLMENT_THRESHOLD) {
+      shouldHide = true;
+      reason = 'low enrollment within hide window';
+    } else {
+      reason = 'enrollment meets threshold';
+    }
+  }
+
+  if (DEBUG_HIDE_REASON) {
+    const startIso = row.start_ts ? new Date(row.start_ts).toISOString() : '';
+    const diffMs = row.start_ts ? (row.start_ts - nowTs) : null;
+    console.debug('[TPMA hide-check]', {
+      course_id: row.course_id,
+      session_id: row.session_id,
+      course_name: row.course_name,
+      start_raw: row.start_raw,
+      start_ts: row.start_ts,
+      start_iso: startIso,
+      diff_ms: diffMs,
+      registration_count: row.registration_count,
+      threshold: LOW_ENROLLMENT_THRESHOLD,
+      hide_window_days: UPCOMING_HIDE_DAYS,
+      should_hide: shouldHide,
+      reason
+    });
+  }
+
+  return shouldHide;
 }
 
 /**
