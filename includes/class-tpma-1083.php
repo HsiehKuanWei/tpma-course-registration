@@ -11,6 +11,7 @@ class TPMA_Woo_Special_1083 {
      * 目標商品 ID（預設 1083，可透過 filter 覆蓋）。
      */
     const PRODUCT_ID = 1083;
+    const REG_TIMEOUT_SECONDS = 1800;
 
     public static function init() {
         // 專用欄位/驗證/儲存
@@ -47,6 +48,11 @@ class TPMA_Woo_Special_1083 {
         add_filter('woocommerce_bacs_process_payment_order_status', [__CLASS__, 'filter_bacs_status'], 10, 2);
         add_action('woocommerce_checkout_order_processed', [__CLASS__, 'send_tpma_mails_after_order_created'], 12, 1);
         add_action('woocommerce_order_status_completed', [__CLASS__, 'send_tpma_mails_after_order_completed'], 10, 1);
+
+        // 禁止混車 + 中斷流程自動清空
+        add_filter('woocommerce_add_to_cart_validation', [__CLASS__, 'enforce_no_mixed_cart'], 10, 3);
+        add_action('woocommerce_check_cart_items', [__CLASS__, 'enforce_no_mixed_cart_on_cart']);
+        add_action('template_redirect', [__CLASS__, 'maybe_abort_tpma_flow'], 9);
     }
 
     /**
@@ -125,6 +131,34 @@ class TPMA_Woo_Special_1083 {
             }
         }
         return true;
+    }
+
+    protected static function cart_has_tpma_product(): bool {
+        if (!function_exists('WC') || !WC()->cart) {
+            return false;
+        }
+        $target_id = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        foreach (WC()->cart->get_cart() as $item) {
+            $pid = intval($item['product_id'] ?? 0);
+            if ($pid === intval($target_id)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    protected static function cart_has_non_tpma_product(): bool {
+        if (!function_exists('WC') || !WC()->cart) {
+            return false;
+        }
+        $target_id = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        foreach (WC()->cart->get_cart() as $item) {
+            $pid = intval($item['product_id'] ?? 0);
+            if ($pid && $pid !== intval($target_id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     protected static function is_target_product_enabled(): bool {
@@ -244,6 +278,8 @@ class TPMA_Woo_Special_1083 {
 
         // 更新 session 草稿供後續結帳摘要與 regs 使用
         WC()->session->set('tpma_reg_draft', $draft);
+        WC()->session->set('tpma_reg_active', 1);
+        WC()->session->set('tpma_reg_started_at', time());
 
         // 移除舊草稿品項，避免混淆
         foreach ($cart->get_cart() as $key => $item) {
@@ -439,6 +475,8 @@ class TPMA_Woo_Special_1083 {
 
         if (WC()->session) {
             WC()->session->set('tpma_reg_draft', null);
+            WC()->session->set('tpma_reg_active', null);
+            WC()->session->set('tpma_reg_started_at', null);
         }
     }
 
@@ -819,6 +857,74 @@ class TPMA_Woo_Special_1083 {
         return $classes;
     }
 
+    /**
+     * 禁止 1083 與其他商品混車：一律先清空再加入。
+     */
+    public static function enforce_no_mixed_cart($passed, $product_id, $quantity) {
+        if (!function_exists('WC') || !WC()->cart) {
+            return $passed;
+        }
+        $target_id = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        $pid = intval($product_id);
+
+        $has_tpma = self::cart_has_tpma_product();
+        $has_non_tpma = self::cart_has_non_tpma_product();
+
+        // 新加入的是 1083，購物車有其他商品 → 清空再加入
+        if ($pid === intval($target_id) && $has_non_tpma) {
+            self::clear_tpma_cart_and_session(true);
+        }
+
+        // 新加入的是非 1083，購物車已有 1083 → 清空再加入
+        if ($pid !== intval($target_id) && $has_tpma) {
+            self::clear_tpma_cart_and_session(true);
+        }
+
+        return $passed;
+    }
+
+    public static function enforce_no_mixed_cart_on_cart() {
+        if (!function_exists('WC') || !WC()->cart) {
+            return;
+        }
+        if (self::cart_has_tpma_product() && self::cart_has_non_tpma_product()) {
+            self::clear_tpma_cart_and_session(true);
+            wc_add_notice('1083 報名商品不可與其他商品同時結帳，購物車已清空。', 'notice');
+        }
+    }
+
+    /**
+     * 中斷流程清空：非 checkout/thankyou/order-pay/cart 或超過 30 分鐘即清除。
+     */
+    public static function maybe_abort_tpma_flow() {
+        if (is_admin() && !defined('DOING_AJAX')) {
+            return;
+        }
+        if (!function_exists('WC') || !WC()->session || !WC()->cart) {
+            return;
+        }
+
+        $draft = WC()->session->get('tpma_reg_draft');
+        $active = WC()->session->get('tpma_reg_active');
+
+        if (empty($draft) && empty($active) && !self::cart_has_tpma_product()) {
+            return;
+        }
+
+        $started = (int) WC()->session->get('tpma_reg_started_at');
+        $expired = ($started > 0) && ((time() - $started) > self::REG_TIMEOUT_SECONDS);
+
+        if (self::is_tpma_flow_page()) {
+            if ($expired) {
+                self::clear_tpma_cart_and_session(true);
+            }
+            return;
+        }
+
+        // 非流程頁即視為中斷
+        self::clear_tpma_cart_and_session(true);
+    }
+
     /* --------- Helper functions --------- */
 
     protected static function is_tpma_order($order) {
@@ -829,6 +935,22 @@ class TPMA_Woo_Special_1083 {
             || (bool)$order->get_meta('_tpma_reg_no', true)
             || (bool)$order->get_meta('_tpma_reg_ids', true)
             || (int)$order->get_meta('_tpma_course_id', true) > 0;
+    }
+
+    protected static function is_tpma_flow_page(): bool {
+        if (function_exists('is_checkout') && is_checkout()) {
+            return true;
+        }
+        if (function_exists('is_cart') && is_cart()) {
+            return true;
+        }
+        if (function_exists('is_order_received_page') && is_order_received_page()) {
+            return true;
+        }
+        if (function_exists('is_checkout_pay_page') && is_checkout_pay_page()) {
+            return true;
+        }
+        return false;
     }
 
     protected static function resolve_registration_product() {
@@ -1001,5 +1123,19 @@ class TPMA_Woo_Special_1083 {
         update_user_meta((int)$uid, 'tpma_virtual_reg_no', $reg_no);
 
         return (int)$uid;
+    }
+
+    protected static function clear_tpma_cart_and_session($clear_cart = true) {
+        if (!function_exists('WC')) {
+            return;
+        }
+        if ($clear_cart && WC()->cart) {
+            WC()->cart->empty_cart();
+        }
+        if (WC()->session) {
+            WC()->session->set('tpma_reg_draft', null);
+            WC()->session->set('tpma_reg_active', null);
+            WC()->session->set('tpma_reg_started_at', null);
+        }
     }
 }
