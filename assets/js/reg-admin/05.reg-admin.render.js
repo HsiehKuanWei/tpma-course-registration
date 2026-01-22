@@ -168,7 +168,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   title.innerHTML = `報名編號：<span id="detail-reg-id">${U.esc(row.reg_no || 'N/A')}</span> 詳細資料`;
   detailContainer.appendChild(title);
 
-  // 區塊 1: 報名基本資料
+  // 區塊 1: 課程資料
   const basicSection = document.createElement('div');
   basicSection.className = 'tpma-reg-detail-section';
   basicSection.id = 'section-basic';
@@ -193,17 +193,9 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField(basicSection, '課程名稱', row.course_name);
   appendField(basicSection, '授課講師', row.lecturer);
   appendField(basicSection, '授課日期時間', R.buildClassDateRangeHtml(ctx, row), true);
-  appendField(basicSection, '報名時間', U.trimToMinute(row.created_at));
-  if (row.woocommerce_order_id) {
-    const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
-    const orderIdLabel = row.woocommerce_order_id;
-    const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
-    appendField(basicSection, 'WooCommerce 訂單 ID', linkHtml, true);
-  }
-  appendField(basicSection, '付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
   detailContainer.appendChild(basicSection);
 
-  // 區塊 2: 學員資訊
+  // 區塊 2: 學員資料
   const studentSection = document.createElement('div');
   studentSection.className = 'tpma-reg-detail-section';
   studentSection.id = 'section-student';
@@ -211,11 +203,10 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField(studentSection, '部門', row.department);
   appendField(studentSection, '職稱', row.job_title);
   appendField(studentSection, '手機', row.mobile);
-  appendField(studentSection, '電話', row.phone);
-  appendField(studentSection, 'Email（多筆）', row.emails);
+  appendField(studentSection, 'Email', row.emails);
   detailContainer.appendChild(studentSection);
 
-  // 區塊 3: 公司與聯絡資訊
+  // 區塊 3: 公司資料
   const companySection = document.createElement('div');
   companySection.className = 'tpma-reg-detail-section';
   companySection.id = 'section-company';
@@ -223,15 +214,24 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField(companySection, '統一編號', row.tax_id);
   appendField(companySection, '承辦人姓名', row.contact_name);
   appendField(companySection, '承辦人Email', row.contact_email);
+  appendField(companySection, '電話', row.phone);
   appendField(companySection, '收件人', row.receiver);
   appendField(companySection, '地址', row.address);
   appendField(companySection, '資訊來源', row.source);
   detailContainer.appendChild(companySection);
 
-  // 區塊 4: 收據與付款
+  // 區塊 4: 帳單資訊
   const receiptSection = document.createElement('div');
   receiptSection.className = 'tpma-reg-detail-section';
   receiptSection.id = 'section-receipt';
+  if (row.woocommerce_order_id) {
+    const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
+    const orderIdLabel = row.woocommerce_order_id;
+    const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
+    appendField(receiptSection, 'WooCommerce 訂單 ID', linkHtml, true);
+  }
+  appendField(receiptSection, '付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
+  appendField(receiptSection, '報名時間', U.trimToMinute(row.created_at));
   appendField(receiptSection, '收據方式', L.receiptTypeLabel(row.receipt_type));
   appendField(receiptSection, '收據狀態', L.receiptStatusLabel(row.receipt_status));
   appendField(receiptSection, '匯款金額（元）', U.formatAmount(row.remit_amount));
@@ -239,7 +239,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField(receiptSection, '匯款日期', row.remit_paid_at);
   detailContainer.appendChild(receiptSection);
 
-  // 區塊 5: 其他資訊
+  // 區塊 5: 學習狀態
   const otherSection = document.createElement('div');
   otherSection.className = 'tpma-reg-detail-section';
   otherSection.id = 'section-other';
@@ -379,26 +379,18 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     parent.appendChild(fieldDiv);
   };
 
-  // 區塊 1: 報名基本資料
+  // 區塊 1: 課程資料
   const basicSection = document.createElement('div');
   basicSection.className = 'tpma-reg-detail-section edit-mode';
   basicSection.id = 'section-basic';
-  appendEditField(basicSection, '報名編號', 'reg_no', 'text', row.reg_no, [], true);
-  appendEditField(basicSection, '報名時間', 'created_at', 'text', U.trimToMinute(row.created_at), [], true);
   appendEditField(basicSection, '課程名稱', 'course_id', 'select', row.course_id, [], false); // populated by populateEditCourseAndDate
   basicSection.querySelector('[data-field="course_id"]').id = `tpma-edit-course-${row.id}`;
+  appendEditField(basicSection, '授課講師', '', 'text', row.lecturer, [], true);
   appendEditField(basicSection, '授課日期時間', 'class_date', 'select', row.class_date, [], false); // populated by populateEditCourseAndDate
   basicSection.querySelector('[data-field="class_date"]').id = `tpma-edit-class-date-${row.id}`;
-  if (row.woocommerce_order_id) {
-    const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
-    const orderIdLabel = row.woocommerce_order_id;
-    const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
-    appendEditField(basicSection, 'WooCommerce 訂單 ID', 'woocommerce_order_id', 'text', linkHtml, [], true);
-  }
-  appendEditField(basicSection, '付款狀態 (WC)', 'payment_status', 'select', row.payment_status, (O.wcStatus || []));
   detailContainer.appendChild(basicSection);
 
-  // 區塊 2: 學員資訊
+  // 區塊 2: 學員資料
   const studentSection = document.createElement('div');
   studentSection.className = 'tpma-reg-detail-section edit-mode';
   studentSection.id = 'section-student';
@@ -406,11 +398,10 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(studentSection, '部門', 'department', 'text', row.department);
   appendEditField(studentSection, '職稱', 'job_title', 'text', row.job_title);
   appendEditField(studentSection, '手機', 'mobile', 'text', row.mobile);
-  appendEditField(studentSection, '電話', 'phone', 'text', row.phone);
-  appendEditField(studentSection, 'Email（多筆）', 'emails', 'text', row.emails);
+  appendEditField(studentSection, 'Email', 'emails', 'text', row.emails);
   detailContainer.appendChild(studentSection);
 
-  // 區塊 3: 公司與聯絡資訊
+  // 區塊 3: 公司資料
   const companySection = document.createElement('div');
   companySection.className = 'tpma-reg-detail-section edit-mode';
   companySection.id = 'section-company';
@@ -418,6 +409,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(companySection, '統一編號', 'tax_id', 'text', row.tax_id);
   appendEditField(companySection, '承辦人姓名', 'contact_name', 'text', row.contact_name);
   appendEditField(companySection, '承辦人Email', 'contact_email', 'text', row.contact_email);
+  appendEditField(companySection, '電話', 'phone', 'text', row.phone);
   appendEditField(companySection, '收件人', 'receiver', 'text', row.receiver);
 
   // 地址：檢視模式合併顯示；編輯模式一分為四（避免回寫 Woo 時重複拼接）
@@ -429,15 +421,23 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(companySection, '資訊來源', 'source', 'text', row.source);
   detailContainer.appendChild(companySection);
 
-  // 區塊 4: 收據與付款
+  // 區塊 4: 帳單資訊
   const receiptSection = document.createElement('div');
   receiptSection.className = 'tpma-reg-detail-section edit-mode';
   receiptSection.id = 'section-receipt';
-    appendEditField(receiptSection, '收據方式', 'receipt_type', 'select', row.receipt_type, [
+  if (row.woocommerce_order_id) {
+    const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
+    const orderIdLabel = row.woocommerce_order_id;
+    const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
+    appendEditField(receiptSection, 'WooCommerce 訂單 ID', 'woocommerce_order_id', 'text', linkHtml, [], true);
+  }
+  appendEditField(receiptSection, '付款狀態 (WC)', 'payment_status', 'select', row.payment_status, (O.wcStatus || []));
+  appendEditField(receiptSection, '報名時間', 'created_at', 'text', U.trimToMinute(row.created_at), [], true);
+  appendEditField(receiptSection, '收據方式', 'receipt_type', 'select', row.receipt_type, [
     { value: '', label: '請選擇' },
     ...(O.receiptType || [])
   ]);
-    appendEditField(receiptSection, '收據狀態', 'receipt_status', 'select', row.receipt_status, [
+  appendEditField(receiptSection, '收據狀態', 'receipt_status', 'select', row.receipt_status, [
     { value: '', label: '請選擇' },
     ...(O.receiptStatus || [])
   ]);
@@ -447,7 +447,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(receiptSection, '匯款日期', 'remit_paid_at', 'date', row.remit_paid_at);
   detailContainer.appendChild(receiptSection);
 
-  // 區塊 5: 其他資訊
+  // 區塊 5: 學習狀態
   const otherSection = document.createElement('div');
   otherSection.className = 'tpma-reg-detail-section edit-mode';
   otherSection.id = 'section-other';

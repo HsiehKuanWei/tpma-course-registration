@@ -30,6 +30,9 @@ $TPMA_ENUM = [
   'regStatus' => [
     'cert_pending' => '待發證',
     'completed'    => '已結訓',
+    'hold'         => '保留中',
+    'hold_refunded' => '待退款'
+
   ],
 
   // Woo 訂單狀態（付款狀態）

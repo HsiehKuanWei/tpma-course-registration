@@ -61,6 +61,7 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-rest-public.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-rest-admin.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-mail-dispatcher.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-import.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-woo-shared.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-admin-woo-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-thankyou-view.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-1083.php';

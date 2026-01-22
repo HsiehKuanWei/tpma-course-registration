@@ -9,6 +9,8 @@ const L = global.TPMARegAdmin.labels = global.TPMARegAdmin.labels || {};
 L.STATUS_LABELS = {
   cert_pending: '待發證',
   completed:    '已結訓',
+  hold:         '保留中',
+  hold_refunded: '待退款'
 };
 
 L.PAYMENT_STATUS_LABELS = {
