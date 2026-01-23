@@ -17,7 +17,7 @@ L.PAYMENT_STATUS_LABELS = {
   'pending':        '待付款 (WC)',
   'processing':     '待核帳 (WC)',
   'on-hold':        '尚未付款 (WC)',
-  'completed':      '已完成 (WC)',
+  'completed':      '已付款 (WC)',
   'cancelled':      '已取消 (WC)',
   'refunded':       '已退款 (WC)',
   'failed':         '失敗 (WC)',

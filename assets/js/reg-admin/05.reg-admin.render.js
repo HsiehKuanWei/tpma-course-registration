@@ -10,6 +10,14 @@ const L = global.TPMARegAdmin.labels;
 const S = global.TPMARegAdmin.state;
 const API = global.TPMARegAdmin.api;
 const O = global.TPMARegAdmin.options || {};
+const ADJUSTING_VALUE = 'adjusting';
+const ADJUSTING_LABEL = '調整中';
+const isAdjustingCourse = (v)=>(
+  v === ADJUSTING_VALUE || v === 0 || v === '0' || v === '' || v == null
+);
+const isAdjustingDate = (v)=>(
+  v === ADJUSTING_VALUE || v === '' || v == null
+);
 
 R.getCourseHoursForRow = function getCourseHoursForRow(ctx, row){
   const tryParse = (v)=>{ const n=parseFloat(v); return isNaN(n)?0:n; };
@@ -43,7 +51,7 @@ R.findSessionDatetimeForRow = function findSessionDatetimeForRow(ctx, row){
 
 R.buildClassDateRangeHtml = function buildClassDateRangeHtml(ctx, row){
   let dtStr = row.class_date;
-  if (!dtStr) return '';
+  if (isAdjustingDate(dtStr)) return ADJUSTING_LABEL;
   let s = String(dtStr);
 
   if (s.length <= 10 || s.indexOf(' ') === -1) {
@@ -89,6 +97,13 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
   const icons = [];
   const pCode = row.payment_status || '';
   const pLabel = L.paymentStatusLabel(pCode);
+  const hideStatusByPayment = (
+    pCode === 'on-hold' ||
+    pCode === 'cancelled' ||
+    pCode === 'refunded' ||
+    pCode === 'failed' ||
+    pCode === 'checkout-draft'
+  );
   if (pLabel) {
     let pClass = '';
     switch(pCode){
@@ -107,7 +122,9 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
 
   const sCode = row.status || 'pending';
   const sLabel = L.statusLabel(sCode);
-  if (sLabel) {
+  const testState = S.getTestState(row);
+  const hideCertPendingWhenNoScore = (sCode === 'cert_pending' && testState === 'notyet');
+  if (sLabel && !hideStatusByPayment && !hideCertPendingWhenNoScore) {
     let sClass = '';
     switch(sCode){
       case 'pending': sClass='tpma-status-pill-g1-pending'; break;
@@ -134,10 +151,9 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
     icons.push('<span class="tpma-status-pill '+g2Class+'" title="收據狀態: '+U.esc(rLabel)+'">'+U.esc(rLabel)+'</span>');
   }
 
-  const testState = S.getTestState(row);
   const tLabel = (testState === 'done') ? '已測驗' : '待測驗';
-  const hideG3 = (sCode === 'cancelled' || sCode === 'completed' || sCode === 'cert_pending');
-  if (!hideG3) {
+  const hideG3 = (sCode === 'cancelled' || sCode === 'completed' || (sCode === 'cert_pending' && testState !== 'notyet'));
+  if (!hideG3 && !hideStatusByPayment) {
     const g3Class = (testState === 'done') ? 'tpma-status-pill-g3-done' : 'tpma-status-pill-g3-notyet';
     icons.push('<span class="tpma-status-pill '+g3Class+'" title="測驗狀態: '+U.esc(tLabel)+'">'+U.esc(tLabel)+'</span>');
   }
@@ -159,6 +175,10 @@ R.appendFieldView = function appendFieldView(section, labelText, val, asHtml){
 
 R.renderDetailView = function renderDetailView(ctx, container, row){
   container.innerHTML = '';
+
+  const isAdjustingRow = isAdjustingCourse(row.course_id) || isAdjustingDate(row.class_date);
+  const courseText = U.display(row.course_name) || (isAdjustingCourse(row.course_id) ? ADJUSTING_LABEL : '');
+  const lecturerText = isAdjustingRow ? ADJUSTING_LABEL : U.display(row.lecturer || row.lecturer_name);
 
   const detailContainer = document.createElement('div');
   detailContainer.className = 'tpma-reg-detail-container';
@@ -190,8 +210,8 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
     parent.appendChild(fieldDiv);
   };
 
-  appendField(basicSection, '課程名稱', row.course_name);
-  appendField(basicSection, '授課講師', row.lecturer);
+  appendField(basicSection, '課程名稱', courseText);
+  appendField(basicSection, '授課講師', lecturerText);
   appendField(basicSection, '授課日期時間', R.buildClassDateRangeHtml(ctx, row), true);
   detailContainer.appendChild(basicSection);
 
@@ -274,6 +294,11 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
   if (!courseSel || !dateSel) return;
 
   courseSel.innerHTML = '<option value="">請選擇課程</option>';
+  const adjustingCourseOpt = document.createElement('option');
+  adjustingCourseOpt.value = ADJUSTING_VALUE;
+  adjustingCourseOpt.textContent = ADJUSTING_LABEL;
+  if (isAdjustingCourse(row.course_id)) adjustingCourseOpt.selected = true;
+  courseSel.appendChild(adjustingCourseOpt);
   (ctx.data.allCourses || []).forEach(c=>{
     const opt = document.createElement('option');
     opt.value = c.id || '';
@@ -284,6 +309,17 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
 
   function rebuildDates(selectedCourseId){
     dateSel.innerHTML = '<option value="">請選擇授課日期時間</option>';
+    const adjustingDateOpt = document.createElement('option');
+    adjustingDateOpt.value = ADJUSTING_VALUE;
+    adjustingDateOpt.textContent = ADJUSTING_LABEL;
+    if (isAdjustingDate(row.class_date) || String(selectedCourseId || '') === ADJUSTING_VALUE) {
+      adjustingDateOpt.selected = true;
+    }
+    dateSel.appendChild(adjustingDateOpt);
+
+    if (String(selectedCourseId || '') === ADJUSTING_VALUE) {
+      return;
+    }
     const course = (ctx.data.allCourses || []).find(c => String(c.id) === String(selectedCourseId));
     let has=false;
 
@@ -386,6 +422,8 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(basicSection, '課程名稱', 'course_id', 'select', row.course_id, [], false); // populated by populateEditCourseAndDate
   basicSection.querySelector('[data-field="course_id"]').id = `tpma-edit-course-${row.id}`;
   appendEditField(basicSection, '授課講師', '', 'text', row.lecturer, [], true);
+  const lecturerInput = basicSection.querySelector('input[type="text"]');
+  if (lecturerInput) lecturerInput.id = `tpma-edit-lecturer-${row.id}`;
   appendEditField(basicSection, '授課日期時間', 'class_date', 'select', row.class_date, [], false); // populated by populateEditCourseAndDate
   basicSection.querySelector('[data-field="class_date"]').id = `tpma-edit-class-date-${row.id}`;
   detailContainer.appendChild(basicSection);
@@ -459,6 +497,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     row.status,
     (O.regStatus || []).filter(x => x.value !== '') // 編輯不需要「全部」
   );
+  otherSection.querySelector('[data-field="status"]').id = `tpma-edit-status-${row.id}`;
   appendEditField(otherSection, '測驗成績', 'test_score', 'text', row.test_score);
   appendEditField(otherSection, '證書編號', 'certificate_id', 'text', row.certificate_id);
   appendEditField(otherSection, '備註', 'note', 'textarea', row.note);
@@ -477,6 +516,50 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
 
   R.populateEditCourseAndDate(ctx, row);
 
+  const courseSel = document.getElementById(`tpma-edit-course-${row.id}`);
+  const dateSel = document.getElementById(`tpma-edit-class-date-${row.id}`);
+  const statusSel = document.getElementById(`tpma-edit-status-${row.id}`);
+  const lecturerEl = document.getElementById(`tpma-edit-lecturer-${row.id}`);
+  const originalLecturerText = U.display(row.lecturer || row.lecturer_name);
+
+  function setAdjustingMode(){
+    if (courseSel) courseSel.value = ADJUSTING_VALUE;
+    if (dateSel) dateSel.value = ADJUSTING_VALUE;
+    if (statusSel) statusSel.value = 'hold';
+    if (lecturerEl) lecturerEl.value = ADJUSTING_LABEL;
+  }
+
+  function resetLecturerIfNeeded(){
+    if (!lecturerEl) return;
+    if (lecturerEl.value === ADJUSTING_LABEL) {
+      lecturerEl.value = originalLecturerText;
+    }
+  }
+
+  if (courseSel && dateSel && statusSel) {
+    courseSel.addEventListener('change', function(){
+      if (this.value === ADJUSTING_VALUE) {
+        dateSel.value = ADJUSTING_VALUE;
+        statusSel.value = 'hold';
+        if (lecturerEl) lecturerEl.value = ADJUSTING_LABEL;
+      } else if (statusSel.value !== 'hold') {
+        resetLecturerIfNeeded();
+      }
+    });
+
+    statusSel.addEventListener('change', function(){
+      if (this.value === 'hold') {
+        setAdjustingMode();
+      }
+    });
+  }
+
+  if (statusSel && statusSel.value === 'hold') {
+    setAdjustingMode();
+  } else if (lecturerEl && (isAdjustingCourse(row.course_id) || isAdjustingDate(row.class_date))) {
+    lecturerEl.value = ADJUSTING_LABEL;
+  }
+
   actionsDiv.querySelector(`#tpma-btn-save-detail-${row.id}`).addEventListener('click', async function(){
     await R.saveDetail(ctx, container, row.id);
   });
@@ -494,6 +577,8 @@ R.saveDetail = async function saveDetail(ctx, container, id){
     let v = el.value;
     if (v == null) v = '';
     v = v.trim();
+    if (f === 'course_id' && v === ADJUSTING_VALUE) v = '0';
+    if (f === 'class_date' && v === ADJUSTING_VALUE) v = '';
     if (f === 'remit_amount' && v !== '') v = String(parseInt(v.replace(/,/g,''), 10) || 0);
     payload[f] = v;
   });
@@ -576,8 +661,11 @@ R.renderTable = function renderTable(ctx){
     // 4) course
     const cCourse = document.createElement('div');
     cCourse.className = 'tpma-reg-cell';
-    const cname = U.display(row.course_name);
-    const lect = U.display(row.lecturer_name);
+    const cnameRaw = U.display(row.course_name);
+    const cname = cnameRaw || (isAdjustingCourse(row.course_id) ? ADJUSTING_LABEL : '');
+    const lectRaw = U.display(row.lecturer_name || row.lecturer);
+    const isAdjustingRow = isAdjustingCourse(row.course_id) || isAdjustingDate(row.class_date);
+    const lect = isAdjustingRow ? ADJUSTING_LABEL : lectRaw;
     const titleAttr = lect ? ' title="講師：' + U.esc(lect) + '"' : '';
     cCourse.innerHTML = '<div class="tpma-cell-wrap"><span'+titleAttr+'>' + U.esc(cname) + '</span></div>';
     summary.appendChild(cCourse);

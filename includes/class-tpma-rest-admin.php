@@ -336,19 +336,26 @@ public static function admin_update_reg($request)
         }
 
         if ($f === 'course_id') {
-            $course_id = intval($d[$f]);
-            if ($course_id > 0) {
-                $tpma_update[$f] = $course_id;
+            $raw_course_id = $d[$f];
+            if ($raw_course_id === 'adjusting' || $raw_course_id === '' || $raw_course_id === null) {
+                $tpma_update[$f] = 0;
+            } else {
+                $course_id = intval($raw_course_id);
+                if ($course_id >= 0) {
+                    $tpma_update[$f] = $course_id;
+                }
             }
             continue;
         }
 
         if ($f === 'class_date') {
             $class_date = sanitize_text_field($d[$f]);
-            if ($class_date != '') {
+            if ($class_date === '' || $class_date === 'adjusting') {
+                $tpma_update[$f] = null;
+            } else {
                 $class_date = substr($class_date, 0, 10);
+                $tpma_update[$f] = $class_date;
             }
-            $tpma_update[$f] = $class_date;
             continue;
         }
 
