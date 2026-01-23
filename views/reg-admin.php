@@ -31,7 +31,8 @@ $TPMA_ENUM = [
     'cert_pending' => '待發證',
     'completed'    => '已結訓',
     'hold'         => '保留中',
-    'hold_refunded' => '待退款'
+    'hold_refunded' => '待退款',
+    'cancelled'     => '已取消'
 
   ],
 
@@ -340,6 +341,10 @@ window.TPMARegAdminConfig = <?php echo wp_json_encode(array(
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/01.tpma-public.utils.js?ver=' . tpma_cr_asset_ver('assets/js/public/01.tpma-public.utils.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/02.tpma-public.api.js?ver=' . tpma_cr_asset_ver('assets/js/public/02.tpma-public.api.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/01.reg-admin.utils.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/01.reg-admin.utils.js') ); ?>"></script>
+<script>
+window.TPMARegAdmin = window.TPMARegAdmin || {};
+window.TPMARegAdmin.enums = <?php echo wp_json_encode($TPMA_ENUM, JSON_UNESCAPED_UNICODE); ?>;
+</script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/02.reg-admin.labels.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/02.reg-admin.labels.js') ); ?>"></script>
 
 <script>
