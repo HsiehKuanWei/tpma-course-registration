@@ -184,7 +184,7 @@ function addLearner() {
       <div><div class="tpma-label">職稱</div><input type="text" class="tpma-input learner-title"></div>
     </div>
     <div class="tpma-inline-3">
-      <div><div class="tpma-label">Email</div><input type="email" class="tpma-input learner-email"><div class="tpma-error-msg learner-error-email"></div></div>
+      <div><div class="tpma-label">Email</div><input type="text" class="tpma-input learner-email" inputmode="email"><div class="tpma-error-msg learner-error-email"></div></div>
       <div><div class="tpma-label">行動電話</div><input type="text" class="tpma-input learner-mobile"><div class="tpma-error-msg learner-error-mobile"></div></div>
       <div></div>
     </div>
@@ -264,13 +264,17 @@ function validateForm() {
     }
 
     const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!email) {
+    const emailList = email
+      .split(",")
+      .map((e) => e.trim())
+      .filter((e) => e.length > 0);
+    if (emailList.length === 0) {
       eEmail.textContent = "請填寫學員 Email";
       emailInput.classList.add("tpma-input-error");
       if (!firstErrorElement) firstErrorElement = emailInput;
       ok = false;
-    } else if (!emailRe.test(email)) {
-      eEmail.textContent = "學員 Email 格式不正確";
+    } else if (emailList.some((e) => !emailRe.test(e))) {
+      eEmail.textContent = "學員 Email 格式不正確（可用逗號分隔多個 Email）";
       emailInput.classList.add("tpma-input-error");
       if (!firstErrorElement) firstErrorElement = emailInput;
       ok = false;

@@ -9,6 +9,16 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_Woo_Shared
 {
     /**
+     * Sanitize learner emails while preserving comma/semicolon separators.
+     */
+    private static function sanitize_emails_raw($raw) {
+        $text = sanitize_text_field($raw ?? '');
+        if ($text === '') return '';
+        // Normalize full-width separators/spaces to half-width for consistency.
+        $text = str_replace(array('，', '；'), array(',', ';'), $text);
+        return trim($text);
+    }
+    /**
      * Ensure WC session/cart is ready.
      */
     public static function ensure_wc_session_ready() {
@@ -79,7 +89,7 @@ class TPMA_CR_Woo_Shared
                 'department'   => sanitize_text_field($learner['department'] ?? ''),
                 'job_title'    => sanitize_text_field($learner['job_title'] ?? ''),
                 'mobile'       => sanitize_text_field($learner['mobile'] ?? ''),
-                'emails'       => sanitize_email($learner['emails'] ?? ''),
+                'emails'       => self::sanitize_emails_raw($learner['emails'] ?? ''),
             );
         }
 
@@ -407,7 +417,7 @@ class TPMA_CR_Woo_Shared
                     'department'           => sanitize_text_field($learner['department'] ?? ''),
                     'job_title'            => sanitize_text_field($learner['job_title'] ?? ''),
                     'mobile'               => sanitize_text_field($learner['mobile'] ?? ''),
-                    'emails'               => sanitize_email($learner['emails'] ?? ''),
+                    'emails'               => self::sanitize_emails_raw($learner['emails'] ?? ''),
 
                     'contact_name'         => trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
                     'contact_email'        => sanitize_email($order->get_billing_email()),
