@@ -87,6 +87,14 @@ function shouldHideLowEnrollment(row, nowTs) {
   return shouldHide;
 }
 
+// Tag only uses enrollment count, not time window.
+function getEnrollmentTagHtml(row) {
+  const isConfirmed = row.registration_count >= LOW_ENROLLMENT_THRESHOLD;
+  const text = isConfirmed ? '確定開課' : '招生中';
+  const className = isConfirmed ? 'tpma-tag-confirmed' : 'tpma-tag-open';
+  return `<span class="tpma-course-tag ${className}">${text}</span>`;
+}
+
 /**
  * 產生報名網址：
  * - 用 course_id + session_id 帶到報名表
@@ -294,6 +302,7 @@ function renderCourseList() { // 函式名稱從 renderTableBody 改為 renderCo
     const escLecturer = Util.esc(r.lecturer);
     const escTime = Util.esc(r.display_time);
     const escCategory = Util.esc(r.category);
+    const enrollmentTagHtml = getEnrollmentTagHtml(r);
 
     // Markdown 渲染
     const introHtml = r.intro ? marked.parse(r.intro) : '無';
@@ -303,7 +312,7 @@ function renderCourseList() { // 函式名稱從 renderTableBody 改為 renderCo
       <div class="tpma-course-card" data-session-id="${r.session_id}">
         <div class="tpma-card-summary tpma-list-grid-layout">
           <div class="tpma-course-time">${escTime}</div>
-          <div class="tpma-course-name">${escCourseName}</div>
+          <div class="tpma-course-name">${escCourseName}${enrollmentTagHtml}</div>
           <div class="tpma-course-lecturer">${escLecturer}</div>
           <div class="tpma-actions">
             <button class="tpma-btn tpma-btn-reg" onclick="window.open('${regUrl}', '_blank');">

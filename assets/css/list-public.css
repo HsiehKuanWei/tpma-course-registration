@@ -97,6 +97,10 @@
   font-weight:bold;
   font-size:15px;
   color:var(--tpma-dark-gray);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
 }
 .tpma-card-summary .tpma-course-lecturer{ color:var(--tpma-secondary-color); }
 
@@ -167,6 +171,28 @@
   margin-top:20px;
 }
 .tpma-details-actions .tpma-btn{ min-width:120px; }
+
+.tpma-course-tag{
+  display:inline-flex;
+  align-items:center;
+  padding:2px 8px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:600;
+  line-height:1.2;
+  border:1px solid transparent;
+  white-space:nowrap;
+}
+.tpma-course-tag.tpma-tag-confirmed{
+  color:var(--tpma-success-color);
+  background:rgba(40, 167, 69, 0.12);
+  border-color:rgba(40, 167, 69, 0.35);
+}
+.tpma-course-tag.tpma-tag-open{
+  color:#8a5b00;
+  background:rgba(255, 193, 7, 0.18);
+  border-color:rgba(255, 193, 7, 0.45);
+}
 
 /* RWD */
 @media (max-width: 768px){
