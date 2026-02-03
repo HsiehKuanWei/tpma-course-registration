@@ -780,7 +780,7 @@ class TPMA_CR_Mail_Dispatcher
 
     private static function get_available_vars(): array
     {
-        return array(
+        $vars = array(
             // 學員
             'student_name' => '學員姓名',
             'job_title' => '職稱',
@@ -832,6 +832,8 @@ class TPMA_CR_Mail_Dispatcher
             // 連結
             'order_public_url' => '訂單查詢連結',
         );
+
+        return apply_filters('tpma_mailer_available_vars', $vars);
     }
 
     // =========================================================
