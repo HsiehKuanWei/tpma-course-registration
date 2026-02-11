@@ -532,6 +532,17 @@ class TPMA_CR_Mail_Dispatcher
         if ($remit_date === '') {
             $remit_date = (string) $order->get_meta('_tpma_remit_date', true);
         }
+        if ($remit_date === '') {
+            $paid = $order->get_date_paid();
+            if ($paid instanceof WC_DateTime) {
+                $remit_date = $paid->date_i18n('Y-m-d');
+            } else {
+                $completed = $order->get_date_completed();
+                if ($completed instanceof WC_DateTime) {
+                    $remit_date = $completed->date_i18n('Y-m-d');
+                }
+            }
+        }
         $remit_account = (string) $order->get_meta('_tpma_remit_account', true);
 
         $context = array_merge(

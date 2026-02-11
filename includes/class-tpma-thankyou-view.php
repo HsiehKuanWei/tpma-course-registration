@@ -436,6 +436,7 @@ echo   '</div>'; // card
     private static function is_order_page_context(): bool
     {
         if (function_exists('is_order_received_page') && is_order_received_page()) return true;
+        if (function_exists('is_checkout_pay_page') && is_checkout_pay_page()) return true;
         if (function_exists('is_view_order_page') && is_view_order_page()) return true;
         return false;
     }
@@ -447,6 +448,8 @@ echo   '</div>'; // card
             $order_id = absint(get_query_var('order-received'));
         } elseif (function_exists('is_view_order_page') && is_view_order_page()) {
             $order_id = absint(get_query_var('view-order'));
+        } elseif (function_exists('is_checkout_pay_page') && is_checkout_pay_page()) {
+            $order_id = absint(get_query_var('order-pay'));
         }
         if (!$order_id || !function_exists('wc_get_order')) return null;
         $order = wc_get_order($order_id);
@@ -466,7 +469,7 @@ echo   '</div>'; // card
         $status = (string)$status;
 
         if ($status === 'on-hold') return '尚未付款';
-        if ($status === 'processing') return '待核帳';
+        if ($status === 'processing') return '處理中';
 
         return function_exists('wc_get_order_status_name')
             ? wc_get_order_status_name($status)
