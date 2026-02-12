@@ -544,6 +544,9 @@ class TPMA_CR_Mail_Dispatcher
             }
         }
         $remit_account = (string) $order->get_meta('_tpma_remit_account', true);
+        $order_public_url = method_exists($order, 'get_checkout_order_received_url')
+            ? $order->get_checkout_order_received_url()
+            : '';
 
         $context = array_merge(
             array(
@@ -604,7 +607,7 @@ class TPMA_CR_Mail_Dispatcher
                 'order_address'         => $order_address,
 
                 // 你要的「訂單查詢連結」（order-received/?key=...）
-                'order_public_url'      => method_exists($order, 'get_checkout_order_received_url') ? $order->get_checkout_order_received_url() : '',
+                'order_public_url'      => $order_public_url,
             )
         );
 
@@ -1040,6 +1043,13 @@ class TPMA_CR_Mail_Dispatcher
         if ($order->get_meta($sent_flag, true) === 'yes') {
             return false;
         }
+        $created_tpl_flag = '';
+        if (in_array($flow_key, array('pending', 'on-hold'), true)) {
+            $created_tpl_flag = '_tpma_mailer_sent_created_tpl_' . md5($template_key);
+            if ($order->get_meta($created_tpl_flag, true) === 'yes') {
+                return false;
+            }
+        }
 
         $draft = self::get_draft_from_order($order);
         $ctx = self::build_context($order, is_array($draft) ? $draft : array());
@@ -1075,6 +1085,9 @@ class TPMA_CR_Mail_Dispatcher
 
         if ($sent) {
             $order->update_meta_data($sent_flag, 'yes');
+            if ($created_tpl_flag !== '') {
+                $order->update_meta_data($created_tpl_flag, 'yes');
+            }
             $order->save();
         }
 
