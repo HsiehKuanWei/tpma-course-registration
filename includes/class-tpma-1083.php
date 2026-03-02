@@ -58,6 +58,132 @@ class TPMA_Woo_Special_1083 {
         add_filter('woocommerce_add_to_cart_validation', [__CLASS__, 'enforce_no_mixed_cart'], 10, 3);
         add_action('woocommerce_check_cart_items', [__CLASS__, 'enforce_no_mixed_cart_on_cart']);
         add_action('template_redirect', [__CLASS__, 'maybe_abort_tpma_flow'], 9);
+
+        // 發票外掛整合：1083 訂單不開立發票（僅在發票模組存在時啟用）
+        self::register_opay_invoice_guards();
+    }
+
+    protected static function register_opay_invoice_guards() {
+        if (!self::is_opay_invoice_module_available()) {
+            return;
+        }
+
+        // 經典結帳：在發票外掛儲存欄位後覆寫為 tax_exempt。
+        add_action('woocommerce_checkout_create_order', [__CLASS__, 'mark_order_opay_tax_exempt'], 99, 2);
+        // Block Checkout：Store API 更新訂單時同樣標記。
+        add_action('woocommerce_store_api_checkout_update_order_from_request', [__CLASS__, 'mark_order_opay_tax_exempt_block'], 99, 2);
+
+        // 保險：付款/狀態切換前先標記，避免任何路徑被自動開立。
+        add_action('woocommerce_payment_complete', [__CLASS__, 'mark_order_opay_tax_exempt_by_id'], 1, 1);
+        add_action('woocommerce_order_status_processing', [__CLASS__, 'mark_order_opay_tax_exempt_by_id'], 1, 1);
+        add_action('woocommerce_order_status_completed', [__CLASS__, 'mark_order_opay_tax_exempt_by_id'], 1, 1);
+
+        // 手動開立/重試攔截。
+        add_action('admin_post_opay_invoice_manual', [__CLASS__, 'intercept_opay_manual_issue_request'], 1);
+        add_action('woocommerce_order_action_opay_invoice_issue', [__CLASS__, 'intercept_opay_order_action_issue'], 1, 1);
+        add_action('woocommerce_order_action_opay_invoice_retry', [__CLASS__, 'intercept_opay_order_action_retry'], 1, 1);
+    }
+
+    protected static function is_opay_invoice_module_available(): bool {
+        return class_exists('WC_OPay_Invoice_Settings')
+            && class_exists('WC_OPay_Invoice_Checkout_Fields')
+            && class_exists('WC_OPay_Invoice_Admin_Actions');
+    }
+
+    public static function mark_order_opay_tax_exempt($order, $data = null) {
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+        if (!self::order_has_target_product($order)) {
+            return;
+        }
+        self::apply_opay_tax_exempt_meta($order);
+    }
+
+    public static function mark_order_opay_tax_exempt_block($order, $request) {
+        self::mark_order_opay_tax_exempt($order, null);
+    }
+
+    public static function mark_order_opay_tax_exempt_by_id($order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+        self::mark_order_opay_tax_exempt($order, null);
+        $order->save();
+    }
+
+    public static function intercept_opay_manual_issue_request() {
+        if (!self::is_opay_invoice_module_available()) {
+            return;
+        }
+        if (!current_user_can('manage_woocommerce')) {
+            return;
+        }
+
+        $opay_action = sanitize_key($_GET['opay_action'] ?? '');
+        if (!in_array($opay_action, array('issue', 'retry'), true)) {
+            return;
+        }
+
+        if (defined('WC_OPAY_NONCE_ORDER_ACTION')) {
+            $nonce = sanitize_text_field(wp_unslash($_GET['_wpnonce'] ?? ''));
+            if ('' === $nonce || !wp_verify_nonce($nonce, WC_OPAY_NONCE_ORDER_ACTION)) {
+                return;
+            }
+        }
+
+        $order_id = absint($_GET['order_id'] ?? 0);
+        $order = wc_get_order($order_id);
+        if (!$order instanceof WC_Order || !self::order_has_target_product($order)) {
+            return;
+        }
+
+        self::apply_opay_tax_exempt_meta($order);
+        $order->add_order_note('[電子發票] 已阻擋手動開立：1083 商品不開立發票。');
+        $order->save();
+        self::set_opay_admin_notice('error', '此訂單包含 1083 商品，不可開立發票。');
+
+        wp_safe_redirect($order->get_edit_order_url());
+        exit;
+    }
+
+    public static function intercept_opay_order_action_issue($order) {
+        self::intercept_opay_order_action_common($order, 'issue');
+    }
+
+    public static function intercept_opay_order_action_retry($order) {
+        self::intercept_opay_order_action_common($order, 'retry');
+    }
+
+    protected static function intercept_opay_order_action_common($order, $action) {
+        if (!self::is_opay_invoice_module_available()) {
+            return;
+        }
+        if (!$order instanceof WC_Order || !self::order_has_target_product($order)) {
+            return;
+        }
+
+        self::apply_opay_tax_exempt_meta($order);
+        $order->add_order_note('[電子發票] 已阻擋手動開立：1083 商品不開立發票。');
+        $order->save();
+
+        if ('issue' === $action) {
+            remove_action('woocommerce_order_action_opay_invoice_issue', ['WC_OPay_Invoice_Admin_Actions', 'wc_action_issue'], 10);
+        } elseif ('retry' === $action) {
+            remove_action('woocommerce_order_action_opay_invoice_retry', ['WC_OPay_Invoice_Admin_Actions', 'wc_action_retry'], 10);
+        }
+
+        self::set_opay_admin_notice('error', '此訂單包含 1083 商品，不可開立發票。');
+    }
+
+    protected static function apply_opay_tax_exempt_meta($order) {
+        $meta_key = defined('WC_OPAY_META_INVOICE_TYPE') ? WC_OPAY_META_INVOICE_TYPE : '_opay_invoice_type';
+        $order->update_meta_data($meta_key, 'tax_exempt');
+    }
+
+    protected static function set_opay_admin_notice($type, $message) {
+        set_transient('opay_invoice_admin_notice', array($type, $message), 60);
     }
 
     /**
@@ -620,6 +746,36 @@ class TPMA_Woo_Special_1083 {
             || (bool)$order->get_meta('_tpma_reg_no', true)
             || (bool)$order->get_meta('_tpma_reg_ids', true)
             || (int)$order->get_meta('_tpma_course_id', true) > 0;
+    }
+
+    protected static function order_has_target_product($order): bool {
+        if (!$order instanceof WC_Order) {
+            return false;
+        }
+
+        $target_id = intval(apply_filters('tpma_special_product_id', self::PRODUCT_ID));
+        if ($target_id < 1) {
+            return false;
+        }
+
+        foreach ($order->get_items('line_item') as $item) {
+            if (!$item instanceof WC_Order_Item_Product) {
+                continue;
+            }
+
+            $product_id = intval($item->get_product_id());
+            $variation_id = intval($item->get_variation_id());
+            if ($product_id === $target_id || $variation_id === $target_id) {
+                return true;
+            }
+
+            $product = $item->get_product();
+            if ($product instanceof WC_Product && intval($product->get_parent_id()) === $target_id) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     protected static function is_tpma_flow_page(): bool {

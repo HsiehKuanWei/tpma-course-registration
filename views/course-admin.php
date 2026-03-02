@@ -123,20 +123,13 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 
             <optgroup label="專業課程">
               <option value="B1">董事會成員和管理團隊之間的關係與合作</option>
-              <option value="B2">獨立董事及審計委員會</option>
-              <option value="B3">公司治理與內部控制</option>
-              <option value="B4">資訊安全與數位治理</option>
-              <option value="B5">風險管理與危機處理</option>
-              <option value="B6">企業併購、投資與策略聯盟</option>
-              <option value="B7">ESG、永續治理、氣候風險</option>
-              <option value="B8">國際法令、跨境合規與洗錢防制</option>
+              <option value="B2">董事與股東會事務</option>
+              <option value="B3">公司所屬產業之業務、商務</option>
+              <option value="B4">風險管理、內部控制、數位治理</option>
+              <option value="B5">其他</option>
             </optgroup>
 
-            <optgroup label="延伸課程">
-              <option value="C1">專案管理（含 IPMA）</option>
-              <option value="C2">領導與溝通</option>
-              <option value="C3">策略規劃與轉型</option>
-            </optgroup>
+
           </select>
         </label>
 
