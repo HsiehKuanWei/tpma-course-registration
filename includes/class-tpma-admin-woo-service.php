@@ -63,7 +63,7 @@ class TPMA_CR_Admin_Woo_Service
 
                 'receiver'           => $order->get_shipping_first_name(),
                 'receipt_type'       => $order->get_meta('_tpma_receipt_type', true),
-                'tax_id'             => $order->get_meta('_billing_vat_id', true),
+                'tax_id'             => self::get_order_tax_id($order),
                 'remit_amount_total' => $order->get_meta('_tpma_remit_amount_total', true),
                 'remit_paid_at'      => $remit_paid_at,
                 'remit_account'      => $order->get_meta('_tpma_remit_account', true),
@@ -160,7 +160,11 @@ class TPMA_CR_Admin_Woo_Service
                 $addr[$info['field']] = $val;
                 $order->set_address($addr, 'shipping');
             } elseif ($info['type'] === 'meta') {
-                $order->update_meta_data($info['field'], $val);
+                if ($info['field'] === '_billing_vat_id') {
+                    self::set_order_tax_id($order, $val);
+                } else {
+                    $order->update_meta_data($info['field'], $val);
+                }
             } elseif ($info['type'] === 'customer_note') {
                 $current = (string) $order->get_customer_note();
                 if ($current !== (string) $val) {
@@ -276,6 +280,49 @@ class TPMA_CR_Admin_Woo_Service
         }
 
         return array('has_change' => $has_change);
+    }
+
+    /**
+     * 統編讀取：優先舊 TPMA 欄位，缺值時回退 O'Pay。
+     */
+    private static function get_order_tax_id($order)
+    {
+        if (!$order instanceof WC_Order) {
+            return '';
+        }
+
+        $tax_id = trim((string) $order->get_meta('_billing_vat_id', true));
+        if ($tax_id === '') {
+            $tax_id = trim((string) $order->get_meta('_opay_tax_id', true));
+        }
+        return $tax_id;
+    }
+
+    /**
+     * 統編寫入：維持舊 TPMA 欄位，必要時同步 O'Pay 欄位。
+     */
+    private static function set_order_tax_id($order, $tax_id)
+    {
+        if (!$order instanceof WC_Order) {
+            return;
+        }
+
+        $tax_id = preg_replace('/\D+/', '', (string) $tax_id);
+        $opay_type = (string) $order->get_meta('_opay_invoice_type', true);
+        $has_opay_tax = trim((string) $order->get_meta('_opay_tax_id', true)) !== '';
+
+        if ($tax_id === '') {
+            $order->delete_meta_data('_billing_vat_id');
+            if ($opay_type === 'company' || $has_opay_tax) {
+                $order->delete_meta_data('_opay_tax_id');
+            }
+            return;
+        }
+
+        $order->update_meta_data('_billing_vat_id', $tax_id);
+        if ($opay_type === 'company' || $has_opay_tax) {
+            $order->update_meta_data('_opay_tax_id', $tax_id);
+        }
     }
 
     private static function admin_label_for_woo_status($status)

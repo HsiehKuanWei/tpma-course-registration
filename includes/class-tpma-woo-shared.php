@@ -406,6 +406,10 @@ class TPMA_CR_Woo_Shared
             $try = 8;
             while ($try-- > 0) {
                 $candidate = TPMA_CR_DB::generate_reg_no('A');
+                $tax_id = (string) $order->get_meta('_billing_vat_id', true);
+                if ($tax_id === '') {
+                    $tax_id = (string) $order->get_meta('_opay_tax_id', true);
+                }
 
                 $insert = array(
                     'reg_no'               => $candidate,
@@ -422,7 +426,7 @@ class TPMA_CR_Woo_Shared
                     'contact_name'         => trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
                     'contact_email'        => sanitize_email($order->get_billing_email()),
                     'company_name'         => sanitize_text_field($order->get_billing_company()),
-                    'tax_id'               => sanitize_text_field($order->get_meta('_billing_vat_id', true)),
+                    'tax_id'               => sanitize_text_field($tax_id),
                     'phone'                => sanitize_text_field($order->get_billing_phone()),
                     'receipt_type'         => sanitize_text_field($order->get_meta('_tpma_receipt_type', true) ?: 'electronic'),
 

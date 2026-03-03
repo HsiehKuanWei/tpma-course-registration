@@ -241,8 +241,18 @@ class TPMA_Woo_Special_1083 {
         if (!self::cart_is_tpma_only()) {
             return;
         }
+
+        // 舊版 TPMA 欄位（相容舊資料）
         if (empty($_POST['tpma_invoice_type'])) {
             $_POST['tpma_invoice_type'] = 'na';
+        }
+
+        // O'Pay 發票模組欄位（1083 會在後續流程標記為 tax_exempt）
+        if (empty($_POST['opay_invoice_type'])) {
+            $_POST['opay_invoice_type'] = 'personal';
+        }
+        if (empty($_POST['opay_carrier_type'])) {
+            $_POST['opay_carrier_type'] = 'none';
         }
     }
 
@@ -351,11 +361,11 @@ class TPMA_Woo_Special_1083 {
             );
         }
         if (isset($fields['billing']['tpma_heading_address'])) {
-            $fields['billing']['tpma_heading_address']['label'] = '證書寄送地址';
+            $fields['billing']['tpma_heading_address']['label'] = '收據寄送地址';
         } else {
             $fields['billing']['tpma_heading_address'] = array(
                 'type'     => 'hidden',
-                'label'    => '證書寄送地址',
+                'label'    => '收據寄送地址',
                 'priority' => 59,
             );
         }
@@ -426,12 +436,44 @@ class TPMA_Woo_Special_1083 {
                 $fields['billing'][$k] = $fields['order'][$k];
                 unset($fields['order'][$k]);
             }
-            if (isset($fields['billing'][$k])) {
-                $fields['billing'][$k]['priority'] = $p;
-                $fields['billing'][$k]['required'] = true;
-                $fields['billing'][$k]['placeholder'] = '';
-                $fields['billing'][$k]['class'][] = 'validate-required';
+
+            // 欄位不存在時補上（近期通用欄位已不再提供 billing_vat_id）
+            if (!isset($fields['billing'][$k])) {
+                if ('billing_company' === $k) {
+                    $fields['billing'][$k] = array(
+                        'type'     => 'text',
+                        'label'    => '公司抬頭',
+                        'required' => true,
+                        'priority' => $p,
+                        'class'    => array('form-row-wide'),
+                    );
+                } else {
+                    $fields['billing'][$k] = array(
+                        'type'     => 'text',
+                        'label'    => '統一編號',
+                        'required' => true,
+                        'priority' => $p,
+                        'class'    => array('form-row-wide'),
+                        'custom_attributes' => array(
+                            'maxlength' => '8',
+                            'inputmode' => 'numeric',
+                            'pattern'   => '[0-9]*',
+                        ),
+                    );
+                }
             }
+
+            $fields['billing'][$k]['priority'] = $p;
+            $fields['billing'][$k]['required'] = true;
+            $fields['billing'][$k]['placeholder'] = '';
+
+            $classes = isset($fields['billing'][$k]['class']) && is_array($fields['billing'][$k]['class'])
+                ? $fields['billing'][$k]['class']
+                : array('form-row-wide');
+            if (!in_array('validate-required', $classes, true)) {
+                $classes[] = 'validate-required';
+            }
+            $fields['billing'][$k]['class'] = array_values(array_unique($classes));
         }
         return $fields;
     }
@@ -456,8 +498,12 @@ class TPMA_Woo_Special_1083 {
         if (empty($_POST['billing_company'])) {
             wc_add_notice('請填寫公司抬頭', 'error');
         }
-        if (empty($_POST['billing_vat_id'])) {
+
+        $vat_id = preg_replace('/\D+/', '', (string) ($_POST['billing_vat_id'] ?? ''));
+        if ($vat_id === '') {
             wc_add_notice('請填寫統一編號', 'error');
+        } elseif (!preg_match('/^\d{8}$/', $vat_id)) {
+            wc_add_notice('統一編號需為 8 碼數字', 'error');
         }
     }
 
@@ -465,16 +511,29 @@ class TPMA_Woo_Special_1083 {
         if (!self::cart_is_tpma_only()) {
             return;
         }
-        $receipt_type = sanitize_text_field($_POST['tpma_receipt_type'] ?? '');
+        $receipt_type = sanitize_text_field(wp_unslash($_POST['tpma_receipt_type'] ?? ''));
         if ($receipt_type !== '') {
             $order->update_meta_data('_tpma_receipt_type', $receipt_type);
         }
-        // 1083：預設發票類型為三聯，避免缺值
-        $invoice_type = sanitize_text_field($_POST['tpma_invoice_type'] ?? '');
+        // 1083：固定不開立發票，保留舊欄位為 na 供舊流程判斷
+        $invoice_type = sanitize_text_field(wp_unslash($_POST['tpma_invoice_type'] ?? ''));
         if ($invoice_type === '') {
             $invoice_type = 'na';
         }
         $order->update_meta_data('_tpma_invoice_type', $invoice_type);
+
+        // 統編資料由 1083 專用模組自行保存，避免依賴其他欄位模組。
+        $billing_company = sanitize_text_field(wp_unslash($_POST['billing_company'] ?? ''));
+        if ($billing_company !== '') {
+            $order->set_billing_company($billing_company);
+        }
+
+        $vat_id = preg_replace('/\D+/', '', (string) wp_unslash($_POST['billing_vat_id'] ?? ''));
+        if ($vat_id === '') {
+            $order->delete_meta_data('_billing_vat_id');
+        } else {
+            $order->update_meta_data('_billing_vat_id', $vat_id);
+        }
 
         // 保存 draft JSON 到訂單，避免 session 丟失
         $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
@@ -648,10 +707,18 @@ class TPMA_Woo_Special_1083 {
         if (!self::cart_is_tpma_only()) {
             return;
         }
+
         if (!defined('TPMA_WOO_NEW_LOADED')) {
             wp_register_style('tpma-woo-1083-inline', false);
             wp_enqueue_style('tpma-woo-1083-inline');
             wp_add_inline_style('tpma-woo-1083-inline', '.woocommerce-billing-fields > h3{display:none!important;} .woocommerce-additional-fields #tpma_invoice_type_field{display:none!important;}');
+        }
+
+        // 1083 不開立發票：隱藏 O'Pay 前台發票欄位，避免與收據/統編流程衝突。
+        if (self::is_opay_invoice_module_available()) {
+            wp_register_style('tpma-woo-1083-opay-inline', false);
+            wp_enqueue_style('tpma-woo-1083-opay-inline');
+            wp_add_inline_style('tpma-woo-1083-opay-inline', '.opay-invoice-fields{display:none!important;}');
         }
     }
 

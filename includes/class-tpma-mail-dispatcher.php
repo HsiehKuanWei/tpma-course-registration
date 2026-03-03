@@ -506,20 +506,33 @@ class TPMA_CR_Mail_Dispatcher
         $reg_nos = array_values(array_unique($reg_nos));
         $reg_nos_text = implode(', ', $reg_nos);
 
-        $invoice_type_raw = (string) $order->get_meta('_tpma_invoice_type', true);
-        if ($invoice_type_raw === '') {
-            $invoice_type_raw = (string) $order->get_meta('_billing_tpma_invoice_type', true);
+        $invoice_type_raw = (string) $order->get_meta('_opay_invoice_type', true);
+        if ($invoice_type_raw !== '') {
+            $invoice_type_map = array(
+                'personal'   => '二聯式（個人）',
+                'company'    => '三聯式（公司）',
+                'tax_exempt' => '免開發票',
+            );
+            $invoice_type_label = $invoice_type_map[$invoice_type_raw] ?? $invoice_type_raw;
+        } else {
+            $invoice_type_raw = (string) $order->get_meta('_tpma_invoice_type', true);
+            if ($invoice_type_raw === '') {
+                $invoice_type_raw = (string) $order->get_meta('_billing_tpma_invoice_type', true);
+            }
+            $invoice_type_map = array(
+                'two'   => '二聯式',
+                'three' => '三聯式',
+                'na'    => '不適用',
+            );
+            $invoice_type_label = $invoice_type_map[$invoice_type_raw] ?? $invoice_type_raw;
         }
-        $invoice_type_map = array(
-            'two'   => '二聯式',
-            'three' => '三聯式',
-            'na'    => '不適用',
-        );
-        $invoice_type_label = $invoice_type_map[$invoice_type_raw] ?? $invoice_type_raw;
         $invoice_company = (string) $order->get_billing_company();
         $invoice_vat_id = (string) $order->get_meta('_billing_vat_id', true);
-        $invoice_type_display = $invoice_type_label;
-        if ($invoice_type_raw === 'three') {
+        if ($invoice_vat_id === '') {
+            $invoice_vat_id = (string) $order->get_meta('_opay_tax_id', true);
+        }
+        $invoice_type_display = $invoice_type_label !== '' ? $invoice_type_label : '—';
+        if ($invoice_type_raw === 'three' || $invoice_type_raw === 'company') {
             $invoice_type_display .= '（公司抬頭：' . ($invoice_company !== '' ? $invoice_company : '—')
                 . '｜公司統編：' . ($invoice_vat_id !== '' ? $invoice_vat_id : '—') . '）';
         }
