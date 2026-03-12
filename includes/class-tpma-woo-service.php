@@ -44,7 +44,7 @@ class TPMA_CR_Woo_Service {
      */
     public static function add_to_cart_from_draft($draft) {
         return TPMA_CR_Woo_Shared::add_to_cart_from_draft($draft, array(
-            'default_product_id' => 1083,
+            'default_product_id' => class_exists('TPMA_CR_Settings') ? TPMA_CR_Settings::get_registration_product_id() : 0,
             'messages' => array(
                 'product_not_found'  => 'WooCommerce 課程商品不存在',
                 'product_invalid'    => '課程商品請設定為「簡單商品」類型',
@@ -58,7 +58,7 @@ class TPMA_CR_Woo_Service {
      * 取得報名用的 WooCommerce 商品（可透過 option 或 filter 覆寫），並回傳 [商品ID, 商品物件]
      */
     public static function resolve_registration_product() {
-        return TPMA_CR_Woo_Shared::resolve_registration_product(1083);
+        return TPMA_CR_Woo_Shared::resolve_registration_product(class_exists('TPMA_CR_Settings') ? TPMA_CR_Settings::get_registration_product_id() : 0);
     }
 
     /**

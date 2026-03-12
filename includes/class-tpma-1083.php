@@ -17,6 +17,13 @@ class TPMA_Woo_Special_1083 {
     const PRODUCT_ID = 1083;
     const REG_TIMEOUT_SECONDS = 1800;
 
+    protected static function get_target_product_id(): int {
+        if (class_exists('TPMA_CR_Settings') && method_exists('TPMA_CR_Settings', 'get_special_product_id')) {
+            return (int) TPMA_CR_Settings::get_special_product_id();
+        }
+        return (int) apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+    }
+
     public static function init() {
         // 專用欄位/驗證/儲存
         add_filter('woocommerce_checkout_fields', [__CLASS__, 'filter_checkout_fields'], 999, 1);
@@ -262,7 +269,7 @@ class TPMA_Woo_Special_1083 {
         if (!function_exists('WC') || !WC()->cart) {
             return false;
         }
-        $target_id = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        $target_id = self::get_target_product_id();
         $cart = WC()->cart->get_cart();
         if (empty($cart)) return false;
         foreach ($cart as $item) {
@@ -278,7 +285,7 @@ class TPMA_Woo_Special_1083 {
         if (!function_exists('WC') || !WC()->cart) {
             return false;
         }
-        $target_id = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        $target_id = self::get_target_product_id();
         foreach (WC()->cart->get_cart() as $item) {
             $pid = intval($item['product_id'] ?? 0);
             if ($pid === intval($target_id)) {
@@ -292,7 +299,7 @@ class TPMA_Woo_Special_1083 {
         if (!function_exists('WC') || !WC()->cart) {
             return false;
         }
-        $target_id = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        $target_id = self::get_target_product_id();
         foreach (WC()->cart->get_cart() as $item) {
             $pid = intval($item['product_id'] ?? 0);
             if ($pid && $pid !== intval($target_id)) {
@@ -303,7 +310,7 @@ class TPMA_Woo_Special_1083 {
     }
 
     protected static function is_target_product_enabled(): bool {
-        $pid = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        $pid = self::get_target_product_id();
         return intval($pid) > 0;
     }
 
@@ -322,7 +329,7 @@ class TPMA_Woo_Special_1083 {
         }
 
         return TPMA_CR_Woo_Shared::add_to_cart_from_draft($draft, array(
-            'default_product_id' => self::PRODUCT_ID,
+            'default_product_id' => self::get_target_product_id(),
             'before_add' => function($cart, $draft) {
                 if (WC()->session) {
                     WC()->session->set('tpma_reg_active', 1);
@@ -742,7 +749,7 @@ class TPMA_Woo_Special_1083 {
         if (!function_exists('WC') || !WC()->cart) {
             return $passed;
         }
-        $target_id = apply_filters('tpma_special_product_id', self::PRODUCT_ID);
+        $target_id = self::get_target_product_id();
         $pid = intval($product_id);
 
         $has_tpma = self::cart_has_tpma_product();
@@ -820,7 +827,7 @@ class TPMA_Woo_Special_1083 {
             return false;
         }
 
-        $target_id = intval(apply_filters('tpma_special_product_id', self::PRODUCT_ID));
+        $target_id = self::get_target_product_id();
         if ($target_id < 1) {
             return false;
         }
@@ -862,7 +869,7 @@ class TPMA_Woo_Special_1083 {
     }
 
     protected static function resolve_registration_product() {
-        return TPMA_CR_Woo_Shared::resolve_registration_product(self::PRODUCT_ID);
+        return TPMA_CR_Woo_Shared::resolve_registration_product(self::get_target_product_id());
     }
 
     protected static function get_custom_checkout_url(): string {

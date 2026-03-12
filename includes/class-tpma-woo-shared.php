@@ -133,7 +133,7 @@ class TPMA_CR_Woo_Shared
     /**
      * Resolve WooCommerce registration product ID & object.
      */
-    public static function resolve_registration_product($default_product_id = 1083) {
+    public static function resolve_registration_product($default_product_id = 0) {
         $product_id = intval(get_option('tpma_cr_wc_product_id', 0));
         if (!$product_id) {
             $product_id = (int) $default_product_id;
@@ -221,7 +221,7 @@ class TPMA_CR_Woo_Shared
      * Add draft to cart and return checkout URL.
      */
     public static function add_to_cart_from_draft($draft, array $opts = array()) {
-        $default_product_id = isset($opts['default_product_id']) ? (int) $opts['default_product_id'] : 1083;
+        $default_product_id = isset($opts['default_product_id']) ? (int) $opts['default_product_id'] : 0;
         $before_add = isset($opts['before_add']) && is_callable($opts['before_add']) ? $opts['before_add'] : null;
         $messages = isset($opts['messages']) && is_array($opts['messages']) ? $opts['messages'] : array();
         $messages = array_merge(array(
@@ -317,7 +317,9 @@ class TPMA_CR_Woo_Shared
             'user_pass'    => wp_generate_password(20, true, true),
             'user_email'   => $email,
             'display_name' => $display_name ? $display_name : $login,
-            'role'         => 'um_custom_role_2',
+            'role'         => (class_exists('TPMA_CR_Settings') && method_exists('TPMA_CR_Settings', 'get_virtual_user_role'))
+                ? TPMA_CR_Settings::get_virtual_user_role()
+                : get_option('default_role', 'subscriber'),
         ]);
 
         if (is_wp_error($uid)) {

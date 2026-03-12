@@ -371,11 +371,12 @@ echo   '</div>'; // card
 
     private static function is_1083_order(WC_Order $order): bool
     {
-        $target_id = 1083;
-        if (class_exists('TPMA_Woo_Special_1083')) {
+        if (class_exists('TPMA_CR_Settings') && method_exists('TPMA_CR_Settings', 'get_special_product_id')) {
+            $target_id = (int) TPMA_CR_Settings::get_special_product_id();
+        } elseif (class_exists('TPMA_Woo_Special_1083')) {
             $target_id = apply_filters('tpma_special_product_id', TPMA_Woo_Special_1083::PRODUCT_ID);
         } else {
-            $target_id = apply_filters('tpma_special_product_id', $target_id);
+            $target_id = (int) apply_filters('tpma_special_product_id', 0);
         }
 
         foreach ($order->get_items() as $item) {

@@ -61,6 +61,8 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-rest-public.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-rest-admin.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-mail-dispatcher.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-import.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-cr-dependencies.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-cr-settings.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-woo-shared.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-admin-woo-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-thankyou-view.php';
@@ -71,7 +73,16 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-1083.php';
 
 // 啟用 Woo 專用 1083 流程（放在 plugins_loaded 以確保 Woo 已載入）
 add_action('plugins_loaded', function () {
-    if (class_exists('TPMA_Woo_Special_1083') && function_exists('WC')) {
+    if (class_exists('TPMA_CR_Dependencies')) {
+        TPMA_CR_Dependencies::init();
+    }
+    if (class_exists('TPMA_CR_Settings')) {
+        TPMA_CR_Settings::init();
+    }
+    if (
+        class_exists('TPMA_Woo_Special_1083')
+        && (!class_exists('TPMA_CR_Dependencies') || TPMA_CR_Dependencies::has_woocommerce())
+    ) {
         TPMA_Woo_Special_1083::init();
     }
 }, 12);

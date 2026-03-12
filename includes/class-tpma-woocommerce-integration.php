@@ -113,7 +113,7 @@ public static function init() {
             return intval($pid);
         }
         // 保底（理論上不會用到）
-        return intval(get_option('tpma_cr_wc_product_id', 1083));
+        return intval(get_option('tpma_cr_wc_product_id', 0));
     }
 
     /**
