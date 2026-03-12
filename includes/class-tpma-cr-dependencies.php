@@ -23,7 +23,7 @@ class TPMA_CR_Dependencies {
         $messages = array();
 
         if (!self::has_woocommerce()) {
-            $messages[] = 'WooCommerce 未啟用，TPMA Course Registration 的結帳、建單、訂單同步與 1083 專用流程已停用。';
+            $messages[] = 'WooCommerce 未啟用，TPMA Course Registration 的結帳、建單、訂單同步與特殊商品專用流程已停用。';
         }
 
         if (!self::has_tpma_woo_fields()) {

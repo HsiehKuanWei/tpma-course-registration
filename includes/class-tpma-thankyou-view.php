@@ -6,7 +6,7 @@ class TPMA_CR_Thankyou_View
     public static function init()
     {
         if (class_exists('TPMA_Woo_Thankyou_View')) {
-            add_action('tpma_thankyou_after_summary', [self::class, 'render_1083_table'], 10, 2);
+            add_action('tpma_thankyou_after_summary', [self::class, 'render_special_product_table'], 10, 2);
             add_filter('tpma_thankyou_summary_flags', [self::class, 'filter_summary_flags'], 10, 2);
             add_filter('tpma_thankyou_meta_rows', [self::class, 'filter_meta_rows'], 10, 3);
             remove_filter('woocommerce_bacs_accounts', ['TPMA_Woo_Thankyou_View', 'filter_bacs_accounts'], 10);
@@ -20,12 +20,12 @@ class TPMA_CR_Thankyou_View
         add_filter('woocommerce_bacs_accounts', [self::class, 'filter_bacs_accounts'], 10, 2);
     }
 
-    public static function render_1083_table($order, $context = array())
+    public static function render_special_product_table($order, $context = array())
     {
         if (!$order instanceof WC_Order) {
             return;
         }
-        if (!self::is_1083_order($order)) {
+        if (!self::is_special_product_order($order)) {
             return;
         }
 
@@ -80,7 +80,7 @@ class TPMA_CR_Thankyou_View
         if (!$order instanceof WC_Order) {
             return $flags;
         }
-        if (!self::is_1083_order($order)) {
+        if (!self::is_special_product_order($order)) {
             return $flags;
         }
         if (!is_array($flags)) {
@@ -96,7 +96,7 @@ class TPMA_CR_Thankyou_View
         if (!$order instanceof WC_Order) {
             return $rows;
         }
-        if (!self::is_1083_order($order)) {
+        if (!self::is_special_product_order($order)) {
             return $rows;
         }
 
@@ -369,12 +369,12 @@ echo   '</div>'; // card
         return (bool) apply_filters('tpma_is_tpma_order', $is_tpma, $order);
     }
 
-    private static function is_1083_order(WC_Order $order): bool
+    private static function is_special_product_order(WC_Order $order): bool
     {
         if (class_exists('TPMA_CR_Settings') && method_exists('TPMA_CR_Settings', 'get_special_product_id')) {
             $target_id = (int) TPMA_CR_Settings::get_special_product_id();
-        } elseif (class_exists('TPMA_Woo_Special_1083')) {
-            $target_id = apply_filters('tpma_special_product_id', TPMA_Woo_Special_1083::PRODUCT_ID);
+        } elseif (class_exists('TPMA_Woo_Special_Product') && method_exists('TPMA_Woo_Special_Product', 'get_target_product_id')) {
+            $target_id = (int) TPMA_Woo_Special_Product::get_target_product_id();
         } else {
             $target_id = (int) apply_filters('tpma_special_product_id', 0);
         }
@@ -403,7 +403,7 @@ echo   '</div>'; // card
         }
         if (!$order || !self::is_tpma_order($order)) return $accounts;
 
-        $target_name = self::is_1083_order($order)
+        $target_name = self::is_special_product_order($order)
             ? '社團法人台灣專案管理學會'
             : '清華國際事業股份有限公司';
         $filtered = array();

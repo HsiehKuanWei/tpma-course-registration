@@ -6,7 +6,7 @@ if (!defined('ABSPATH')) {
 class TPMA_WooCommerce_Integration {
 
 public static function init() {
-    $use_new = class_exists('TPMA_Woo_Special_1083') || (defined('TPMA_WOO_NEW_LOADED') && TPMA_WOO_NEW_LOADED);
+    $use_new = class_exists('TPMA_Woo_Special_Product') || class_exists('TPMA_Woo_Special_1083') || (defined('TPMA_WOO_NEW_LOADED') && TPMA_WOO_NEW_LOADED);
     $has_old_service = class_exists('TPMA_CR_Woo_Service');
 
     // 結帳勾選建立帳號時，避免 user_nicename 超過 50 字元（WP 核心限制）

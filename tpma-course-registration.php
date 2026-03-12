@@ -66,12 +66,12 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-cr-settings.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-woo-shared.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-admin-woo-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-thankyou-view.php';
-require_once TPMA_CR_PATH . 'includes/class-tpma-1083.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-special-product.php';
 // WooCommerce 整合已移至獨立插件 tpma-woo-fields，這裡不再載入舊版：
 // require_once TPMA_CR_PATH . 'includes/class-tpma-woo-service.php';
 // require_once TPMA_CR_PATH . 'includes/class-tpma-woocommerce-integration.php';
 
-// 啟用 Woo 專用 1083 流程（放在 plugins_loaded 以確保 Woo 已載入）
+// 啟用特殊商品流程（放在 plugins_loaded 以確保 Woo 已載入）
 add_action('plugins_loaded', function () {
     if (class_exists('TPMA_CR_Dependencies')) {
         TPMA_CR_Dependencies::init();
@@ -80,10 +80,10 @@ add_action('plugins_loaded', function () {
         TPMA_CR_Settings::init();
     }
     if (
-        class_exists('TPMA_Woo_Special_1083')
+        class_exists('TPMA_Woo_Special_Product')
         && (!class_exists('TPMA_CR_Dependencies') || TPMA_CR_Dependencies::has_woocommerce())
     ) {
-        TPMA_Woo_Special_1083::init();
+        TPMA_Woo_Special_Product::init();
     }
 }, 12);
 
