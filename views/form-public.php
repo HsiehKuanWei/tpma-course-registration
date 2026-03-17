@@ -64,7 +64,7 @@ $assets_base = isset($assets_base) ? $assets_base : TPMA_CR_URL;
       <!-- 學員區塊 -->
       <div class="tpma-field">
         <div class="tpma-label-row">
-          <div class="tpma-label">報名學員資料</div>
+          <div class="tpma-label">報名學員資料<br><span style="font-size: 12px;;">（承辦人資訊請於下一步填寫）</span></div>
           <div class="tpma-required">* 至少 1 位學員，姓名與 Email 必填</div>
         </div>
       </div>
