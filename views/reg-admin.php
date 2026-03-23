@@ -63,12 +63,14 @@ $TPMA_ENUM = [
 ];
 
 // enum -> [{value,label}, ...]
-function tpma_enum_to_options(array $enum){
-  $out = [];
-  foreach ($enum as $value => $label) {
-    $out[] = ['value' => (string)$value, 'label' => (string)$label];
-  }
-  return $out;
+if ( ! function_exists( 'tpma_enum_to_options' ) ) {
+    function tpma_enum_to_options(array $enum){
+      $out = [];
+      foreach ($enum as $value => $label) {
+        $out[] = ['value' => (string)$value, 'label' => (string)$label];
+      }
+      return $out;
+    }
 }
 
 // === 篩選用選項（含「全部」）— 仍由 ENUM 組出來 ====================

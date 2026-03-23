@@ -9,8 +9,6 @@ class TPMA_CR_Thankyou_View
             add_action('tpma_thankyou_after_summary', [self::class, 'render_special_product_table'], 10, 2);
             add_filter('tpma_thankyou_summary_flags', [self::class, 'filter_summary_flags'], 10, 2);
             add_filter('tpma_thankyou_meta_rows', [self::class, 'filter_meta_rows'], 10, 3);
-            remove_filter('woocommerce_bacs_accounts', ['TPMA_Woo_Thankyou_View', 'filter_bacs_accounts'], 10);
-            add_filter('woocommerce_bacs_accounts', [self::class, 'filter_bacs_accounts'], 10, 2);
             return;
         }
 
