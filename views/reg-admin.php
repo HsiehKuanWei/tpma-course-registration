@@ -98,6 +98,7 @@ $TPMA_OPTIONS_FOR_JS = [
                placeholder="報名編號 / 學員 / 承辦 / 公司（模糊）">
         <button class="tpma-btn" id="tpma-btn-apply-q">搜尋</button>
         <button class="tpma-btn" id="tpma-btn-clear-all">清除全部篩選</button>
+        <button class="tpma-btn" id="tpma-btn-export">匯出 Excel</button>
     </div>
 	
 
@@ -330,6 +331,45 @@ $TPMA_OPTIONS_FOR_JS = [
         <span class="tpma-pagination-info" id="tpma-page-info"></span>
         <button class="tpma-btn" id="tpma-page-next">下一頁</button>
     </div>
+
+  <!-- ===== Excel 匯出 Modal ===== -->
+  <div id="tpma-export-modal" class="tpma-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="tpma-export-modal-title">
+    <div class="tpma-modal-dialog">
+      <div class="tpma-modal-header">
+        <h3 id="tpma-export-modal-title">匯出 Excel</h3>
+        <button type="button" class="tpma-modal-close-btn" id="tpma-export-modal-close" aria-label="關閉">✕</button>
+      </div>
+      <div class="tpma-modal-body">
+        <div class="tpma-export-option">
+          <label>
+            <input type="radio" name="tpma-export-type" value="students" checked>
+            <span>
+              <span class="tpma-export-option-title">課程學員資料</span>
+              <span class="tpma-export-option-desc">匯出目前篩選結果（共 <span id="tpma-export-student-count">0</span> 筆），含完整欄位</span>
+            </span>
+          </label>
+        </div>
+        <div class="tpma-export-option">
+          <label>
+            <input type="radio" name="tpma-export-type" value="statistics">
+            <span>
+              <span class="tpma-export-option-title">統計報表</span>
+              <span class="tpma-export-option-desc">依授課日期範圍，按公司分組列出學員數與收入，底部含總計</span>
+              <span class="tpma-export-stats-options" id="tpma-export-stats-options" style="display:none;">
+                <label>授課日期起：<input type="date" id="tpma-export-stats-from"></label>
+                <label>授課日期訖：<input type="date" id="tpma-export-stats-to"></label>
+              </span>
+            </span>
+          </label>
+        </div>
+      </div>
+      <div class="tpma-modal-footer">
+        <button type="button" class="tpma-btn tpma-btn-secondary" id="tpma-export-cancel">取消</button>
+        <button type="button" class="tpma-btn" id="tpma-export-confirm">確認匯出</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -365,6 +405,8 @@ window.TPMARegAdmin.options.receiptType   = <?php echo wp_json_encode($TPMA_OPTI
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/06.reg-admin.ui-events.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/06.reg-admin.ui-events.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/07.reg-admin.core.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/07.reg-admin.core.js') ); ?>"></script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/08.reg-admin-init.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/08.reg-admin-init.js') ); ?>"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/09.reg-admin.export.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/09.reg-admin.export.js') ); ?>"></script>
 
 <script>
 (function(){

@@ -49,6 +49,9 @@ function bootstrap(){
   ctx.actions.refresh = ()=> UI.refreshFromServer(ctx);
 
   UI.bind(ctx);
+  if (global.TPMARegAdmin.exportModule) {
+    global.TPMARegAdmin.exportModule.init(ctx);
+  }
   ctx.state.isLoading = true;
   UI.applyFiltersAndRender(ctx); // Force initial render and state update
 

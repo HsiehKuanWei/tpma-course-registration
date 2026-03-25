@@ -480,8 +480,8 @@ if (mobileFilterBtn && mobileFilterPanel) {
     // 更新按鈕文字以反映狀態
     const isOpen = mobileFilterPanel.classList.contains('open');
     mobileFilterBtn.textContent = isOpen 
-      ? '⚙️ 隱藏篩選 / Hide Filter ▲' 
-      : '⚙️ 篩選與排序 / Filter & Sort ▼';
+      ? '隱藏篩選 ▲' 
+      : '篩選與排序 ▼';
   });
   
   // 點擊面板外時關閉面板
@@ -491,7 +491,7 @@ if (mobileFilterBtn && mobileFilterPanel) {
     
     if (!isClickInPanel && !isClickOnBtn && mobileFilterPanel.classList.contains('open')) {
       mobileFilterPanel.classList.remove('open');
-      mobileFilterBtn.textContent = '⚙️ 篩選與排序 / Filter & Sort ▼';
+      mobileFilterBtn.textContent = '篩選與排序 ▼';
     }
   });
 }
