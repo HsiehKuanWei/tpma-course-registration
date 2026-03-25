@@ -467,5 +467,34 @@ if (paginationDom.next) {
   });
 }
 
+// ===== 手機版篩選面板切換 =====
+const mobileFilterBtn = document.getElementById('tpma-mobile-filter-btn');
+const mobileFilterPanel = document.getElementById('tpma-mobile-filter-panel');
+
+if (mobileFilterBtn && mobileFilterPanel) {
+  mobileFilterBtn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    mobileFilterPanel.classList.toggle('open');
+    
+    // 更新按鈕文字以反映狀態
+    const isOpen = mobileFilterPanel.classList.contains('open');
+    mobileFilterBtn.textContent = isOpen 
+      ? '⚙️ 隱藏篩選 / Hide Filter ▲' 
+      : '⚙️ 篩選與排序 / Filter & Sort ▼';
+  });
+  
+  // 點擊面板外時關閉面板
+  document.addEventListener('click', (e) => {
+    const isClickInPanel = mobileFilterPanel.contains(e.target);
+    const isClickOnBtn = mobileFilterBtn.contains(e.target);
+    
+    if (!isClickInPanel && !isClickOnBtn && mobileFilterPanel.classList.contains('open')) {
+      mobileFilterPanel.classList.remove('open');
+      mobileFilterBtn.textContent = '⚙️ 篩選與排序 / Filter & Sort ▼';
+    }
+  });
+}
+
 // ===== 初始化 =====
 loadCourseRows();

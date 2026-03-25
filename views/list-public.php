@@ -14,7 +14,12 @@ $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
 			<div class="tpma-status" id="tpma-status">載入課程中...</div>
 		</div>
 		<div class="tpma-list-grid">
-			<div class="tpma-list-grid-layout tpma-reg-list-header">
+			<!-- Mobile Filter Toggle Button -->
+			<div class="tpma-mobile-filter-toggle">
+				<button type="button" class="tpma-btn tpma-btn-secondary" id="tpma-mobile-filter-btn">⚙️ 篩選與排序 / Filter & Sort ▼</button>
+			</div>
+
+			<div class="tpma-list-grid-layout tpma-reg-list-header" id="tpma-mobile-filter-panel">
 				<div class="tpma-list-grid-th">
 					<div class="tpma-th-inner">
 						<span class="tpma-th-title">授課時間</span>

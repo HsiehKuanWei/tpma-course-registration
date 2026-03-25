@@ -194,12 +194,103 @@
   border-color:rgba(255, 193, 7, 0.45);
 }
 
+/* Mobile Filter Toggle */
+.tpma-mobile-filter-toggle {
+  display: none;
+  margin-bottom: 15px;
+}
+.tpma-mobile-filter-toggle .tpma-btn {
+  width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--tpma-secondary-color);
+  color: #fff;
+  justify-content: center;
+}
+
 /* RWD */
-@media (max-width: 768px){
+@media (max-width: 900px){
   .tpma-course-list{ padding:10px; }
   .tpma-course-filters{ flex-direction:column; }
   .tpma-filter-item{ min-width:unset; width:100%; }
   .tpma-hide-on-mobile-block{ display:none; }
+
+  /* 手機版篩選按鈕顯示 */
+  .tpma-mobile-filter-toggle {
+    display: flex;
+    justify-content: center;
+  }
+
+  /* 手機版篩選面板預設隱藏 */
+  #tpma-mobile-filter-panel {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid var(--tpma-border-color);
+    border-radius: 4px;
+    margin-bottom: 15px;
+    grid-template-columns: 1fr;
+  }
+
+  /* 手機版篩選面板展開 */
+  #tpma-mobile-filter-panel.open {
+    display: flex;
+  }
+
+  /* 手機版表頭各欄位堆疊 */
+  #tpma-mobile-filter-panel .tpma-list-grid-th {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    background: #fff;
+    border: 1px solid var(--tpma-border-color);
+    border-radius: 4px;
+  }
+
+  /* 手機版隱藏表頭下拉按鈕 */
+  #tpma-mobile-filter-panel .tpma-th-menu-btn {
+    display: none;
+  }
+
+  /* 手機版選單改成頁內靜態顯示 */
+  #tpma-mobile-filter-panel .tpma-th-menu {
+    position: static;
+    display: block;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding: 0;
+  }
+
+  #tpma-mobile-filter-panel .tpma-th-menu label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+
+  #tpma-mobile-filter-panel .tpma-th-menu input[type="text"],
+  #tpma-mobile-filter-panel .tpma-th-menu input[type="date"] {
+    width: 100%;
+    margin-top: 6px;
+    margin-bottom: 10px;
+  }
+
+  #tpma-mobile-filter-panel .tpma-th-menu-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  #tpma-mobile-filter-panel .tpma-th-menu-actions .tpma-btn {
+    flex: 1;
+    min-width: 70px;
+    font-size: 12px;
+  }
 
   .tpma-list-header{ display:none; }
 
