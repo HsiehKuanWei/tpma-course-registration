@@ -105,8 +105,56 @@ class TPMA_CR_DB
     public static function ensure_schema_current() {
         // 你原本就有這個可擴充的話，把其他「補欄位」一起放這裡
         self::ensure_reg_no_not_unique();
+        self::maybe_upgrade();
+    }
 
-        // （例）也可在這裡順便補你後來新增的欄位，略…
+    /**
+     * Runtime schema migration: add new columns & tables without breaking existing installs.
+     * Safe to call on every activation and on ensure_schema_current().
+     */
+    public static function maybe_upgrade(): void {
+        global $wpdb;
+        $charset_collate = $wpdb->get_charset_collate();
+
+        // ── courses: tutor_course_id ─────────────────────────────
+        $courses_table = self::table('courses');
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$courses_table} LIKE 'tutor_course_id'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$courses_table} ADD COLUMN tutor_course_id BIGINT UNSIGNED DEFAULT NULL");
+        }
+
+        // ── registrations: tutor_enrolled_id ────────────────────
+        $regs_table = self::table('regs');
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$regs_table} LIKE 'tutor_enrolled_id'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$regs_table} ADD COLUMN tutor_enrolled_id BIGINT UNSIGNED DEFAULT NULL");
+        }
+
+        // ── lecturers: wp_user_id ────────────────────────────────
+        $lecturers_table = self::table('lecturers');
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$lecturers_table} LIKE 'wp_user_id'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$lecturers_table} ADD COLUMN wp_user_id BIGINT UNSIGNED DEFAULT NULL");
+        }
+
+        // ── magic_tokens table ───────────────────────────────────
+        $tokens_table = self::table('magic_tokens');
+        $wpdb->query(
+            "CREATE TABLE IF NOT EXISTS {$tokens_table} (
+                id              BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+                token_hash      VARCHAR(64)     NOT NULL,
+                wp_user_id      BIGINT UNSIGNED NOT NULL,
+                registration_id BIGINT UNSIGNED NOT NULL,
+                tutor_course_id BIGINT UNSIGNED DEFAULT NULL,
+                target_type     VARCHAR(20)     NOT NULL DEFAULT 'course',
+                target_url      TEXT            DEFAULT NULL,
+                expires_at      DATETIME        NOT NULL,
+                created_at      DATETIME        NOT NULL,
+                PRIMARY KEY (id),
+                UNIQUE KEY token_hash_idx (token_hash),
+                KEY user_reg_idx (wp_user_id, registration_id)
+            ) {$charset_collate};"
+        );
     }
 
 

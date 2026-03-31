@@ -72,6 +72,25 @@ class TPMA_CR_REST_Admin
             'callback' => array('TPMA_CR_Mail_Dispatcher', 'send_test_mail'),
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
+
+        // Tutor LMS integration endpoints
+        register_rest_route($ns, '/admin/magic-links', array(
+            'methods'  => 'GET',
+            'callback' => array(__CLASS__, 'admin_get_magic_links'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
+        register_rest_route($ns, '/admin/magic-links/regenerate', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_regenerate_magic_links'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
+        register_rest_route($ns, '/admin/tutor/sync-course', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_sync_tutor_course'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
     }
 
     public static function can_manage()
@@ -489,7 +508,13 @@ public static function admin_update_reg($request)
             'lecturers_title'      => $title,
             'lecturers_sort_order' => $sort,
         );
-
+        // wp_user_id binding (optional — for Tutor instructor mapping)
+        if (isset($p['wp_user_id'])) {
+            $wp_uid = $p['wp_user_id'] !== '' && $p['wp_user_id'] !== null
+                ? absint($p['wp_user_id'])
+                : null;
+            $data['wp_user_id'] = ($wp_uid && $wp_uid > 0) ? $wp_uid : null;
+        }
         if ($id > 0) {
             $wpdb->update($lecturers_table, $data, array('id' => $id));
         } else {
@@ -505,7 +530,8 @@ public static function admin_update_reg($request)
                     lecturers_code       AS code,
                     lecturers_name       AS name,
                     lecturers_title      AS title,
-                    lecturers_sort_order AS sort_order
+                    lecturers_sort_order AS sort_order,
+                    wp_user_id
                  FROM {$lecturers_table}
                  WHERE id = %d",
                 $id
@@ -741,11 +767,98 @@ public static function admin_update_reg($request)
             ));
         }
 
+        // ── Tutor LMS sync (fire-and-forget; doesn't affect the REST response) ──
+        if (class_exists('TPMA_Tutor_Bridge')) {
+            TPMA_Tutor_Bridge::sync_course($course_id);
+        }
+
+        return rest_ensure_response(array(
+            'success'          => true,
+            'id'               => $course_id,
+            'course_code'      => $course_code,
+            'is_active'        => $is_active,
+            'tutor_course_id'  => class_exists('TPMA_Tutor_Bridge')
+                ? TPMA_Tutor_Bridge::get_tutor_course_id($course_id)
+                : 0,
+        ));
+    }
+
+    /* ---------- Tutor Magic Link endpoints ---------- */
+
+    /**
+     * GET /admin/magic-links?reg_id=INT
+     * Returns existing token metadata (and regenerated URLs) for a registration.
+     */
+    public static function admin_get_magic_links($request) {
+        if (!class_exists('TPMA_Tutor_Bridge') || !TPMA_Tutor_Bridge::is_active()) {
+            return new WP_Error('tutor_inactive', 'Tutor 整合未啟用', array('status' => 503));
+        }
+
+        $reg_id = intval($request->get_param('reg_id'));
+        if ($reg_id <= 0) {
+            return new WP_Error('invalid', 'reg_id 必填', array('status' => 400));
+        }
+
+        $token_info = TPMA_Tutor_Bridge::get_token_info_for_reg($reg_id);
         return rest_ensure_response(array(
             'success'     => true,
-            'id'          => $course_id,
-            'course_code' => $course_code,
-            'is_active'   => $is_active,
+            'reg_id'      => $reg_id,
+            'token_info'  => $token_info,
+        ));
+    }
+
+    /**
+     * POST /admin/magic-links/regenerate  { reg_id: INT }
+     * Regenerates magic tokens for a registration and returns the new URLs.
+     */
+    public static function admin_regenerate_magic_links($request) {
+        if (!class_exists('TPMA_Tutor_Bridge') || !TPMA_Tutor_Bridge::is_active()) {
+            return new WP_Error('tutor_inactive', 'Tutor 整合未啟用', array('status' => 503));
+        }
+
+        $params = $request->get_json_params();
+        $reg_id = intval($params['reg_id'] ?? 0);
+        if ($reg_id <= 0) {
+            return new WP_Error('invalid', 'reg_id 必填', array('status' => 400));
+        }
+
+        $urls = TPMA_Tutor_Bridge::regenerate_magic_urls_for_reg($reg_id);
+        if (empty($urls)) {
+            return new WP_Error('not_found', '找不到該報名記錄，或尚未連結 Tutor 課程', array('status' => 404));
+        }
+
+        return rest_ensure_response(array(
+            'success' => true,
+            'reg_id'  => $reg_id,
+            'urls'    => $urls,
+        ));
+    }
+
+    /**
+     * POST /admin/tutor/sync-course  { course_id: INT }
+     * Manually trigger Tutor course sync for one TPMA course.
+     */
+    public static function admin_sync_tutor_course($request) {
+        if (!class_exists('TPMA_Tutor_Bridge') || !TPMA_Tutor_Bridge::is_active()) {
+            return new WP_Error('tutor_inactive', 'Tutor 整合未啟用', array('status' => 503));
+        }
+
+        $params          = $request->get_json_params();
+        $tpma_course_id  = intval($params['course_id'] ?? 0);
+        if ($tpma_course_id <= 0) {
+            return new WP_Error('invalid', 'course_id 必填', array('status' => 400));
+        }
+
+        $tutor_course_id = TPMA_Tutor_Bridge::sync_course($tpma_course_id);
+        if (!$tutor_course_id) {
+            return new WP_Error('sync_failed', '同步失敗，請確認課程資料與 Tutor 設定', array('status' => 500));
+        }
+
+        return rest_ensure_response(array(
+            'success'         => true,
+            'tpma_course_id'  => $tpma_course_id,
+            'tutor_course_id' => $tutor_course_id,
+            'tutor_edit_url'  => admin_url('post.php?post=' . $tutor_course_id . '&action=edit'),
         ));
     }
 

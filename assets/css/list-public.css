@@ -194,18 +194,17 @@
   border-color:rgba(255, 193, 7, 0.45);
 }
 
-/* Mobile Filter Toggle */
+/* Mobile Filter Toggle - PC版完全隱藏 */
 .tpma-mobile-filter-toggle {
-  display: none;
-  margin-bottom: 15px;
+  display: none ;
+  visibility: hidden ;
+  height: 0 ;
+  margin: 0 ;
+  padding: 0 ;
+  overflow: hidden ;
 }
 .tpma-mobile-filter-toggle .tpma-btn {
-  width: 100%;
-  font-size: 14px;
-  font-weight: 600;
-  background: var(--tpma-secondary-color);
-  color: #fff;
-  justify-content: center;
+  display: none ;
 }
 
 /* RWD */
@@ -217,7 +216,21 @@
 
   /* 手機版篩選按鈕顯示 */
   .tpma-mobile-filter-toggle {
-    display: flex;
+    display: flex ;
+    visibility: visible ;
+    height: auto ;
+    margin-bottom: 15px ;
+    padding: 0 ;
+    justify-content: center;
+  }
+
+  .tpma-mobile-filter-toggle .tpma-btn {
+    display: block ;
+    width: 100%;
+    font-size: 14px;
+    font-weight: 600;
+    background: var(--tpma-secondary-color);
+    color: #fff;
     justify-content: center;
   }
 

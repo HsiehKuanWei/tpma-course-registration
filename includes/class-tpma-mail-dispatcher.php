@@ -12,7 +12,15 @@ class TPMA_CR_Mail_Dispatcher
             'student'   => 'registration_notice',
             'order'     => 'registration_order',
             'completed' => 'registration_completed',
-            // 其他情境可再擴充；保留管理員匯款通知的常用 key
+            // Tutor integration: course access magic link (sent after registration)
+            'course_access'      => 'course_access',
+            // Pre-class reminder N days before class (contains Meet link)
+            'pre_class_reminder' => 'pre_class_reminder',
+            // Quiz invitation (manually triggered by admin after class)
+            'quiz_invitation'    => 'quiz_invitation',
+            // Certificate ready (auto-triggered when Tutor course completed)
+            'certificate_ready'  => 'certificate_ready',
+            // Other extension keys; keep admin remittance report
             'admin_remit_report' => 'admin_remit_report',
         );
 
@@ -657,7 +665,10 @@ class TPMA_CR_Mail_Dispatcher
         // remit_amount：訂單總額
         $context['remit_amount'] = $remit_amount;
 
-        return $context;
+        // Allow Tutor Bridge (or any extension) to inject magic link URLs and additional vars.
+        // Bridge hooks into this filter to provide: magic_link_course, magic_link_quiz,
+        // magic_link_certificate, magic_link_meet, google_meet_url, tutor_course_url.
+        return apply_filters('tpma_cr_mail_context', $context, $order, !empty($learner) ? $learner : null);
     }
 
     private static function build_order_items_table(WC_Order $order): string
@@ -1343,6 +1354,96 @@ class TPMA_CR_Mail_Dispatcher
         return $sent;
     }
 
+    // ──────────────────────────────────────────────────────────
+    // Tutor integration mailers
+    // ──────────────────────────────────────────────────────────
+
+    /**
+     * Send certificate_ready email for a single learner registration.
+     * Called by TPMA_Tutor_Bridge::on_course_completed().
+     *
+     * @param WC_Order $order
+     * @param array    $reg  Row from wp_tpma_registrations (ARRAY_A)
+     */
+    public static function send_certificate_email(WC_Order $order, array $reg): void {
+        if (!class_exists('TPMA_Mailer')) {
+            return;
+        }
+
+        $draft = self::get_draft_from_order($order);
+        $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
+
+        $tpl = (string)($draft['mail_templates']['certificate_ready'] ?? 'certificate_ready');
+        if (!$tpl) {
+            return;
+        }
+
+        $learner_data = array(
+            'reg_id'       => $reg['id']           ?? '',
+            'reg_no'       => $reg['reg_no']        ?? '',
+            'student_name' => $reg['student_name']  ?? '',
+            'job_title'    => $reg['job_title']     ?? '',
+            'emails'       => $reg['emails']        ?? '',
+        );
+
+        $ctx = self::build_context($order, $draft, $learner_data);
+
+        foreach (self::normalize_emails($reg['emails'] ?? '') as $to) {
+            TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $ctx));
+        }
+
+        foreach (self::get_copy_recipients_from_config($tpl) as $copy) {
+            TPMA_Mailer::send_template($tpl, $copy, array('reg_context' => $ctx));
+        }
+    }
+
+    /**
+     * Send pre_class_reminder email for a single learner registration.
+     * Called by TPMA_Tutor_Bridge::send_pre_class_reminders().
+     *
+     * @param WC_Order $order
+     * @param array    $reg  Row from wp_tpma_registrations (ARRAY_A)
+     */
+    public static function send_reminder_email(WC_Order $order, array $reg): void {
+        if (!class_exists('TPMA_Mailer')) {
+            return;
+        }
+
+        $draft = self::get_draft_from_order($order);
+        $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
+
+        $tpl = (string)($draft['mail_templates']['pre_class_reminder'] ?? 'pre_class_reminder');
+        if (!$tpl) {
+            return;
+        }
+
+        $learner_data = array(
+            'reg_id'       => $reg['id']           ?? '',
+            'reg_no'       => $reg['reg_no']        ?? '',
+            'student_name' => $reg['student_name']  ?? '',
+            'job_title'    => $reg['job_title']     ?? '',
+            'emails'       => $reg['emails']        ?? '',
+        );
+
+        $ctx = self::build_context($order, $draft, $learner_data);
+
+        // Reminder already sent guard (use order meta per-reg)
+        $sent_key = '_tpma_reminder_sent_' . (int)$reg['id'];
+        if ($order->get_meta($sent_key, true) === 'yes') {
+            return;
+        }
+
+        foreach (self::normalize_emails($reg['emails'] ?? '') as $to) {
+            TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $ctx));
+        }
+
+        foreach (self::get_copy_recipients_from_config($tpl) as $copy) {
+            TPMA_Mailer::send_template($tpl, $copy, array('reg_context' => $ctx));
+        }
+
+        $order->update_meta_data($sent_key, 'yes');
+        $order->save();
+    }
 
 }
 

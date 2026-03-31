@@ -94,6 +94,9 @@ class TPMA_CR_Settings {
         }
         update_option(self::OPTION_VIRTUAL_USER_ROLE, $virtual_user_role, false);
 
+        // Save Tutor integration settings
+        self::save_tutor_settings();
+
         self::set_notice('TPMA Course Registration ID 設定已儲存。');
         wp_safe_redirect(self::get_page_url());
         exit;
@@ -124,6 +127,9 @@ class TPMA_CR_Settings {
         echo '</table>';
         submit_button('儲存設定');
         echo '</form>';
+
+        self::render_tutor_settings_section();
+
         echo '</div>';
     }
 
@@ -299,5 +305,92 @@ class TPMA_CR_Settings {
             delete_transient($key);
         }
         return is_array($notice) ? $notice : null;
+    }
+
+    // ──────────────────────────────────────────────────────────
+    // Tutor LMS Integration Settings
+    // ──────────────────────────────────────────────────────────
+
+    const OPTION_TUTOR_ENABLED            = 'tpma_cr_tutor_enabled';
+    const OPTION_TUTOR_DEFAULT_INSTRUCTOR = 'tpma_cr_tutor_default_instructor';
+    const OPTION_MAGIC_LINK_EXTRA_DAYS    = 'tpma_cr_magic_link_extra_days';
+
+    /**
+     * Returns true when Tutor LMS is active AND the integration toggle is on.
+     */
+    public static function is_tutor_integration_enabled(): bool {
+        if (!class_exists('\TUTOR\Tutor')) {
+            return false;
+        }
+        return (bool)(int)get_option(self::OPTION_TUTOR_ENABLED, 1);
+    }
+
+    public static function get_tutor_default_instructor(): int {
+        return absint(get_option(self::OPTION_TUTOR_DEFAULT_INSTRUCTOR, 0));
+    }
+
+    public static function get_magic_link_extra_days(): int {
+        return max(1, absint(get_option(self::OPTION_MAGIC_LINK_EXTRA_DAYS, 15)));
+    }
+
+    public static function save_tutor_settings(): void {
+        $enabled     = isset($_POST['tpma_cr_tutor_enabled']) ? 1 : 0;
+        $instructor  = absint(wp_unslash($_POST['tpma_cr_tutor_default_instructor'] ?? 0));
+        $extra_days  = max(1, absint(wp_unslash($_POST['tpma_cr_magic_link_extra_days'] ?? 15)));
+
+        update_option(self::OPTION_TUTOR_ENABLED,            $enabled,    false);
+        update_option(self::OPTION_TUTOR_DEFAULT_INSTRUCTOR, $instructor, false);
+        update_option(self::OPTION_MAGIC_LINK_EXTRA_DAYS,    $extra_days, false);
+    }
+
+    public static function render_tutor_settings_section(): void {
+        $tutor_present = class_exists('\TUTOR\Tutor');
+        $enabled       = (bool)(int)get_option(self::OPTION_TUTOR_ENABLED, 1);
+        $instructor    = self::get_tutor_default_instructor();
+        $extra_days    = self::get_magic_link_extra_days();
+
+        echo '<h2>Tutor LMS 整合設定</h2>';
+
+        if (!$tutor_present) {
+            echo '<p class="description" style="color:#999;">（未偵測到 Tutor LMS 插件，以下設定在 Tutor 啟用後生效。）</p>';
+        }
+
+        echo '<table class="form-table" role="presentation">';
+
+        // Toggle
+        echo '<tr>';
+        echo '<th scope="row">啟用 Tutor 整合</th>';
+        echo '<td>';
+        echo '<label><input type="checkbox" name="tpma_cr_tutor_enabled" value="1"' . checked($enabled, true, false) . '> 啟用（課程同步、自動報名、Magic Link）</label>';
+        echo '<p class="description">停用後 TPMA 報名功能仍正常運作，僅關閉 Tutor 相關功能。</p>';
+        echo '</td>';
+        echo '</tr>';
+
+        // Default instructor
+        echo '<tr>';
+        echo '<th scope="row"><label for="tpma_cr_tutor_default_instructor">預設 Tutor 講師 User ID</label></th>';
+        echo '<td>';
+        echo '<input type="number" min="0" class="small-text" id="tpma_cr_tutor_default_instructor" name="tpma_cr_tutor_default_instructor" value="' . esc_attr((string)$instructor) . '">';
+        if ($instructor > 0) {
+            $u = get_user_by('id', $instructor);
+            if ($u) {
+                echo ' <span class="description">(' . esc_html($u->display_name) . ')</span>';
+            }
+        }
+        echo '<p class="description">若講師未在 TPMA 講師管理中綁定 WP 使用者，同步至 Tutor 時使用此帳號作為課程作者。</p>';
+        echo '</td>';
+        echo '</tr>';
+
+        // Magic link expiry days
+        echo '<tr>';
+        echo '<th scope="row"><label for="tpma_cr_magic_link_extra_days">Magic Link 有效天數</label></th>';
+        echo '<td>';
+        echo '<input type="number" min="1" max="365" class="small-text" id="tpma_cr_magic_link_extra_days" name="tpma_cr_magic_link_extra_days" value="' . esc_attr((string)$extra_days) . '">';
+        echo ' 天（授課日起算）';
+        echo '<p class="description">學員 Email 中的免登入連結有效期限 = 授課日期 + 此天數。預設 15 天。</p>';
+        echo '</td>';
+        echo '</tr>';
+
+        echo '</table>';
     }
 }
