@@ -109,6 +109,11 @@ $TPMA_OPTIONS_FOR_JS = [
     信件模板
   </a>
 
+  <div class="tpma-view-mode-row" role="group" aria-label="清單顯示模式">
+    <button type="button" class="tpma-btn tpma-btn-secondary tpma-view-mode-btn" id="tpma-view-mode-nested" aria-pressed="false">巢狀模式</button>
+    <button type="button" class="tpma-btn tpma-btn-secondary tpma-view-mode-btn" id="tpma-view-mode-flat" aria-pressed="false">平鋪模式</button>
+  </div>
+
 
 <div class="tpma-reg-grid tpma-table-shared">
 
@@ -287,29 +292,32 @@ $TPMA_OPTIONS_FOR_JS = [
         <div style="font-weight:bold; margin-bottom:2px;">批次修改（第二層）</div>
 
         <label>批次修改報名狀態</label>
-        
+        <select id="tpma-batch-status" class="tpma-batch-select">
           <option value="">請選擇狀態</option>
           <?php foreach ($TPMA_ENUM['regStatus'] as $v => $label): ?>
             <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
           <?php endforeach; ?>
+        </select>
 
         <button class="tpma-btn tpma-batch-btn" data-batch-field="status">批次設定報名狀態</button>
 
         <label style="margin-top:4px;">批次修改收據狀態</label>
-        
+        <select id="tpma-batch-receipt-status" class="tpma-batch-select">
           <option value="">請選擇狀態</option>
           <?php foreach ($TPMA_ENUM['receiptStatus'] as $v => $label): ?>
             <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
           <?php endforeach; ?>
+        </select>
 
         <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_status">批次設定收據狀態</button>
 
         <label style="margin-top:4px;">批次修改收據方式</label>
-        
+        <select id="tpma-batch-receipt-type" class="tpma-batch-select">
           <option value="">請選擇方式</option>
           <?php foreach ($TPMA_ENUM['receiptType'] as $v => $label): ?>
             <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
           <?php endforeach; ?>
+        </select>
 
         <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_type">批次設定收據方式</button>
       </div>

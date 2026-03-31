@@ -1,0 +1,1036 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TPMA Reg Admin Nested Static Mockup</title>
+  <style>
+    :root {
+      --tpma-primary-color: #007BFF;
+      --tpma-primary-hover-color: #0056b3;
+      --tpma-secondary-color: #6c757d;
+      --tpma-success-color: #28a745;
+      --tpma-danger-color: #dc3545;
+      --tpma-warning-color: #ffc107;
+      --tpma-info-color: #17a2b8;
+      --tpma-light-gray: #f8f9fa;
+      --tpma-medium-gray: #e9ecef;
+      --tpma-border-color: #ced4da;
+      --tpma-text-color: #162033;
+      --tpma-muted-color: #64748b;
+      --tpma-bg-color: #f3f6fb;
+      --tpma-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
+      --tpma-shadow-md: 0 8px 20px rgba(19, 35, 72, 0.08);
+      --tpma-radius-lg: 16px;
+      --tpma-radius-md: 12px;
+      --tpma-radius-sm: 8px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #f8fbff 0%, var(--tpma-bg-color) 100%);
+      color: var(--tpma-text-color);
+      font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      padding: 24px;
+    }
+
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+    }
+
+    .hero {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: flex-end;
+      margin-bottom: 22px;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.15;
+    }
+
+    .hero p {
+      margin: 8px 0 0;
+      color: var(--tpma-muted-color);
+      max-width: 760px;
+    }
+
+    .meta {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px solid var(--tpma-border-color);
+      color: var(--tpma-muted-color);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .shell {
+      background: rgba(255, 255, 255, 0.84);
+      border: 1px solid rgba(206, 212, 218, 0.8);
+      border-radius: 24px;
+      box-shadow: var(--tpma-shadow-md);
+      padding: 20px;
+      backdrop-filter: blur(6px);
+    }
+
+    .tpma-filter-row,
+    .tpma-toolbar-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 14px;
+    }
+
+    .tpma-filter-row {
+      padding: 14px;
+      border-radius: var(--tpma-radius-lg);
+      background: #fff;
+      border: 1px solid var(--tpma-medium-gray);
+    }
+
+    .tpma-filter-row strong {
+      font-size: 13px;
+    }
+
+    .tpma-input,
+    .tpma-select {
+      min-height: 40px;
+      border: 1px solid var(--tpma-border-color);
+      border-radius: 10px;
+      padding: 9px 12px;
+      background: #fff;
+      color: var(--tpma-text-color);
+      font-size: 14px;
+    }
+
+    .tpma-input.search {
+      flex: 1 1 340px;
+      min-width: 240px;
+    }
+
+    .tpma-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 40px;
+      padding: 0 16px;
+      border-radius: 10px;
+      border: 1px solid var(--tpma-primary-color);
+      background: var(--tpma-primary-color);
+      color: #fff;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: default;
+      box-shadow: var(--tpma-shadow-sm);
+    }
+
+    .tpma-btn.secondary {
+      background: #fff;
+      color: var(--tpma-text-color);
+      border-color: var(--tpma-border-color);
+      box-shadow: none;
+    }
+
+    .tpma-btn.ghost {
+      background: #f7fbff;
+      color: var(--tpma-primary-color);
+      border-color: #cfe2ff;
+      box-shadow: none;
+    }
+
+    .tpma-toolbar-row {
+      justify-content: space-between;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .tpma-btn.mode-active {
+      background: #162033;
+      border-color: #162033;
+      color: #fff;
+    }
+
+    .filter-panels {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .filter-panel {
+      background: #fff;
+      border: 1px solid var(--tpma-medium-gray);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: var(--tpma-shadow-sm);
+    }
+
+    .filter-panel h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+    }
+
+    .filter-panel .field {
+      margin-bottom: 10px;
+    }
+
+    .filter-panel .field:last-child {
+      margin-bottom: 0;
+    }
+
+    .filter-panel label {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--tpma-muted-color);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .filter-actions,
+    .batch-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .batch-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .batch-card {
+      padding: 12px;
+      border-radius: 12px;
+      background: var(--tpma-light-gray);
+      border: 1px solid var(--tpma-medium-gray);
+    }
+
+    .main-header {
+      display: grid;
+      grid-template-columns: 44px 56px 160px 1.8fr 1.15fr 110px;
+      gap: 10px;
+      align-items: center;
+      background: #162033;
+      color: #fff;
+      padding: 12px 20px;
+      border-radius: 12px 12px 0 0;
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .grid-class {
+      display: grid;
+      grid-template-columns: 44px 56px 160px 1.8fr 1.15fr 110px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .grid-student {
+      display: grid;
+      grid-template-columns: 44px 56px 150px 1.15fr 1.35fr 210px 90px;
+      gap: 10px;
+      align-items: center;
+    }
+
+    details {
+      border: none;
+    }
+
+    summary {
+      list-style: none;
+      cursor: default;
+      outline: none;
+    }
+
+    summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .level-1-card {
+      background: #fff;
+      margin-bottom: 16px;
+      border-radius: 0 0 14px 14px;
+      box-shadow: var(--tpma-shadow-sm);
+      border: 1px solid var(--tpma-medium-gray);
+      border-top: none;
+      border-left: 6px solid var(--tpma-secondary-color);
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .level-1-card[open] {
+      box-shadow: var(--tpma-shadow-md);
+      border-left-color: var(--tpma-primary-color);
+    }
+
+    .level-1-card > summary {
+      padding: 18px 20px;
+      background: #fff;
+    }
+
+    .level-1-card > summary:hover {
+      background: #fcfcfc;
+    }
+
+    .student-section {
+      background: #f8fbff;
+      border-top: 1px solid var(--tpma-medium-gray);
+      padding: 10px 15px 20px 45px;
+    }
+
+    .student-sub-header {
+      padding: 10px 15px;
+      font-size: 12px;
+      color: var(--tpma-secondary-color);
+      font-weight: 700;
+      border-bottom: 1px solid var(--tpma-border-color);
+      margin-bottom: 6px;
+    }
+
+    .level-2-row {
+      background: transparent;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    }
+
+    .level-2-row:last-child {
+      border-bottom: none;
+    }
+
+    .level-2-row > summary {
+      padding: 12px 15px;
+      border-radius: 8px;
+      transition: background 0.2s ease;
+    }
+
+    .level-2-row > summary:hover {
+      background: rgba(0, 123, 255, 0.04);
+    }
+
+    .level-2-row[open] > summary {
+      background: #fff;
+      font-weight: 600;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    }
+
+    .detail-panel {
+      background: #ffffff;
+      margin: 10px 15px 15px 40px;
+      padding: 24px;
+      border-radius: 12px;
+      border: 1px solid #d0e0f5;
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.03);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 20px;
+      position: relative;
+    }
+
+    .detail-panel::before {
+      content: "";
+      position: absolute;
+      left: -10px;
+      top: 20px;
+      border-style: solid;
+      border-width: 8px 10px 8px 0;
+      border-color: transparent #d0e0f5 transparent transparent;
+    }
+
+    .toggle-btn {
+      width: 22px;
+      height: 22px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--tpma-light-gray);
+      border-radius: 4px;
+      font-size: 10px;
+      transition: transform 0.3s ease, background 0.3s ease;
+    }
+
+    details[open] > summary .toggle-btn {
+      transform: rotate(90deg);
+      background: var(--tpma-primary-color);
+      color: #fff;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-right: 4px;
+      margin-bottom: 4px;
+      white-space: nowrap;
+    }
+
+    .pill.info {
+      background: #e8f1ff;
+      color: #2958a8;
+    }
+
+    .pill.success {
+      background: #e8f7ee;
+      color: #1d6b3f;
+    }
+
+    .pill.warning {
+      background: #fff3db;
+      color: #8a5a00;
+    }
+
+    .pill.danger {
+      background: #fdeaea;
+      color: #a23636;
+    }
+
+    .info-item label {
+      display: block;
+      font-size: 11px;
+      color: var(--tpma-muted-color);
+      margin-bottom: 5px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .info-item .val {
+      font-size: 14px;
+      color: var(--tpma-text-color);
+      padding-bottom: 5px;
+      border-bottom: 1px dashed var(--tpma-medium-gray);
+      line-height: 1.5;
+    }
+
+    .info-item.span-2 {
+      grid-column: span 2;
+    }
+
+    .info-item.span-all {
+      grid-column: 1 / -1;
+    }
+
+    .detail-actions {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding-top: 4px;
+    }
+
+    .num-font {
+      font-family: "Courier New", Courier, monospace;
+      font-weight: 700;
+    }
+
+    .muted {
+      color: var(--tpma-muted-color);
+      font-size: 13px;
+    }
+
+    .pagination {
+      margin-top: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .pagination-info {
+      color: var(--tpma-muted-color);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .export-modal-demo {
+      margin-top: 26px;
+      background: #fff;
+      border: 1px solid var(--tpma-medium-gray);
+      border-radius: 18px;
+      box-shadow: var(--tpma-shadow-sm);
+      overflow: hidden;
+    }
+
+    .export-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--tpma-medium-gray);
+    }
+
+    .export-modal-header h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .export-modal-body {
+      padding: 18px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .export-option {
+      padding: 16px;
+      border: 2px solid var(--tpma-medium-gray);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .export-option.active {
+      border-color: var(--tpma-primary-color);
+      background: #f3f8ff;
+    }
+
+    .export-option h4 {
+      margin: 0 0 6px;
+      font-size: 15px;
+    }
+
+    .export-option p {
+      margin: 0 0 10px;
+      color: var(--tpma-muted-color);
+      line-height: 1.5;
+    }
+
+    .export-dates {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .export-modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0 18px 18px;
+    }
+
+    .check {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--tpma-primary-color);
+    }
+
+    @media (max-width: 1100px) {
+      .filter-panels,
+      .batch-grid,
+      .export-modal-body {
+        grid-template-columns: 1fr;
+      }
+
+      .main-header,
+      .grid-class,
+      .grid-student {
+        grid-template-columns: 44px 56px 1fr;
+      }
+
+      .main-header > span:nth-child(n + 4),
+      .grid-class > *:nth-child(n + 4),
+      .student-sub-header > *:nth-child(n + 4),
+      .grid-student > *:nth-child(n + 4) {
+        display: none;
+      }
+
+      .student-section {
+        padding-left: 20px;
+      }
+
+      .detail-panel {
+        margin-left: 10px;
+      }
+
+      .detail-panel::before {
+        display: none;
+      }
+    }
+
+    @media (max-width: 760px) {
+      body {
+        padding: 14px;
+      }
+
+      .hero,
+      .tpma-toolbar-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .meta,
+      .toolbar-left,
+      .toolbar-right {
+        justify-content: flex-start;
+      }
+
+      .main-header {
+        display: none;
+      }
+
+      .grid-class,
+      .grid-student {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+      }
+
+      .student-sub-header {
+        display: none;
+      }
+
+      .detail-panel {
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .info-item.span-2,
+      .info-item.span-all {
+        grid-column: auto;
+      }
+
+      .export-modal-header,
+      .export-modal-footer {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div>
+        <h1>Reg Admin 巢狀表格靜態稿</h1>
+        <p>完整輸出 shortcode 頁面中的主要元素，並將巢狀表格樣式調整為你提供的 `reg-admin-nested-static-nwe.html` 方向。</p>
+      </div>
+      <div class="meta">
+        <span class="chip">Static HTML</span>
+        <span class="chip">Nested Style Applied</span>
+        <span class="chip">Shortcode Elements Included</span>
+      </div>
+    </section>
+
+    <section class="shell">
+      <div class="tpma-filter-row">
+        <strong>關鍵字搜尋</strong>
+        <input class="tpma-input search" type="text" value="A260320001 / 王小明 / 海峰科技">
+        <span class="tpma-btn">搜尋</span>
+        <span class="tpma-btn secondary">清除全部篩選</span>
+        <span class="tpma-btn ghost">匯出 Excel</span>
+      </div>
+
+      <div class="tpma-toolbar-row">
+        <div class="toolbar-left">
+          <span class="tpma-btn ghost">信件模板</span>
+        </div>
+        <div class="toolbar-right">
+          <span class="tpma-btn mode-active">巢狀模式</span>
+          <span class="tpma-btn secondary">平鋪模式</span>
+        </div>
+      </div>
+
+      <section class="filter-panels" aria-label="篩選與批次操作示意">
+        <div class="filter-panel">
+          <h3>時間 / 課程篩選</h3>
+          <div class="field">
+            <label>報名時間</label>
+            <input class="tpma-input" type="date" value="2026-03-31">
+          </div>
+          <div class="field">
+            <label>授課日期區間</label>
+            <div class="filter-actions">
+              <input class="tpma-input" type="date" value="2026-04-01">
+              <input class="tpma-input" type="date" value="2026-04-30">
+            </div>
+          </div>
+          <div class="field">
+            <label>課程名稱</label>
+            <select class="tpma-select">
+              <option>全部課程</option>
+              <option selected>TPMA 專案管理實務班</option>
+              <option>TPMA 團隊協作與溝通班</option>
+            </select>
+          </div>
+          <div class="filter-actions">
+            <span class="tpma-btn secondary">時間↑</span>
+            <span class="tpma-btn secondary">時間↓</span>
+            <span class="tpma-btn secondary">清除</span>
+          </div>
+        </div>
+
+        <div class="filter-panel">
+          <h3>狀態篩選</h3>
+          <div class="field">
+            <label>付款狀態 (WC)</label>
+            <select class="tpma-select">
+              <option>全部</option>
+              <option selected>已付款</option>
+              <option>待核帳</option>
+              <option>未付款</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>報名狀態</label>
+            <select class="tpma-select">
+              <option>全部</option>
+              <option selected>待發證</option>
+              <option>已結訓</option>
+              <option>保留中</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>收據狀態 / 收據方式 / 測驗狀態</label>
+            <div class="filter-actions">
+              <select class="tpma-select">
+                <option>已寄出</option>
+              </select>
+              <select class="tpma-select">
+                <option>電子</option>
+              </select>
+              <select class="tpma-select">
+                <option>待測驗</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <span class="tpma-btn secondary">清除付款篩選</span>
+            <span class="tpma-btn secondary">清除狀態篩選</span>
+          </div>
+        </div>
+
+        <div class="filter-panel">
+          <h3>批次修改（第二層）</h3>
+          <div class="batch-grid">
+            <div class="batch-card">
+              <label>批次修改報名狀態</label>
+              <select class="tpma-select">
+                <option>請選擇狀態</option>
+                <option selected>待發證</option>
+                <option>已結訓</option>
+              </select>
+              <div class="batch-actions">
+                <span class="tpma-btn">批次設定報名狀態</span>
+              </div>
+            </div>
+            <div class="batch-card">
+              <label>批次修改收據狀態</label>
+              <select class="tpma-select">
+                <option>請選擇狀態</option>
+                <option selected>已寄出</option>
+                <option>待開立</option>
+              </select>
+              <div class="batch-actions">
+                <span class="tpma-btn">批次設定收據狀態</span>
+              </div>
+            </div>
+            <div class="batch-card">
+              <label>批次修改收據方式</label>
+              <select class="tpma-select">
+                <option>請選擇方式</option>
+                <option selected>電子</option>
+                <option>紙本</option>
+              </select>
+              <div class="batch-actions">
+                <span class="tpma-btn">批次設定收據方式</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="main-header">
+        <span><input class="check" type="checkbox" checked></span>
+        <span>序</span>
+        <span>授課日期</span>
+        <span>課程名稱</span>
+        <span>授課講師</span>
+        <span>人數統計</span>
+      </div>
+
+      <details class="level-1-card" open>
+        <summary class="grid-class">
+          <div><input class="check" type="checkbox" checked></div>
+          <div class="num-font">1</div>
+          <div>
+            2026-04-20
+            <div class="muted">09:00-16:00</div>
+          </div>
+          <div>
+            <div class="toggle-btn">▶</div>
+            <strong style="font-size:15px; margin-left:10px;">TPMA 專案管理實務班</strong>
+            <div class="muted" style="margin-left:32px;">台北班 / 第 2 期</div>
+          </div>
+          <div>陳志宏</div>
+          <div class="num-font">18 人</div>
+        </summary>
+
+        <div class="student-section">
+          <div class="student-sub-header grid-student">
+            <span><input class="check" type="checkbox" checked></span>
+            <span>序</span>
+            <span>報名時間</span>
+            <span>學員姓名</span>
+            <span>公司抬頭</span>
+            <span>狀態</span>
+            <span>操作</span>
+          </div>
+
+          <details class="level-2-row" open>
+            <summary class="grid-student">
+              <div><input class="check" type="checkbox" checked></div>
+              <div class="num-font">1</div>
+              <div class="num-font">2026-03-28<br>14:20</div>
+              <div>
+                <div class="toggle-btn">▶</div>
+                <strong style="margin-left:10px;">王小明</strong>
+                <div class="muted" style="margin-left:32px;">資訊部 / 專員</div>
+              </div>
+              <div class="muted">海峰科技股份有限公司</div>
+              <div>
+                <span class="pill success">已付款</span>
+                <span class="pill info">待發證</span>
+                <span class="pill warning">待測驗</span>
+              </div>
+              <div><span class="tpma-btn secondary">收合</span></div>
+            </summary>
+
+            <div class="detail-panel">
+              <div class="info-item">
+                <label>課程名稱</label>
+                <div class="val">TPMA 專案管理實務班</div>
+              </div>
+              <div class="info-item">
+                <label>授課講師</label>
+                <div class="val">陳志宏</div>
+              </div>
+              <div class="info-item">
+                <label>授課日期時間</label>
+                <div class="val">2026-04-20 09:00-16:00</div>
+              </div>
+              <div class="info-item">
+                <label>報名編號</label>
+                <div class="val">A260320001</div>
+              </div>
+
+              <div class="info-item">
+                <label>學員姓名</label>
+                <div class="val">王小明</div>
+              </div>
+              <div class="info-item">
+                <label>部門 / 職稱</label>
+                <div class="val">資訊部 / 專員</div>
+              </div>
+              <div class="info-item">
+                <label>手機</label>
+                <div class="val">0912-345-678</div>
+              </div>
+              <div class="info-item">
+                <label>Email</label>
+                <div class="val">ming.wang@example.com</div>
+              </div>
+
+              <div class="info-item">
+                <label>公司抬頭</label>
+                <div class="val">海峰科技股份有限公司</div>
+              </div>
+              <div class="info-item">
+                <label>統一編號</label>
+                <div class="val">24567891</div>
+              </div>
+              <div class="info-item">
+                <label>承辦人姓名</label>
+                <div class="val">李怡君</div>
+              </div>
+              <div class="info-item">
+                <label>承辦人 Email</label>
+                <div class="val">ivy.li@example.com</div>
+              </div>
+
+              <div class="info-item span-2">
+                <label>地址</label>
+                <div class="val">104 台北市中山區民權東路二段 52 號 8 樓</div>
+              </div>
+              <div class="info-item">
+                <label>付款狀態 (WC)</label>
+                <div class="val">已付款</div>
+              </div>
+              <div class="info-item">
+                <label>收據方式 / 狀態</label>
+                <div class="val">電子 / 已寄出</div>
+              </div>
+              <div class="info-item">
+                <label>測驗成績</label>
+                <div class="val">85%</div>
+              </div>
+              <div class="info-item">
+                <label>證書編號</label>
+                <div class="val">TPMA-2026-00031</div>
+              </div>
+              <div class="info-item span-all">
+                <label>備註</label>
+                <div class="val">此區塊延續目前系統的第三層詳細資訊樣式，但改成較輕量的資訊面板呈現。</div>
+              </div>
+
+              <div class="detail-actions">
+                <span class="tpma-btn secondary">取消編輯</span>
+                <span class="tpma-btn">編輯詳情</span>
+              </div>
+            </div>
+          </details>
+
+          <details class="level-2-row">
+            <summary class="grid-student">
+              <div><input class="check" type="checkbox" checked></div>
+              <div class="num-font">2</div>
+              <div class="num-font">2026-03-29<br>09:45</div>
+              <div>
+                <div class="toggle-btn">▶</div>
+                <strong style="margin-left:10px;">張雅婷</strong>
+                <div class="muted" style="margin-left:32px;">營運部 / 經理</div>
+              </div>
+              <div class="muted">星嶼整合顧問有限公司</div>
+              <div>
+                <span class="pill success">已付款</span>
+                <span class="pill info">待發證</span>
+              </div>
+              <div><span class="tpma-btn secondary">詳細</span></div>
+            </summary>
+            <div class="detail-panel">
+              <div class="info-item">
+                <label>Email</label>
+                <div class="val">yating.zhang@example.com</div>
+              </div>
+              <div class="info-item">
+                <label>手機</label>
+                <div class="val">0933-666-222</div>
+              </div>
+              <div class="info-item span-all">
+                <label>備註</label>
+                <div class="val">第二位學員詳細資料在靜態稿中以縮減版本示意。</div>
+              </div>
+            </div>
+          </details>
+
+          <details class="level-2-row">
+            <summary class="grid-student">
+              <div><input class="check" type="checkbox"></div>
+              <div class="num-font">3</div>
+              <div class="num-font">2026-03-30<br>11:08</div>
+              <div>
+                <div class="toggle-btn">▶</div>
+                <strong style="margin-left:10px;">林信宏</strong>
+                <div class="muted" style="margin-left:32px;">財務部 / 主任</div>
+              </div>
+              <div class="muted">兆岳國際企業社</div>
+              <div>
+                <span class="pill warning">待核帳</span>
+                <span class="pill danger">待退款</span>
+              </div>
+              <div><span class="tpma-btn secondary">詳細</span></div>
+            </summary>
+            <div class="detail-panel">
+              <div class="info-item">
+                <label>付款狀態</label>
+                <div class="val">待核帳</div>
+              </div>
+              <div class="info-item">
+                <label>報名狀態</label>
+                <div class="val">待退款</div>
+              </div>
+              <div class="info-item span-all">
+                <label>備註</label>
+                <div class="val">示意保留中 / 待退款等狀態在第二層與第三層的呈現方式。</div>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+
+      <details class="level-1-card">
+        <summary class="grid-class">
+          <div><input class="check" type="checkbox"></div>
+          <div class="num-font">2</div>
+          <div>
+            2026-04-27
+            <div class="muted">13:30-17:30</div>
+          </div>
+          <div>
+            <div class="toggle-btn">▶</div>
+            <strong style="font-size:15px; margin-left:10px;">TPMA 團隊協作與溝通班</strong>
+            <div class="muted" style="margin-left:32px;">高雄班 / 第 1 期</div>
+          </div>
+          <div>黃佩珊</div>
+          <div class="num-font">9 人</div>
+        </summary>
+        <div class="student-section">
+          <div style="padding: 24px; text-align: center; color: #94a3b8; font-style: italic;">
+            目前暫無學員報名資料
+          </div>
+        </div>
+      </details>
+
+      <div class="pagination">
+        <span class="tpma-btn secondary">上一頁</span>
+        <span class="pagination-info">第 1 / 3 頁，顯示 1-27 筆，共 63 筆</span>
+        <span class="tpma-btn secondary">下一頁</span>
+      </div>
+
+      <section class="export-modal-demo" aria-label="匯出 Excel 視窗示意">
+        <div class="export-modal-header">
+          <h3>匯出 Excel</h3>
+          <span class="tpma-btn secondary">關閉</span>
+        </div>
+        <div class="export-modal-body">
+          <div class="export-option active">
+            <h4>課程學員資料</h4>
+            <p>匯出目前篩選結果（共 27 筆），含完整欄位。</p>
+          </div>
+          <div class="export-option">
+            <h4>統計報表</h4>
+            <p>依授課日期範圍，按公司分組列出學員數與收入，底部含總計。</p>
+            <div class="export-dates">
+              <input class="tpma-input" type="date" value="2026-04-01">
+              <input class="tpma-input" type="date" value="2026-04-30">
+            </div>
+          </div>
+        </div>
+        <div class="export-modal-footer">
+          <span class="tpma-btn secondary">取消</span>
+          <span class="tpma-btn">確認匯出</span>
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>

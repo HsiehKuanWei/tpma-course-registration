@@ -8,6 +8,7 @@ const R = global.TPMARegAdmin.render = global.TPMARegAdmin.render || {};
 const U = global.TPMARegAdmin.utils;
 const L = global.TPMARegAdmin.labels;
 const S = global.TPMARegAdmin.state;
+const UI = global.TPMARegAdmin.ui || {};
 const API = global.TPMARegAdmin.api;
 const O = global.TPMARegAdmin.options || {};
 const ADJUSTING_VALUE = 'adjusting';
@@ -593,25 +594,318 @@ R.saveDetail = async function saveDetail(ctx, container, id){
   }
 };
 
+R.buildCreatedAtHtml = function buildCreatedAtHtml(value){
+  const createdText = U.trimToMinute(value);
+  if (createdText && createdText.length >= 16) {
+    const datePart = createdText.substring(0,10);
+    const timePart = createdText.substring(11,16);
+    return U.esc(datePart) + '<br>' + U.esc(timePart);
+  }
+  return U.esc(createdText);
+};
+
+R.getCourseSummaryText = function getCourseSummaryText(row){
+  return U.display(row.course_name) || (isAdjustingCourse(row.course_id) ? ADJUSTING_LABEL : '');
+};
+
+R.getLecturerSummaryText = function getLecturerSummaryText(row){
+  const isAdjustingRow = isAdjustingCourse(row.course_id) || isAdjustingDate(row.class_date);
+  if (isAdjustingRow) return ADJUSTING_LABEL;
+  return U.display(row.lecturer_name || row.lecturer);
+};
+
+R.bindDetailToggle = function bindDetailToggle(button, details){
+  button.addEventListener('click', function(){
+    const isOpen = details.classList.contains('open');
+    details.classList.toggle('open', !isOpen);
+    this.textContent = isOpen ? '詳細' : '收合';
+  });
+};
+
+R.bindStudentSelection = function bindStudentSelection(ctx, studentCard, checkbox){
+  checkbox.addEventListener('change', function(){
+    const classCard = studentCard.closest('.tpma-reg-class-card');
+    if (classCard && UI.updateClassSelectionState) {
+      UI.updateClassSelectionState(classCard);
+    }
+    ctx.actions.updateBatchButtonsEnabled();
+    if (UI.updateAllClassSelectionStates) {
+      UI.updateAllClassSelectionStates(ctx);
+    }
+  });
+};
+
+R.createFlatRowCard = function createFlatRowCard(ctx, row, seq){
+  const card = document.createElement('div');
+  card.className = 'tpma-reg-card';
+  card.dataset.id = row.id || '';
+
+  const summary = document.createElement('div');
+  summary.className = 'tpma-reg-card-summary tpma-reg-grid-layout';
+
+  const cSel = document.createElement('div');
+  cSel.className = 'tpma-reg-cell';
+  cSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
+  summary.appendChild(cSel);
+
+  const cSeq = document.createElement('div');
+  cSeq.className = 'tpma-reg-cell tpma-seq-col';
+  cSeq.textContent = seq;
+  summary.appendChild(cSeq);
+
+  const cCreated = document.createElement('div');
+  cCreated.className = 'tpma-reg-cell';
+  cCreated.innerHTML = '<div class="tpma-cell-wrap">' + R.buildCreatedAtHtml(row.created_at) + '</div>';
+  summary.appendChild(cCreated);
+
+  const cCourse = document.createElement('div');
+  cCourse.className = 'tpma-reg-cell';
+  const courseText = R.getCourseSummaryText(row);
+  const lecturerText = R.getLecturerSummaryText(row);
+  const titleAttr = lecturerText ? ' title="講師：' + U.esc(lecturerText) + '"' : '';
+  cCourse.innerHTML = '<div class="tpma-cell-wrap"><span' + titleAttr + '>' + U.esc(courseText) + '</span></div>';
+  summary.appendChild(cCourse);
+
+  const cDate = document.createElement('div');
+  cDate.className = 'tpma-reg-cell';
+  const classText = R.buildClassDateRangeHtml(ctx, row);
+  let classHtml = '';
+  if (classText) {
+    const sp = classText.indexOf(' ');
+    if (sp > 0) {
+      classHtml = U.esc(classText.substring(0, sp)) + '<br>' + U.esc(classText.substring(sp + 1).trim());
+    } else {
+      classHtml = U.esc(classText);
+    }
+  }
+  cDate.innerHTML = '<div class="tpma-cell-wrap">' + classHtml + '</div>';
+  summary.appendChild(cDate);
+
+  const cStu = document.createElement('div');
+  cStu.className = 'tpma-reg-cell';
+  cStu.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.student_name)) + '</div>';
+  summary.appendChild(cStu);
+
+  const cComp = document.createElement('div');
+  cComp.className = 'tpma-reg-cell';
+  cComp.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.company_name)) + '</div>';
+  summary.appendChild(cComp);
+
+  const cStatus = document.createElement('div');
+  cStatus.className = 'tpma-reg-cell';
+  cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
+  summary.appendChild(cStatus);
+
+  const cAct = document.createElement('div');
+  cAct.className = 'tpma-reg-cell';
+  cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
+  summary.appendChild(cAct);
+
+  card.appendChild(summary);
+
+  const details = document.createElement('div');
+  details.className = 'tpma-reg-card-details';
+  details.dataset.id = row.id || '';
+  card.appendChild(details);
+
+  R.renderDetailView(ctx, details, row);
+  R.bindDetailToggle(cAct.querySelector('.tpma-view-btn'), details);
+  R.bindStudentSelection(ctx, card, cSel.querySelector('.tpma-reg-select'));
+
+  return card;
+};
+
+R.createNestedStudentRow = function createNestedStudentRow(ctx, row, seq){
+  const card = document.createElement('div');
+  card.className = 'tpma-reg-card tpma-reg-student-card';
+  card.dataset.id = row.id || '';
+
+  const summary = document.createElement('div');
+  summary.className = 'tpma-reg-card-summary tpma-reg-student-grid-layout';
+
+  const cSel = document.createElement('div');
+  cSel.className = 'tpma-reg-cell';
+  cSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
+  summary.appendChild(cSel);
+
+  const cSeq = document.createElement('div');
+  cSeq.className = 'tpma-reg-cell tpma-seq-col';
+  cSeq.textContent = seq;
+  summary.appendChild(cSeq);
+
+  const cCreated = document.createElement('div');
+  cCreated.className = 'tpma-reg-cell';
+  cCreated.innerHTML = '<div class="tpma-cell-wrap">' + R.buildCreatedAtHtml(row.created_at) + '</div>';
+  summary.appendChild(cCreated);
+
+  const cStu = document.createElement('div');
+  cStu.className = 'tpma-reg-cell';
+  cStu.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.student_name)) + '</div>';
+  summary.appendChild(cStu);
+
+  const cComp = document.createElement('div');
+  cComp.className = 'tpma-reg-cell';
+  cComp.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.company_name)) + '</div>';
+  summary.appendChild(cComp);
+
+  const cStatus = document.createElement('div');
+  cStatus.className = 'tpma-reg-cell';
+  cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
+  summary.appendChild(cStatus);
+
+  const cAct = document.createElement('div');
+  cAct.className = 'tpma-reg-cell';
+  cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
+  summary.appendChild(cAct);
+
+  card.appendChild(summary);
+
+  const details = document.createElement('div');
+  details.className = 'tpma-reg-card-details';
+  details.dataset.id = row.id || '';
+  card.appendChild(details);
+
+  R.renderDetailView(ctx, details, row);
+  R.bindDetailToggle(cAct.querySelector('.tpma-view-btn'), details);
+  R.bindStudentSelection(ctx, card, cSel.querySelector('.tpma-reg-select'));
+
+  return card;
+};
+
+R.renderFlatTable = function renderFlatTable(ctx, tbody){
+  const meta = S.getPaginationMeta(ctx);
+  const pageRows = S.getCurrentPageRows(ctx);
+
+  pageRows.forEach(function(row, idx){
+    tbody.appendChild(R.createFlatRowCard(ctx, row, meta.start + idx));
+  });
+};
+
+R.renderNestedTable = function renderNestedTable(ctx, tbody){
+  const pageGroups = S.getCurrentPageGroups(ctx);
+
+  pageGroups.forEach(function(group, classIdx){
+    const firstRow = (group.rows || [])[0] || {};
+    const classCard = document.createElement('section');
+    classCard.className = 'tpma-reg-class-card';
+    classCard.dataset.groupKey = group.key || '';
+
+    const classSummary = document.createElement('div');
+    classSummary.className = 'tpma-reg-class-summary tpma-reg-class-grid-layout';
+    classSummary.setAttribute('role', 'button');
+    classSummary.setAttribute('tabindex', '0');
+    classSummary.setAttribute('aria-expanded', 'true');
+
+    const classSel = document.createElement('div');
+    classSel.className = 'tpma-reg-class-cell';
+    classSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-class-select"></div>';
+    classSummary.appendChild(classSel);
+
+    const classSeq = document.createElement('div');
+    classSeq.className = 'tpma-reg-class-cell tpma-seq-col';
+    classSeq.textContent = classIdx + 1;
+    classSummary.appendChild(classSeq);
+
+    const classDate = document.createElement('div');
+    classDate.className = 'tpma-reg-class-cell';
+    classDate.innerHTML = '<div class="tpma-cell-wrap">' + R.buildClassDateRangeHtml(ctx, firstRow) + '</div>';
+    classSummary.appendChild(classDate);
+
+    const classCourse = document.createElement('div');
+    classCourse.className = 'tpma-reg-class-cell';
+    classCourse.innerHTML = '<div class="tpma-cell-wrap"><span class="tpma-class-toggle-indicator" aria-hidden="true">▾</span>' + U.esc(R.getCourseSummaryText(firstRow)) + '</div>';
+    classSummary.appendChild(classCourse);
+
+    const classLecturer = document.createElement('div');
+    classLecturer.className = 'tpma-reg-class-cell';
+    classLecturer.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(R.getLecturerSummaryText(firstRow)) + '</div>';
+    classSummary.appendChild(classLecturer);
+
+    const classCount = document.createElement('div');
+    classCount.className = 'tpma-reg-class-cell';
+    classCount.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(String(group.studentCount || 0)) + ' 人</div>';
+    classSummary.appendChild(classCount);
+
+    classCard.appendChild(classSummary);
+
+    const classBody = document.createElement('div');
+    classBody.className = 'tpma-reg-class-body open';
+    classCard.appendChild(classBody);
+
+    const studentHeader = document.createElement('div');
+    studentHeader.className = 'tpma-reg-student-header tpma-reg-student-grid-layout';
+    studentHeader.innerHTML = [
+      '<div class="tpma-reg-student-head">選取</div>',
+      '<div class="tpma-reg-student-head">序</div>',
+      '<div class="tpma-reg-student-head">報名時間</div>',
+      '<div class="tpma-reg-student-head">學員姓名</div>',
+      '<div class="tpma-reg-student-head">公司抬頭</div>',
+      '<div class="tpma-reg-student-head">狀態</div>',
+      '<div class="tpma-reg-student-head">操作</div>'
+    ].join('');
+    classBody.appendChild(studentHeader);
+
+    (group.rows || []).forEach(function(row, idx){
+      classBody.appendChild(R.createNestedStudentRow(ctx, row, idx + 1));
+    });
+
+    const classCheckbox = classSel.querySelector('.tpma-class-select');
+    classCheckbox.addEventListener('click', function(e){
+      e.stopPropagation();
+    });
+    classCheckbox.addEventListener('change', function(){
+      classCard.querySelectorAll('.tpma-reg-select').forEach(function(cb){
+        cb.checked = classCheckbox.checked;
+      });
+      classCheckbox.indeterminate = false;
+      ctx.actions.updateBatchButtonsEnabled();
+      if (UI.updateAllClassSelectionStates) {
+        UI.updateAllClassSelectionStates(ctx);
+      }
+    });
+
+    const toggleClassBody = function(){
+      const isOpen = classBody.classList.contains('open');
+      classBody.classList.toggle('open', !isOpen);
+      classSummary.classList.toggle('is-collapsed', isOpen);
+      classSummary.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
+    };
+
+    classSummary.addEventListener('click', function(e){
+      if (e.target.closest('input') || e.target.closest('button') || e.target.closest('a')) {
+        return;
+      }
+      toggleClassBody();
+    });
+
+    classSummary.addEventListener('keydown', function(e){
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggleClassBody();
+      }
+    });
+
+    tbody.appendChild(classCard);
+  });
+};
+
 R.renderTable = function renderTable(ctx){
-  const tbody = ctx.dom.tbody;              // 這裡現在是 <div id="tpma-reg-tbody">
+  const tbody = ctx.dom.tbody;
   const selectAllHead = ctx.dom.selectAllHead;
-
   const list = ctx.data.currentRegs || [];
-  tbody.innerHTML = '';
-  if (selectAllHead) selectAllHead.checked = false;
 
-  // loading
+  tbody.innerHTML = '';
+  if (selectAllHead) {
+    selectAllHead.checked = false;
+    selectAllHead.indeterminate = false;
+  }
+
   if (ctx.state && ctx.state.isLoading) {
     tbody.innerHTML = '<div class="tpma-loading-row">載入中.</div>';
     ctx.actions.updateBatchButtonsEnabled();
     ctx.actions.updatePaginationControls();
     return;
   }
-
-  const total = list.length;
-  const totalPages = Math.max(1, Math.ceil(total / ctx.state.pageSize));
-  if (ctx.state.currentPage > totalPages) ctx.state.currentPage = totalPages;
 
   if (!list.length) {
     tbody.innerHTML = '<div class="tpma-empty-row">查無符合條件的報名資料。</div>';
@@ -620,127 +914,17 @@ R.renderTable = function renderTable(ctx){
     return;
   }
 
-  const startIndex = (ctx.state.currentPage - 1) * ctx.state.pageSize;
-  const endIndex = Math.min(startIndex + ctx.state.pageSize, total);
-  const pageItems = list.slice(startIndex, endIndex);
-
-  pageItems.forEach((row, idx)=>{
-    const card = document.createElement('div');
-    card.className = 'tpma-reg-card';
-    card.dataset.id = row.id || '';
-
-    // summary row (grid)
-    const summary = document.createElement('div');
-    summary.className = 'tpma-reg-card-summary tpma-reg-grid-layout';
-
-    // 1) checkbox
-    const cSel = document.createElement('div');
-    cSel.className = 'tpma-reg-cell';
-    cSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
-    summary.appendChild(cSel);
-
-    // 2) seq
-    const cSeq = document.createElement('div');
-    cSeq.className = 'tpma-reg-cell tpma-seq-col';
-    cSeq.textContent = idx + 1;
-    summary.appendChild(cSeq);
-
-    // 3) created_at
-    const cCreated = document.createElement('div');
-    cCreated.className = 'tpma-reg-cell';
-    const createdText = U.trimToMinute(row.created_at);
-    let createdHtml = '';
-    if (createdText && createdText.length >= 16) {
-      const datePart = createdText.substring(0,10);
-      const timePart = createdText.substring(11,16);
-      createdHtml = U.esc(datePart) + '<br>' + U.esc(timePart);
-    } else createdHtml = U.esc(createdText);
-    cCreated.innerHTML = '<div class="tpma-cell-wrap">'+createdHtml+'</div>';
-    summary.appendChild(cCreated);
-
-    // 4) course
-    const cCourse = document.createElement('div');
-    cCourse.className = 'tpma-reg-cell';
-    const cnameRaw = U.display(row.course_name);
-    const cname = cnameRaw || (isAdjustingCourse(row.course_id) ? ADJUSTING_LABEL : '');
-    const lectRaw = U.display(row.lecturer_name || row.lecturer);
-    const isAdjustingRow = isAdjustingCourse(row.course_id) || isAdjustingDate(row.class_date);
-    const lect = isAdjustingRow ? ADJUSTING_LABEL : lectRaw;
-    const titleAttr = lect ? ' title="講師：' + U.esc(lect) + '"' : '';
-    cCourse.innerHTML = '<div class="tpma-cell-wrap"><span'+titleAttr+'>' + U.esc(cname) + '</span></div>';
-    summary.appendChild(cCourse);
-
-    // 5) class date range
-    const cDate = document.createElement('div');
-    cDate.className = 'tpma-reg-cell';
-    const classText = R.buildClassDateRangeHtml(ctx, row);
-    let classHtml = '';
-    if (classText) {
-      const sp = classText.indexOf(' ');
-      if (sp > 0) {
-        const datePart = classText.substring(0, sp);
-        const timePart = classText.substring(sp + 1).trim();
-        classHtml = U.esc(datePart) + '<br>' + U.esc(timePart);
-      } else classHtml = U.esc(classText);
-    }
-    cDate.innerHTML = '<div class="tpma-cell-wrap">'+classHtml+'</div>';
-    summary.appendChild(cDate);
-
-    // 6) student
-    const cStu = document.createElement('div');
-    cStu.className = 'tpma-reg-cell';
-    cStu.innerHTML = '<div class="tpma-cell-wrap">'+U.esc(U.display(row.student_name))+'</div>';
-    summary.appendChild(cStu);
-
-    // 7) company
-    const cComp = document.createElement('div');
-    cComp.className = 'tpma-reg-cell';
-    cComp.innerHTML = '<div class="tpma-cell-wrap">'+U.esc(U.display(row.company_name))+'</div>';
-    summary.appendChild(cComp);
-
-    // 8) status
-    const cStatus = document.createElement('div');
-    cStatus.className = 'tpma-reg-cell';
-    cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
-    summary.appendChild(cStatus);
-
-    // 9) actions
-    const cAct = document.createElement('div');
-    cAct.className = 'tpma-reg-cell';
-    cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
-    summary.appendChild(cAct);
-
-    card.appendChild(summary);
-
-    // details block
-    const details = document.createElement('div');
-    details.className = 'tpma-reg-card-details';
-    details.dataset.id = row.id || '';
-    card.appendChild(details);
-
-    // detail render
-    R.renderDetailView(ctx, details, row);
-
-    // toggle details
-    cAct.querySelector('.tpma-view-btn').addEventListener('click', function(){
-      const isOpen = details.classList.contains('open');
-      if (isOpen) {
-        details.classList.remove('open');
-        this.textContent = '詳細';
-      } else {
-        details.classList.add('open');
-        this.textContent = '收合';
-      }
-    });
-
-    // selection change
-    cSel.querySelector('.tpma-reg-select').addEventListener('change', ctx.actions.updateBatchButtonsEnabled);
-
-    tbody.appendChild(card);
-  });
+  if (ctx.state.viewMode === 'flat') {
+    R.renderFlatTable(ctx, tbody);
+  } else {
+    R.renderNestedTable(ctx, tbody);
+  }
 
   ctx.actions.updateBatchButtonsEnabled();
   ctx.actions.updatePaginationControls();
+  if (UI.updateAllClassSelectionStates) {
+    UI.updateAllClassSelectionStates(ctx);
+  }
 };
 
 })(window);

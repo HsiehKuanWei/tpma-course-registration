@@ -7,12 +7,14 @@ global.TPMARegAdmin = global.TPMARegAdmin || {};
 const API = global.TPMARegAdmin.api;
 const S = global.TPMARegAdmin.state;
 const UI = global.TPMARegAdmin.ui;
+const R = global.TPMARegAdmin.render;
 
 function bootstrap(){
   const config = global.TPMARegAdminConfig || {};
   const apiBase = config.apiBase || '';
   const nonce = config.nonce || '';
   const orderEditBase = config.orderEditBase || '';
+  const viewModeStorageKey = 'tpmaRegAdminViewMode';
 
   if (!apiBase || !nonce) {
     console.error('TPMA reg admin missing apiBase or nonce');
@@ -23,7 +25,7 @@ function bootstrap(){
     apiBase,
     nonce,
     orderEditBase,
-    data: { allCourses: [], allRegs: [], currentRegs: [] },
+    data: { allCourses: [], allRegs: [], currentRegs: [], currentGroups: [], currentPages: [] },
     state: S.create(),
     dom: {
       tbody: document.getElementById('tpma-reg-tbody'),
@@ -31,6 +33,9 @@ function bootstrap(){
       pagePrev: document.getElementById('tpma-page-prev'),
       pageNext: document.getElementById('tpma-page-next'),
       pageInfo: document.getElementById('tpma-page-info'),
+      viewModeNested: document.getElementById('tpma-view-mode-nested'),
+      viewModeFlat: document.getElementById('tpma-view-mode-flat'),
+      grid: document.querySelector('.tpma-reg-grid'),
       // Add references to header menu buttons and menus
       menuButtons: document.querySelectorAll('.tpma-th-menu-btn'),
       menus: document.querySelectorAll('.tpma-th-menu')
@@ -43,10 +48,32 @@ function bootstrap(){
     return;
   }
 
+  try{
+    const savedViewMode = global.localStorage ? global.localStorage.getItem(viewModeStorageKey) : '';
+    if (savedViewMode === 'flat' || savedViewMode === 'nested') {
+      ctx.state.viewMode = savedViewMode;
+    }
+  }catch(e){
+    // ignore storage failures
+  }
+
   // wire actions used by render/ui
   ctx.actions.updateBatchButtonsEnabled = ()=> UI.updateBatchButtonsEnabled(ctx);
   ctx.actions.updatePaginationControls = ()=> UI.updatePaginationControls(ctx);
   ctx.actions.refresh = ()=> UI.refreshFromServer(ctx);
+  ctx.actions.setViewMode = (mode)=>{
+    if (mode !== 'flat' && mode !== 'nested') return;
+    ctx.state.viewMode = mode;
+    try{
+      if (global.localStorage) {
+        global.localStorage.setItem(viewModeStorageKey, mode);
+      }
+    }catch(e){
+      // ignore storage failures
+    }
+    R.renderTable(ctx);
+    UI.updateViewModeButtons(ctx);
+  };
 
   UI.bind(ctx);
   if (global.TPMARegAdmin.exportModule) {

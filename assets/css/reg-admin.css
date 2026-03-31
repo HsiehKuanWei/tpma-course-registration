@@ -5,6 +5,175 @@
   column-gap:0;
 }
 
+.tpma-view-mode-row{
+  display:flex;
+  gap:8px;
+  margin:12px 0 0;
+  flex-wrap:wrap;
+}
+
+.tpma-view-mode-btn{
+  margin:0;
+}
+
+.tpma-view-mode-btn.is-active{
+  background:#1f2937;
+  border-color:#1f2937;
+  color:#fff;
+}
+
+.tpma-reg-class-grid-layout{
+  display:grid;
+  grid-template-columns: 35px 40px 1.2fr 1.8fr 1.2fr 100px;
+  column-gap:0;
+}
+
+.tpma-reg-student-grid-layout{
+  display:grid;
+  grid-template-columns: 35px 40px 110px 1.2fr 1.4fr 1.2fr 90px;
+  column-gap:0;
+}
+
+.tpma-reg-class-card{
+  border-bottom:1px solid var(--tpma-medium-gray);
+  background:#fff;
+}
+
+.tpma-reg-class-summary{
+  background:#eef4ff;
+  border-left:4px solid var(--tpma-primary-color);
+}
+
+.tpma-reg-class-summary:hover{
+  background:#e3edff;
+}
+
+.tpma-reg-class-summary.is-collapsed .tpma-class-toggle-indicator{
+  transform:rotate(-90deg);
+}
+
+.tpma-reg-class-cell,
+.tpma-reg-student-head{
+  padding:10px 8px;
+  display:flex;
+  align-items:center;
+  min-height:44px;
+}
+
+.tpma-reg-class-cell{
+  font-weight:600;
+}
+
+.tpma-class-toggle-indicator{
+  display:inline-block;
+  margin-right:8px;
+  transition:transform .15s ease;
+}
+
+.tpma-reg-class-body{
+  display:none;
+  padding:0 0 12px;
+  background:#f9fbff;
+}
+
+.tpma-reg-class-body.open{
+  display:block;
+}
+
+.tpma-reg-student-header{
+  margin:0 12px;
+  background:#374151;
+  color:#fff;
+  border-radius:6px 6px 0 0;
+  overflow:hidden;
+}
+
+.tpma-reg-student-head{
+  font-size:12px;
+  font-weight:700;
+  text-transform:uppercase;
+  border-right:1px solid rgba(255,255,255,.08);
+}
+
+.tpma-reg-student-head:last-child{
+  border-right:none;
+}
+
+.tpma-reg-student-card{
+  margin:0 12px;
+  border-left:1px solid var(--tpma-medium-gray);
+  border-right:1px solid var(--tpma-medium-gray);
+  border-bottom:1px solid var(--tpma-medium-gray);
+}
+
+.tpma-reg-student-card .tpma-reg-card-summary{
+  background:#fff;
+}
+
+.tpma-reg-student-card:nth-child(even) .tpma-reg-card-summary{
+  background:#f8fafc;
+}
+
+.tpma-reg-student-card .tpma-reg-card-details{
+  background:#fff;
+}
+
+.tpma-reg-grid-nested-mode .tpma-reg-card{
+  border-bottom:none;
+}
+
+@media (max-width: 900px){
+  .tpma-reg-class-grid-layout,
+  .tpma-reg-student-grid-layout{
+    display:flex !important;
+    flex-direction:column;
+  }
+
+  .tpma-reg-class-summary,
+  .tpma-reg-student-header{
+    border-radius:0;
+  }
+
+  .tpma-reg-student-header{
+    display:none !important;
+  }
+
+  .tpma-reg-class-cell,
+  .tpma-reg-student-card .tpma-reg-cell{
+    align-items:flex-start;
+    gap:10px;
+    border-bottom:1px dashed var(--tpma-medium-gray);
+  }
+
+  .tpma-reg-class-cell:last-child,
+  .tpma-reg-student-card .tpma-reg-cell:last-child{
+    border-bottom:none;
+  }
+
+  .tpma-reg-class-cell::before,
+  .tpma-reg-student-card .tpma-reg-cell::before{
+    flex:0 0 96px;
+    font-weight:700;
+    color:var(--tpma-secondary-color);
+    line-height:1.4;
+  }
+
+  .tpma-reg-class-cell:nth-child(1)::before{ content:"選取"; }
+  .tpma-reg-class-cell:nth-child(2)::before{ content:"序號"; }
+  .tpma-reg-class-cell:nth-child(3)::before{ content:"授課日期"; }
+  .tpma-reg-class-cell:nth-child(4)::before{ content:"課程名稱"; }
+  .tpma-reg-class-cell:nth-child(5)::before{ content:"授課講師"; }
+  .tpma-reg-class-cell:nth-child(6)::before{ content:"人數統計"; }
+
+  .tpma-reg-student-card .tpma-reg-cell:nth-child(1)::before{ content:"選取"; }
+  .tpma-reg-student-card .tpma-reg-cell:nth-child(2)::before{ content:"序號"; }
+  .tpma-reg-student-card .tpma-reg-cell:nth-child(3)::before{ content:"報名時間"; }
+  .tpma-reg-student-card .tpma-reg-cell:nth-child(4)::before{ content:"學員姓名"; }
+  .tpma-reg-student-card .tpma-reg-cell:nth-child(5)::before{ content:"公司抬頭"; }
+  .tpma-reg-student-card .tpma-reg-cell:nth-child(6)::before{ content:"狀態"; }
+  .tpma-reg-student-card .tpma-reg-cell:nth-child(7)::before{ content:"操作"; }
+}
+
 /* ===== Excel 匯出 Modal ===== */
 .tpma-modal-overlay {
   display: none;

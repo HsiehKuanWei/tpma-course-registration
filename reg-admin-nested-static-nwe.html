@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>後台管理 - 巢狀報名表單 (精確欄位強化版)</title>
+    <style>
+        /* 整合 admin-common.css 與 reg-admin.css 的變數 */
+        :root {
+            --tpma-primary-color: #007BFF;
+            --tpma-primary-hover-color: #0056b3;
+            --tpma-secondary-color: #6c757d;
+            --tpma-success-color: #28a745;
+            --tpma-danger-color: #dc3545;
+            --tpma-warning-color: #ffc107;
+            --tpma-info-color: #17a2b8;
+            --tpma-light-gray: #f8f9fa;
+            --tpma-medium-gray: #e9ecef;
+            --tpma-border-color: #ced4da;
+            --tpma-shadow-sm: 0 2px 8px rgba(0,0,0,0.05);
+            --tpma-shadow-md: 0 8px 20px rgba(19, 35, 72, 0.08);
+        }
+
+        body {
+            background-color: #f3f6fb;
+            font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            padding: 20px;
+            color: #162033;
+        }
+
+        .tpma-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* --- Grid 佈局定義 (參考 reg-admin.css) --- */
+        /* 第一層：班級 (序號, 代碼, 名稱, 日期, 人數, 狀態) */
+        .grid-class {
+            display: grid;
+            grid-template-columns: 40px 110px 1.8fr 1.2fr 100px 100px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* 第二層：學員 (序號, 姓名, 公司, 日期, 狀態, 操作) */
+        .grid-student {
+            display: grid;
+            grid-template-columns: 40px 100px 1.5fr 1.2fr 180px 80px;
+            gap: 10px;
+            align-items: center;
+        }
+
+        /* --- 基礎 UI 樣式 --- */
+        .main-header {
+            background: #162033;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 8px 8px 0 0;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        details { border: none; margin-bottom: 2px; }
+        summary { list-style: none; cursor: pointer; outline: none; }
+        summary::-webkit-details-marker { display: none; }
+
+        /* --- 第一層：班級卡片 (Level 1) --- */
+        .level-1-card {
+            background: #fff;
+            margin-bottom: 15px;
+            border-radius: 12px;
+            box-shadow: var(--tpma-shadow-sm);
+            border: 1px solid var(--tpma-medium-gray);
+            border-left: 6px solid var(--tpma-secondary-color);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+        .level-1-card[open] {
+            box-shadow: var(--tpma-shadow-md);
+            border-left-color: var(--tpma-primary-color);
+            margin-bottom: 25px;
+        }
+        .level-1-card > summary {
+            padding: 18px 20px;
+        }
+        .level-1-card > summary:hover { background-color: #fcfcfc; }
+
+        /* --- 第二層：學員容器 (Level 2) --- */
+        .student-section {
+            background: #f8fbff;
+            border-top: 1px solid var(--tpma-medium-gray);
+            padding: 10px 15px 20px 45px; /* 左側縮排增加層次感 */
+        }
+
+        .student-sub-header {
+            padding: 10px 15px;
+            font-size: 12px;
+            color: var(--tpma-secondary-color);
+            font-weight: 700;
+            border-bottom: 1px solid var(--tpma-border-color);
+            margin-bottom: 5px;
+        }
+
+        .level-2-row {
+            background: transparent;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .level-2-row > summary {
+            padding: 12px 15px;
+            border-radius: 6px;
+            transition: background 0.2s;
+        }
+        .level-2-row > summary:hover { background: rgba(0,123,255,0.04); }
+        .level-2-row[open] > summary { background: #fff; font-weight: 600; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+        /* --- 第三層：詳細資料面板 (Level 3) --- */
+        .detail-panel {
+            background: #ffffff;
+            margin: 10px 15px 15px 40px;
+            padding: 25px;
+            border-radius: 12px;
+            border: 1px solid #d0e0f5;
+            box-shadow: inset 0 2px 8px rgba(0,0,0,0.03);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            position: relative;
+        }
+        .detail-panel::before {
+            content: "";
+            position: absolute;
+            left: -10px;
+            top: 20px;
+            border-style: solid;
+            border-width: 8px 10px 8px 0;
+            border-color: transparent #d0e0f5 transparent transparent;
+        }
+
+        /* --- 元件細節 --- */
+        .toggle-btn {
+            width: 22px;
+            height: 22px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--tpma-light-gray);
+            border-radius: 4px;
+            font-size: 10px;
+            transition: transform 0.3s, background 0.3s;
+        }
+        details[open] > summary .toggle-btn {
+            transform: rotate(90deg);
+            background: var(--tpma-primary-color);
+            color: #fff;
+        }
+
+        .pill {
+            display: inline-flex;
+            padding: 2px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-right: 4px;
+        }
+        .pill.info { background: #e8f1ff; color: #2958a8; }
+        .pill.success { background: #e8f7ee; color: #1d6b3f; }
+        .pill.warning { background: #fff3db; color: #8a5a00; }
+
+        .info-item label {
+            display: block;
+            font-size: 11px;
+            color: #64748b;
+            margin-bottom: 5px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .info-item .val {
+            font-size: 14px;
+            color: #162033;
+            padding-bottom: 5px;
+            border-bottom: 1px dashed var(--tpma-medium-gray);
+        }
+
+        .action-link {
+            color: var(--tpma-primary-color);
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .action-link:hover { text-decoration: underline; }
+
+        .num-font { font-family: 'Courier New', Courier, monospace; font-weight: 600; }
+
+    </style>
+</head>
+<body>
+
+<div class="tpma-container">
+    <!-- 主表頭 (符合第一層欄位) -->
+    <div class="main-header grid-class">
+        <span>展開</span>
+        <span>課程代碼</span>
+        <span>課程名稱</span>
+        <span>授課日期</span>
+        <span>報名人數</span>
+        <span>班級狀態</span>
+    </div>
+
+    <!-- 第一層：班級範例 01 -->
+    <details class="level-1-card" open>
+        <summary class="grid-class">
+            <div class="toggle-btn">▶</div>
+            <code class="num-font">C2026-04-001</code>
+            <strong style="font-size: 15px;">PMP 國際專案管理認證實務班</strong>
+            <span>2026-04-01 ~ 04-30</span>
+            <span class="num-font">24 / 30</span>
+            <span class="pill info">開課中</span>
+        </summary>
+
+        <div class="student-section">
+            <!-- 第二層表頭 (符合第二層欄位) -->
+            <div class="student-sub-header grid-student">
+                <span></span>
+                <span>姓名</span>
+                <span>所屬公司</span>
+                <span>報名日期</span>
+                <span>學習狀態</span>
+                <span>操作</span>
+            </div>
+
+            <!-- 第二層：學員範例 01 -->
+            <details class="level-2-row">
+                <summary class="grid-student">
+                    <div class="toggle-btn">▶</div>
+                    <strong>陳小明</strong>
+                    <span style="color: #64748b; font-size: 13px;">宏達數位資訊股份有限公司</span>
+                    <span class="num-font">2026-03-10</span>
+                    <div>
+                        <span class="pill info">已測驗</span>
+                        <span class="pill success">已結訓</span>
+                    </div>
+                    <a href="#" class="action-link">詳細資料</a>
+                </summary>
+
+                <!-- 第三層：詳細資料 (完全根據原始稿件內容擴充) -->
+                <div class="detail-panel">
+                    <div class="info-item">
+                        <label>電子郵件</label>
+                        <div class="val">xiaoming.chen@hoda-digital.com</div>
+                    </div>
+                    <div class="info-item">
+                        <label>聯絡電話</label>
+                        <div class="val">0912-345-678</div>
+                    </div>
+                    <div class="info-item">
+                        <label>報名身份</label>
+                        <div class="val">企業外派</div>
+                    </div>
+                    <div class="info-item">
+                        <label>發票抬頭</label>
+                        <div class="val">宏達數位資訊股份有限公司</div>
+                    </div>
+                    <div class="info-item">
+                        <label>統一編號</label>
+                        <div class="val">88776655</div>
+                    </div>
+                    <div class="info-item">
+                        <label>測驗成績</label>
+                        <div class="val">85 分 (通過)</div>
+                    </div>
+                    <div class="info-item" style="grid-column: span 2;">
+                        <label>備註事項</label>
+                        <div class="val">學員希望課後能額外取得專案範本。</div>
+                    </div>
+                </div>
+            </details>
+
+            <!-- 第二層：學員範例 02 -->
+            <details class="level-2-row">
+                <summary class="grid-student">
+                    <div class="toggle-btn">▶</div>
+                    <strong>李美玲</strong>
+                    <span style="color: #64748b; font-size: 13px;">個人報名</span>
+                    <span class="num-font">2026-03-12</span>
+                    <div>
+                        <span class="pill warning">待測驗</span>
+                        <span class="pill info">受訓中</span>
+                    </div>
+                    <a href="#" class="action-link">詳細資料</a>
+                </summary>
+                <div class="detail-panel">
+                    <div class="info-item">
+                        <label>電子郵件</label>
+                        <div class="val">meiling.lee@gmail.com</div>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </details>
+
+    <!-- 第一層：班級範例 02 -->
+    <details class="level-1-card">
+        <summary class="grid-class">
+            <div class="toggle-btn">▶</div>
+            <code class="num-font">C2026-05-012</code>
+            <strong style="font-size: 15px;">敏捷開發流程 Scrums 實戰工作坊</strong>
+            <span>2026-05-20 ~ 05-22</span>
+            <span class="num-font">12 / 15</span>
+            <span class="pill warning">尚未開課</span>
+        </summary>
+        <div class="student-section">
+            <div style="padding: 20px; text-align: center; color: #94a3b8; font-style: italic;">
+                目前暫無學員報名資料
+            </div>
+        </div>
+    </details>
+</div>
+
+</body>
+</html>

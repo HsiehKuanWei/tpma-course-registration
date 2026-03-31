@@ -5,13 +5,12 @@
 
 global.TPMARegAdmin = global.TPMARegAdmin || {};
 const S = global.TPMARegAdmin.state = global.TPMARegAdmin.state || {};
-const U = global.TPMARegAdmin.utils;
-const L = global.TPMARegAdmin.labels;
 
 S.create = function createState(){
   return {
     pageSize: 50,
     currentPage: 1,
+    viewMode: 'nested',
     filter: {
       q: '',
       course_id: '',
@@ -38,6 +37,124 @@ S.getTestState = function getTestState(row){
   return 'done';
 };
 
+S.getClassGroupKey = function getClassGroupKey(row){
+  const courseId = row.course_id == null ? '' : String(row.course_id);
+  const classDate = row.class_date == null ? '' : String(row.class_date);
+  const lecturer = row.lecturer_code || row.lecturer_name || row.lecturer || '';
+  return [courseId, classDate, lecturer].join('::');
+};
+
+S.buildClassGroups = function buildClassGroups(rows){
+  const groups = [];
+  const map = {};
+
+  (rows || []).forEach(function(row){
+    const key = S.getClassGroupKey(row);
+    if (!map[key]) {
+      map[key] = {
+        key: key,
+        course_id: row.course_id,
+        class_date: row.class_date,
+        course_name: row.course_name,
+        lecturer_name: row.lecturer_name || row.lecturer || '',
+        lecturer: row.lecturer || row.lecturer_name || '',
+        rows: []
+      };
+      groups.push(map[key]);
+    }
+    map[key].rows.push(row);
+  });
+
+  groups.forEach(function(group){
+    group.studentCount = group.rows.length;
+  });
+
+  return groups;
+};
+
+S.paginateClassGroups = function paginateClassGroups(groups, maxLearners){
+  const pages = [];
+  let page = [];
+  let pageCount = 0;
+  const pageLimit = Math.max(1, parseInt(maxLearners, 10) || 50);
+
+  (groups || []).forEach(function(group){
+    const size = (group.rows || []).length;
+    if (!page.length) {
+      page.push(group);
+      pageCount = size;
+      return;
+    }
+
+    if (pageCount + size > pageLimit) {
+      pages.push(page);
+      page = [group];
+      pageCount = size;
+      return;
+    }
+
+    page.push(group);
+    pageCount += size;
+  });
+
+  if (page.length) {
+    pages.push(page);
+  }
+
+  return pages;
+};
+
+S.getTotalPages = function getTotalPages(ctx){
+  return Math.max(1, (ctx.data.currentPages || []).length || 1);
+};
+
+S.getCurrentPageGroups = function getCurrentPageGroups(ctx){
+  const totalPages = S.getTotalPages(ctx);
+  if (ctx.state.currentPage > totalPages) {
+    ctx.state.currentPage = totalPages;
+  }
+  if (ctx.state.currentPage < 1) {
+    ctx.state.currentPage = 1;
+  }
+
+  return (ctx.data.currentPages || [])[ctx.state.currentPage - 1] || [];
+};
+
+S.getCurrentPageRows = function getCurrentPageRows(ctx){
+  const groups = S.getCurrentPageGroups(ctx);
+  const rows = [];
+  groups.forEach(function(group){
+    (group.rows || []).forEach(function(row){
+      rows.push(row);
+    });
+  });
+  return rows;
+};
+
+S.getPaginationMeta = function getPaginationMeta(ctx){
+  const totalRows = (ctx.data.currentRegs || []).length;
+  const totalPages = S.getTotalPages(ctx);
+  const currentPage = Math.min(Math.max(1, ctx.state.currentPage), totalPages);
+  const currentRows = S.getCurrentPageRows(ctx);
+
+  let start = 0;
+  for (let i = 0; i < currentPage - 1; i += 1) {
+    const groups = (ctx.data.currentPages || [])[i] || [];
+    groups.forEach(function(group){
+      start += (group.rows || []).length;
+    });
+  }
+
+  return {
+    totalRows: totalRows,
+    totalPages: totalPages,
+    currentPage: currentPage,
+    pageRows: currentRows.length,
+    start: totalRows === 0 ? 0 : start + 1,
+    end: totalRows === 0 ? 0 : start + currentRows.length
+  };
+};
+
 S.apply = function applyFiltersAndSort(ctx){
   let list = ctx.data.allRegs.slice();
   const f = ctx.state.filter;
@@ -45,9 +162,11 @@ S.apply = function applyFiltersAndSort(ctx){
 
   if (f.q) {
     const q = f.q.toLowerCase();
-    list = list.filter(r=>{
+    list = list.filter(function(r){
       const fields = [r.reg_no, r.student_name, r.contact_name, r.company_name];
-      return fields.some(v => v && String(v).toLowerCase().includes(q));
+      return fields.some(function(v){
+        return v && String(v).toLowerCase().includes(q);
+      });
     });
   }
   if (f.course_id) list = list.filter(r => String(r.course_id) === String(f.course_id));
@@ -57,7 +176,7 @@ S.apply = function applyFiltersAndSort(ctx){
     list = list.filter(r => (r.class_date || '').substring(0,10) === target);
   }
   if (f.class_date_from || f.class_date_to) {
-    list = list.filter(r=>{
+    list = list.filter(function(r){
       const d = (r.class_date || '').substring(0,10);
       if (!d) return false;
       if (f.class_date_from && d < f.class_date_from) return false;
@@ -75,7 +194,7 @@ S.apply = function applyFiltersAndSort(ctx){
   }
 
   if (f.created_from || f.created_to) {
-    list = list.filter(r=>{
+    list = list.filter(function(r){
       const v = r.created_at || '';
       if (!v) return false;
       const d = v.substring(0,10);
@@ -86,7 +205,7 @@ S.apply = function applyFiltersAndSort(ctx){
   }
 
   if (f.remit_from || f.remit_to) {
-    list = list.filter(r=>{
+    list = list.filter(function(r){
       const d = (r.remit_paid_at || '').substring(0,10);
       if (!d) return false;
       if (f.remit_from && d < f.remit_from) return false;
@@ -100,7 +219,7 @@ S.apply = function applyFiltersAndSort(ctx){
   const field = sort.field;
   const dir = sort.dir;
   if (field) {
-    list.sort((a,b)=>{
+    list.sort(function(a, b){
       const va = (a[field] == null ? '' : String(a[field]));
       const vb = (b[field] == null ? '' : String(b[field]));
       if (va < vb) return dir === 'asc' ? -1 : 1;
@@ -110,6 +229,8 @@ S.apply = function applyFiltersAndSort(ctx){
   }
 
   ctx.data.currentRegs = list;
+  ctx.data.currentGroups = S.buildClassGroups(list);
+  ctx.data.currentPages = S.paginateClassGroups(ctx.data.currentGroups, ctx.state.pageSize);
   ctx.state.currentPage = 1;
 };
 

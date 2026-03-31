@@ -90,16 +90,59 @@ UI.updateBatchButtonsEnabled = function updateBatchButtonsEnabled(ctx){
   });
 };
 
-UI.updatePaginationControls = function updatePaginationControls(ctx){
-  const total = (ctx.data.currentRegs || []).length;
-  const totalPages = Math.max(1, Math.ceil(total / ctx.state.pageSize));
-  if (ctx.state.currentPage > totalPages) ctx.state.currentPage = totalPages;
-  const start = total === 0 ? 0 : (ctx.state.currentPage - 1) * ctx.state.pageSize + 1;
-  const end = total === 0 ? 0 : Math.min(ctx.state.currentPage * ctx.state.pageSize, total);
+UI.updateClassSelectionState = function updateClassSelectionState(classCard){
+  if (!classCard) return;
+  const classCheckbox = classCard.querySelector('.tpma-class-select');
+  const studentCheckboxes = Array.from(classCard.querySelectorAll('.tpma-reg-select'));
+  if (!classCheckbox || !studentCheckboxes.length) {
+    if (classCheckbox) {
+      classCheckbox.checked = false;
+      classCheckbox.indeterminate = false;
+    }
+    return;
+  }
 
-  if (ctx.dom.pageInfo) ctx.dom.pageInfo.textContent = '第 ' + ctx.state.currentPage + ' / ' + totalPages + ' 頁，顯示 ' + start + '–' + end + ' 筆，共 ' + total + ' 筆';
-  if (ctx.dom.pagePrev) ctx.dom.pagePrev.disabled = (ctx.state.currentPage <= 1);
-  if (ctx.dom.pageNext) ctx.dom.pageNext.disabled = (ctx.state.currentPage >= totalPages);
+  const checkedCount = studentCheckboxes.filter(cb => cb.checked).length;
+  classCheckbox.checked = checkedCount === studentCheckboxes.length;
+  classCheckbox.indeterminate = checkedCount > 0 && checkedCount < studentCheckboxes.length;
+};
+
+UI.updateAllClassSelectionStates = function updateAllClassSelectionStates(ctx){
+  document.querySelectorAll('.tpma-reg-class-card').forEach(function(classCard){
+    UI.updateClassSelectionState(classCard);
+  });
+
+  if (ctx.dom.selectAllHead) {
+    const allStudentCheckboxes = Array.from(document.querySelectorAll('.tpma-reg-select'));
+    const checkedCount = allStudentCheckboxes.filter(cb => cb.checked).length;
+    ctx.dom.selectAllHead.checked = !!allStudentCheckboxes.length && checkedCount === allStudentCheckboxes.length;
+    ctx.dom.selectAllHead.indeterminate = checkedCount > 0 && checkedCount < allStudentCheckboxes.length;
+  }
+};
+
+UI.updateViewModeButtons = function updateViewModeButtons(ctx){
+  const isNested = ctx.state.viewMode === 'nested';
+  if (ctx.dom.viewModeNested) {
+    ctx.dom.viewModeNested.classList.toggle('is-active', isNested);
+    ctx.dom.viewModeNested.setAttribute('aria-pressed', isNested ? 'true' : 'false');
+  }
+  if (ctx.dom.viewModeFlat) {
+    ctx.dom.viewModeFlat.classList.toggle('is-active', !isNested);
+    ctx.dom.viewModeFlat.setAttribute('aria-pressed', !isNested ? 'true' : 'false');
+  }
+  if (ctx.dom.grid) {
+    ctx.dom.grid.classList.toggle('tpma-reg-grid-nested-mode', isNested);
+    ctx.dom.grid.classList.toggle('tpma-reg-grid-flat-mode', !isNested);
+  }
+};
+
+UI.updatePaginationControls = function updatePaginationControls(ctx){
+  const meta = S.getPaginationMeta(ctx);
+  if (ctx.dom.pageInfo) {
+    ctx.dom.pageInfo.textContent = '第 ' + meta.currentPage + ' / ' + meta.totalPages + ' 頁，顯示 ' + meta.start + '–' + meta.end + ' 筆，共 ' + meta.totalRows + ' 筆';
+  }
+  if (ctx.dom.pagePrev) ctx.dom.pagePrev.disabled = (meta.currentPage <= 1);
+  if (ctx.dom.pageNext) ctx.dom.pageNext.disabled = (meta.currentPage >= meta.totalPages);
 };
 
 UI.updateFilterButtonStates = function updateFilterButtonStates(ctx){
@@ -134,6 +177,7 @@ UI.applyFiltersAndRender = function applyFiltersAndRender(ctx){
   R.renderTable(ctx);
   UI.buildHeaderFilterOptions(ctx);
   UI.updateFilterButtonStates(ctx);
+  UI.updateViewModeButtons(ctx);
 };
 
 UI.refreshFromServer = async function refreshFromServer(ctx){
@@ -484,6 +528,10 @@ if (menuTarget) {
   if (ctx.dom.selectAllHead) ctx.dom.selectAllHead.addEventListener('change', function(){
     const checked = this.checked;
     document.querySelectorAll('.tpma-reg-select').forEach(cb=> cb.checked=checked);
+    document.querySelectorAll('.tpma-class-select').forEach(cb=>{
+      cb.checked = checked;
+      cb.indeterminate = false;
+    });
     UI.updateBatchButtonsEnabled(ctx);
   });
 
@@ -492,10 +540,20 @@ if (menuTarget) {
     if (ctx.state.currentPage > 1) { ctx.state.currentPage--; R.renderTable(ctx); }
   });
   if (ctx.dom.pageNext) ctx.dom.pageNext.addEventListener('click', function(){
-    const total = (ctx.data.currentRegs || []).length;
-    const totalPages = Math.max(1, Math.ceil(total / ctx.state.pageSize));
+    const totalPages = S.getTotalPages(ctx);
     if (ctx.state.currentPage < totalPages) { ctx.state.currentPage++; R.renderTable(ctx); }
   });
+
+  if (ctx.dom.viewModeNested) {
+    ctx.dom.viewModeNested.addEventListener('click', function(){
+      if (ctx.actions.setViewMode) ctx.actions.setViewMode('nested');
+    });
+  }
+  if (ctx.dom.viewModeFlat) {
+    ctx.dom.viewModeFlat.addEventListener('click', function(){
+      if (ctx.actions.setViewMode) ctx.actions.setViewMode('flat');
+    });
+  }
 
   // batch buttons
   document.querySelectorAll('.tpma-batch-btn').forEach(btn=>{
