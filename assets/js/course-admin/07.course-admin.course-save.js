@@ -65,9 +65,16 @@
 
     // 收集場次
     const sessions = [];
-    div.querySelectorAll('.tpma-session-row input[type="datetime-local"]').forEach(input => {
-      const v = input.value.trim();
-      if (v) sessions.push({ datetime: v });
+    div.querySelectorAll('.tpma-session-row').forEach(row => {
+      const input = row.querySelector('input[type="datetime-local"]');
+      const visibilityEl = row.querySelector('.tpma-session-visibility');
+      const v = input ? input.value.trim() : '';
+      if (v) {
+        sessions.push({
+          datetime: v,
+          visibility_override: visibilityEl ? visibilityEl.value : ''
+        });
+      }
     });
 
     // 其他欄位

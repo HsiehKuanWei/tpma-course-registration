@@ -12,6 +12,61 @@
   border:1px solid var(--tpma-border-color);
   border-radius:4px;
 }
+.tpma-session-row .tpma-session-visibility{
+  min-width:120px;
+  padding:6px 8px;
+  font-size:14px;
+  border:1px solid var(--tpma-border-color);
+  border-radius:4px;
+  background:#fff;
+}
+.tpma-session-row .tpma-session-reg-link{
+  white-space:nowrap;
+  color:#0f766e;
+  text-decoration:none;
+  font-weight:600;
+}
+.tpma-session-row .tpma-session-reg-link:hover{
+  text-decoration:underline;
+}
+.tpma-session-row .tpma-session-reg-link.is-disabled{
+  pointer-events:none;
+  color:#94a3b8;
+  text-decoration:none;
+}
+.tpma-course-dates ul{
+  margin:0;
+  padding-left:18px;
+}
+.tpma-course-dates li{
+  margin-bottom:8px;
+}
+.tpma-session-link{
+  color:#0f766e;
+  font-weight:600;
+  text-decoration:none;
+}
+.tpma-session-link:hover{
+  text-decoration:underline;
+}
+.tpma-session-override-badge{
+  display:inline-block;
+  margin-left:8px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:#e2e8f0;
+  color:#334155;
+  font-size:12px;
+  line-height:1.6;
+}
+.tpma-session-override-force_show{
+  background:#dcfce7;
+  color:#166534;
+}
+.tpma-session-override-force_hide{
+  background:#fee2e2;
+  color:#991b1b;
+}
 
 #section-course-content{
   grid-template-columns:1fr;

@@ -101,17 +101,21 @@ $TPMA_OPTIONS_FOR_JS = [
         <button class="tpma-btn" id="tpma-btn-export">匯出 Excel</button>
     </div>
 	
-
-  <a class="tpma-btn"
-     id="tpma-btn-mail-templates"
-     href="https://tw-pma.org.tw/%e4%bf%a1%e4%bb%b6%e6%a8%a1%e6%9d%bf/"
-     target="_blank" rel="noopener">
-    信件模板
-  </a>
-
-  <div class="tpma-view-mode-row" role="group" aria-label="清單顯示模式">
-    <button type="button" class="tpma-btn tpma-btn-secondary tpma-view-mode-btn" id="tpma-view-mode-nested" aria-pressed="false">巢狀模式</button>
-    <button type="button" class="tpma-btn tpma-btn-secondary tpma-view-mode-btn" id="tpma-view-mode-flat" aria-pressed="false">平鋪模式</button>
+  <div class="tpma-toolbar-row">
+    <div class="tpma-toolbar-left">
+      <a class="tpma-btn tpma-btn-ghost"
+         id="tpma-btn-mail-templates"
+         href="https://tw-pma.org.tw/%e4%bf%a1%e4%bb%b6%e6%a8%a1%e6%9d%bf/"
+         target="_blank" rel="noopener">
+        信件模板
+      </a>
+    </div>
+    <div class="tpma-toolbar-right">
+      <div class="tpma-view-mode-row" role="group" aria-label="清單顯示模式">
+        <button type="button" class="tpma-btn tpma-btn-secondary tpma-view-mode-btn" id="tpma-view-mode-nested" aria-pressed="false">巢狀模式</button>
+        <button type="button" class="tpma-btn tpma-btn-secondary tpma-view-mode-btn" id="tpma-view-mode-flat" aria-pressed="false">平鋪模式</button>
+      </div>
+    </div>
   </div>
 
 

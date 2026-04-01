@@ -137,6 +137,13 @@ class TPMA_CR_DB
             $wpdb->query("ALTER TABLE {$lecturers_table} ADD COLUMN wp_user_id BIGINT UNSIGNED DEFAULT NULL");
         }
 
+        // ── sessions: visibility_override ───────────────────────
+        $sessions_table = self::table('sessions');
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$sessions_table} LIKE 'visibility_override'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$sessions_table} ADD COLUMN visibility_override VARCHAR(20) NOT NULL DEFAULT ''");
+        }
+
         // ── magic_tokens table ───────────────────────────────────
         $tokens_table = self::table('magic_tokens');
         $wpdb->query(
@@ -250,6 +257,7 @@ $charset_collate = $wpdb->get_charset_collate();
             course_id BIGINT UNSIGNED NOT NULL,
             session_datetime DATETIME NOT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
+            visibility_override VARCHAR(20) NOT NULL DEFAULT '',
             created_at DATETIME NOT NULL,
             PRIMARY KEY (id)
         ) {$charset_collate};";

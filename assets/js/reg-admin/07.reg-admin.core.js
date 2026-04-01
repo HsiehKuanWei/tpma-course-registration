@@ -33,6 +33,7 @@ function bootstrap(){
       pagePrev: document.getElementById('tpma-page-prev'),
       pageNext: document.getElementById('tpma-page-next'),
       pageInfo: document.getElementById('tpma-page-info'),
+      pagination: document.querySelector('.tpma-pagination'),
       viewModeNested: document.getElementById('tpma-view-mode-nested'),
       viewModeFlat: document.getElementById('tpma-view-mode-flat'),
       grid: document.querySelector('.tpma-reg-grid'),

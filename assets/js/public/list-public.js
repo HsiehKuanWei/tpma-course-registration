@@ -45,11 +45,27 @@ function getStartTimestamp(startRaw) {
   return isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
+function isSameSessionDate(startRaw, nowTs) {
+  if (!startRaw) return false;
+  const start = DateUtil.safeDate ? DateUtil.safeDate(startRaw) : new Date(String(startRaw).replace(' ', 'T'));
+  if (!start || isNaN(start.getTime())) return false;
+  const now = new Date(nowTs);
+  return start.getFullYear() === now.getFullYear()
+    && start.getMonth() === now.getMonth()
+    && start.getDate() === now.getDate();
+}
+
 function shouldHideLowEnrollment(row, nowTs) {
   let reason = '';
   let shouldHide = false;
+  const isSessionToday = isSameSessionDate(row.start_raw, nowTs);
 
-  if (!row.start_ts) {
+  if (!isSessionToday && row.visibility_override === 'force_hide') {
+    shouldHide = true;
+    reason = 'force hidden';
+  } else if (!isSessionToday && row.visibility_override === 'force_show') {
+    reason = 'force shown';
+  } else if (!row.start_ts) {
     reason = 'missing start_ts';
   } else {
     const diff = row.start_ts - nowTs;
@@ -76,6 +92,8 @@ function shouldHideLowEnrollment(row, nowTs) {
       start_ts: row.start_ts,
       start_iso: startIso,
       diff_ms: diffMs,
+      is_session_today: isSessionToday,
+      visibility_override: row.visibility_override,
       registration_count: row.registration_count,
       threshold: LOW_ENROLLMENT_THRESHOLD,
       hide_window_days: UPCOMING_HIDE_DAYS,
@@ -185,6 +203,7 @@ async function loadCourseRows() {
         start_ts: getStartTimestamp(startRaw),
         display_time: formatClassTime(startRaw, duration),
         registration_count: registrationCount,
+        visibility_override: row.visibility_override || '',
         category: row.category || '', // 新增課程分類
         intro: row.intro || '',       // 新增課程簡介
         outline: row.outline || ''    // 新增課程大綱

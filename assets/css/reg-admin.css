@@ -5,173 +5,741 @@
   column-gap:0;
 }
 
+:root{
+  --tpma-reg-bg:#f3f6fb;
+  --tpma-reg-surface:#ffffff;
+  --tpma-reg-surface-soft:#f8fbff;
+  --tpma-reg-text:#162033;
+  --tpma-reg-muted:#64748b;
+  --tpma-reg-line:#ced4da;
+  --tpma-reg-line-soft:#e9ecef;
+  --tpma-reg-shadow-sm:0 2px 8px rgba(0,0,0,.05);
+  --tpma-reg-shadow-md:0 8px 20px rgba(19,35,72,.08);
+}
+
+#tpma-reg-admin.tpma-wrap{
+  max-width:1320px;
+  border-radius:24px;
+  box-shadow:var(--tpma-reg-shadow-md);
+  background:rgba(255,255,255,.88);
+  border:1px solid rgba(206,212,218,.8);
+  backdrop-filter:blur(6px);
+}
+
+body{
+  background:linear-gradient(180deg,#f8fbff 0%,var(--tpma-reg-bg) 100%);
+}
+
+#tpma-reg-admin .tpma-filter-row{
+  padding:14px;
+  border-radius:16px;
+  background:#fff;
+  border:1px solid var(--tpma-reg-line-soft);
+  box-shadow:none;
+}
+
+#tpma-reg-admin .tpma-filter-row > span:first-child{
+  font-size:13px;
+  font-weight:700;
+  color:var(--tpma-reg-text);
+}
+
+#tpma-reg-admin .tpma-filter-row input[type="text"]{
+  flex:1 1 340px;
+  min-width:240px;
+}
+
+.tpma-toolbar-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin:0 0 16px;
+  flex-wrap:wrap;
+}
+
+.tpma-toolbar-left,
+.tpma-toolbar-right{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
 .tpma-view-mode-row{
   display:flex;
   gap:8px;
-  margin:12px 0 0;
   flex-wrap:wrap;
+  padding:4px;
+  border-radius:999px;
+  background:#edf3fb;
+  border:1px solid #d7e1ef;
 }
 
 .tpma-view-mode-btn{
   margin:0;
+  box-shadow:none;
+  border-radius:999px;
 }
 
 .tpma-view-mode-btn.is-active{
-  background:#1f2937;
-  border-color:#1f2937;
+  background:#162033;
+  border-color:#162033;
   color:#fff;
+}
+
+.tpma-btn-ghost{
+  background:#f7fbff;
+  border-color:#cfe2ff;
+  color:var(--tpma-primary-color);
+  box-shadow:none;
+}
+
+.tpma-btn-ghost:hover{
+  background:#edf5ff;
+  border-color:#b6d4fe;
+  color:var(--tpma-primary-hover-color);
+}
+
+.tpma-reg-grid{
+  margin-top:0;
+  border-radius:18px;
+  overflow:hidden;
+  box-shadow:none;
+  border:1px solid var(--tpma-reg-line-soft);
+  background:#fff;
+}
+
+.tpma-reg-grid-header{
+  background:#162033;
+  color:#fff;
+}
+
+.tpma-reg-grid .tpma-reg-grid-th{
+  padding:12px 14px;
+  min-height:50px;
+}
+
+.tpma-reg-grid .tpma-reg-grid-body{
+  padding:12px;
+  background:#f8fbff;
+}
+
+.tpma-reg-grid-nested-mode{
+  border:none;
+  border-radius:0;
+  background:transparent;
+  box-shadow:none;
+}
+
+.tpma-reg-grid-nested-mode .tpma-reg-grid-header{
+  display:none;
+}
+
+.tpma-reg-grid-nested-mode .tpma-reg-grid-body{
+  padding:0;
+  background:transparent;
+}
+
+.tpma-nested-month-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:0 0 14px;
+}
+
+.tpma-nested-month-tab{
+  border:1px solid #d7e1ef;
+  background:#fff;
+  color:var(--tpma-reg-muted);
+  border-radius:999px;
+  padding:8px 14px;
+  font-size:13px;
+  font-weight:700;
+  cursor:pointer;
+  transition:all .2s ease;
+}
+
+.tpma-nested-month-tab:hover{
+  border-color:#b6d4fe;
+  color:var(--tpma-primary-color);
+  background:#f7fbff;
+}
+
+.tpma-nested-month-tab.is-active{
+  background:#162033;
+  border-color:#162033;
+  color:#fff;
+  box-shadow:var(--tpma-reg-shadow-sm);
+}
+
+.tpma-th-menu{
+  border-radius:14px;
+  box-shadow:var(--tpma-reg-shadow-md);
+  border-color:#d7e1ef;
+}
+
+.tpma-reg-nested-main-header{
+  display:grid;
+  grid-template-columns:30px 26px 160px 1.8fr 1.15fr 110px;
+  gap:14px;
+  align-items:center;
+  background:#162033;
+  color:#fff;
+  padding:12px 20px;
+  border-radius:12px 12px 0 0;
+  font-size:13px;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.03em;
+  margin-bottom:0;
+}
+
+.tpma-reg-nested-main-cell{
+  min-width:0;
 }
 
 .tpma-reg-class-grid-layout{
   display:grid;
-  grid-template-columns: 35px 40px 1.2fr 1.8fr 1.2fr 100px;
-  column-gap:0;
+  grid-template-columns:30px 26px 160px 1.8fr 1.15fr 110px;
+  gap:14px;
+  align-items:center;
 }
 
 .tpma-reg-student-grid-layout{
   display:grid;
-  grid-template-columns: 35px 40px 110px 1.2fr 1.4fr 1.2fr 90px;
-  column-gap:0;
+  grid-template-columns:30px 26px 150px 1.15fr 1.35fr 210px 90px;
+  gap:14px;
+  align-items:center;
+}
+
+.tpma-reg-nested-main-header > *:nth-child(-n+2),
+.tpma-reg-class-grid-layout > *:nth-child(-n+2),
+.tpma-reg-student-grid-layout > *:nth-child(-n+2){
+  justify-self:center;
+  text-align:center;
+}
+
+.tpma-reg-nested-main-header > *:first-child,
+.tpma-reg-class-grid-layout > *:first-child,
+.tpma-reg-student-grid-layout > *:first-child{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:20px;
+}
+
+.tpma-reg-nested-main-header input[type="checkbox"],
+.tpma-reg-class-grid-layout input[type="checkbox"],
+.tpma-reg-student-grid-layout input[type="checkbox"]{
+  margin:0;
+  display:block;
+  vertical-align:middle;
+  min-height:0 !important;
+  width:16px;
+  height:16px;
+  flex:0 0 auto;
+}
+
+.tpma-reg-class-cell:first-child .tpma-cell-wrap,
+.tpma-reg-cell:first-child .tpma-cell-wrap{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:0;
+  line-height:1;
+  overflow:visible;
+  -webkit-line-clamp:unset;
 }
 
 .tpma-reg-class-card{
-  border-bottom:1px solid var(--tpma-medium-gray);
   background:#fff;
+  margin-bottom:16px;
+  border-radius:0 0 14px 14px;
+  box-shadow:var(--tpma-reg-shadow-sm);
+  border:1px solid var(--tpma-reg-line-soft);
+  border-top:none;
+  border-left:6px solid var(--tpma-secondary-color);
+  overflow:hidden;
+  transition:all .3s ease;
+}
+
+.tpma-reg-class-card.is-open{
+  border-left-color:var(--tpma-primary-color);
+  box-shadow:var(--tpma-reg-shadow-md);
+}
+
+.tpma-reg-class-card:last-child{
+  margin-bottom:0;
 }
 
 .tpma-reg-class-summary{
-  background:#eef4ff;
-  border-left:4px solid var(--tpma-primary-color);
+  padding:18px 20px;
+  background:#fff;
+  cursor:pointer;
 }
 
 .tpma-reg-class-summary:hover{
-  background:#e3edff;
+  background:#fcfcfc;
 }
 
-.tpma-reg-class-summary.is-collapsed .tpma-class-toggle-indicator{
-  transform:rotate(-90deg);
+.tpma-reg-class-summary:not(.is-collapsed){
+  box-shadow:inset 0 -1px 0 rgba(208,224,245,.75);
 }
 
 .tpma-reg-class-cell,
 .tpma-reg-student-head{
-  padding:10px 8px;
-  display:flex;
-  align-items:center;
-  min-height:44px;
+  min-width:0;
 }
 
 .tpma-reg-class-cell{
   font-weight:600;
+  color:var(--tpma-reg-text);
 }
 
-.tpma-class-toggle-indicator{
-  display:inline-block;
-  margin-right:8px;
-  transition:transform .15s ease;
+.tpma-class-toggle-btn{
+  width:22px;
+  height:22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--tpma-light-gray);
+  border-radius:4px;
+  font-size:10px;
+  flex:0 0 auto;
+  transition:transform .3s ease, background .3s ease, color .3s ease;
+}
+
+.tpma-reg-class-summary:not(.is-collapsed) .tpma-class-toggle-btn{
+  background:var(--tpma-primary-color);
+  color:#fff;
+}
+
+.tpma-reg-class-summary:not(.is-collapsed) .tpma-class-toggle-btn{
+  transform:rotate(90deg);
+}
+
+.tpma-reg-class-title-wrap,
+.tpma-reg-student-name-wrap{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+}
+
+.tpma-reg-class-count-wrap{
+  display:flex !important;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.tpma-reg-class-title{
+  display:block;
+  font-size:15px;
+  line-height:1.4;
+}
+
+.tpma-reg-class-count{
+  font-family:"Courier New", Courier, monospace;
+  font-weight:700;
 }
 
 .tpma-reg-class-body{
   display:none;
-  padding:0 0 12px;
-  background:#f9fbff;
+  background:#f8fbff;
+  border-top:1px solid var(--tpma-reg-line-soft);
+  padding:10px 15px 20px 45px;
 }
 
 .tpma-reg-class-body.open{
   display:block;
 }
 
+.tpma-reg-class-empty{
+  margin:8px 0 0;
+  padding:14px 16px;
+  border:1px dashed #cbd5e1;
+  border-radius:10px;
+  background:#fff;
+  color:var(--tpma-reg-muted);
+  text-align:left;
+}
+
 .tpma-reg-student-header{
-  margin:0 12px;
-  background:#374151;
-  color:#fff;
-  border-radius:6px 6px 0 0;
-  overflow:hidden;
+  padding:10px 15px;
+  font-size:12px;
+  color:var(--tpma-secondary-color);
+  font-weight:700;
+  border-bottom:1px solid var(--tpma-reg-line);
+  margin-bottom:6px;
 }
 
 .tpma-reg-student-head{
-  font-size:12px;
-  font-weight:700;
-  text-transform:uppercase;
-  border-right:1px solid rgba(255,255,255,.08);
-}
-
-.tpma-reg-student-head:last-child{
-  border-right:none;
+  text-transform:none;
 }
 
 .tpma-reg-student-card{
-  margin:0 12px;
-  border-left:1px solid var(--tpma-medium-gray);
-  border-right:1px solid var(--tpma-medium-gray);
-  border-bottom:1px solid var(--tpma-medium-gray);
+  background:transparent;
+  border-bottom:1px solid rgba(0,0,0,.05);
+  margin:0;
+  border-left:none;
+  border-right:none;
 }
 
-.tpma-reg-student-card .tpma-reg-card-summary{
-  background:#fff;
-}
-
-.tpma-reg-student-card:nth-child(even) .tpma-reg-card-summary{
-  background:#f8fafc;
-}
-
-.tpma-reg-student-card .tpma-reg-card-details{
-  background:#fff;
-}
-
-.tpma-reg-grid-nested-mode .tpma-reg-card{
+.tpma-reg-student-card:last-child{
   border-bottom:none;
 }
 
-@media (max-width: 900px){
+.tpma-reg-student-card .tpma-reg-card-summary{
+  padding:12px 15px;
+  border-radius:8px;
+  transition:background .2s ease;
+}
+
+.tpma-reg-student-summary{
+  align-items:center;
+}
+
+.tpma-reg-student-card .tpma-reg-card-summary:hover{
+  background:rgba(0,123,255,.04);
+}
+
+.tpma-reg-student-card .tpma-reg-card-details{
+  display:none;
+  background:transparent;
+  padding:0;
+}
+
+.tpma-reg-student-card .tpma-reg-card-details.open{
+  display:block;
+}
+
+.tpma-reg-student-name{
+  display:block;
+  font-weight:700;
+  color:var(--tpma-reg-text);
+}
+
+.tpma-reg-student-sub{
+  color:var(--tpma-reg-muted);
+  font-size:13px;
+  margin-top:4px;
+}
+
+.tpma-reg-view-action,
+.tpma-reg-action-btn{
+  min-height:36px;
+  box-shadow:none;
+}
+
+.tpma-reg-view-action.is-open{
+  background:#162033;
+  border-color:#162033;
+  color:#fff;
+}
+
+.tpma-reg-detail-view{
+  background:#fff;
+  margin:10px 15px 15px 40px;
+  padding:24px;
+  border-radius:12px;
+  border:1px solid #d0e0f5;
+  box-shadow:inset 0 2px 8px rgba(0,0,0,.03);
+  position:relative;
+}
+
+.tpma-reg-detail-view::before{
+  content:"";
+  position:absolute;
+  left:-10px;
+  top:20px;
+  border-style:solid;
+  border-width:8px 10px 8px 0;
+  border-color:transparent #d0e0f5 transparent transparent;
+}
+
+.tpma-reg-detail-view-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+  gap:20px;
+}
+
+.tpma-reg-detail-info{
+  min-width:0;
+}
+
+.tpma-reg-detail-info label{
+  display:block;
+  font-size:11px;
+  color:var(--tpma-reg-muted);
+  margin-bottom:5px;
+  font-weight:700;
+  text-transform:uppercase;
+}
+
+.tpma-reg-detail-info-value{
+  font-size:14px;
+  color:var(--tpma-reg-text);
+  padding-bottom:5px;
+  border-bottom:1px dashed var(--tpma-reg-line-soft);
+  line-height:1.5;
+  word-break:break-word;
+}
+
+.tpma-reg-detail-info.span-2{
+  grid-column:span 2;
+}
+
+.tpma-reg-detail-info.span-all{
+  grid-column:1 / -1;
+}
+
+.tpma-reg-detail-view-actions{
+  justify-content:flex-end;
+  gap:10px;
+  padding-top:14px;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-card{
+  background:#fff;
+  border:1px solid var(--tpma-reg-line-soft);
+  border-left:4px solid #d7e1ef;
+  border-radius:14px;
+  overflow:hidden;
+  box-shadow:var(--tpma-reg-shadow-sm);
+  margin-bottom:12px;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-card:last-child{
+  margin-bottom:0;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-card-summary{
+  padding:16px 18px;
+  align-items:center;
+  background:#fff;
+  transition:background .2s ease;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-grid-layout{
+  grid-template-columns:35px 40px 96px 1.3fr 1.45fr .9fr 1.1fr 1.15fr 84px;
+  column-gap:8px;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-card-summary:hover{
+  background:#fcfcff;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-card-details{
+  display:none;
+  padding:0;
+  background:transparent;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-card-details.open{
+  display:block;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-detail-view{
+  margin:0 18px 18px;
+}
+
+.tpma-reg-grid-flat-mode .tpma-reg-detail-view::before{
+  display:none;
+}
+
+.tpma-reg-flat-summary .tpma-reg-cell{
+  min-width:0;
+}
+
+.tpma-reg-flat-summary .tpma-reg-cell[data-label="授課日期"] .tpma-cell-wrap,
+.tpma-reg-class-cell[data-label="授課日期"] .tpma-cell-wrap{
+  display:block;
+  -webkit-line-clamp:unset;
+  overflow:visible;
+  word-break:normal;
+}
+
+.tpma-reg-flat-primary{
+  display:block;
+  font-weight:700;
+  color:var(--tpma-reg-text);
+}
+
+.tpma-reg-flat-secondary{
+  margin-top:4px;
+  color:var(--tpma-reg-muted);
+  font-size:12px;
+  line-height:1.45;
+}
+
+.tpma-class-date-fragment{
+  display:inline-block;
+  white-space:nowrap;
+}
+
+.tpma-class-date-week{
+  margin-left:.12em;
+}
+
+.tpma-class-date-time{
+  margin-left:.4em;
+}
+
+@media (max-width: 1100px){
+  .tpma-reg-nested-main-header,
+  .tpma-reg-class-grid-layout,
+  .tpma-reg-student-grid-layout{
+    grid-template-columns:30px 26px 1fr;
+  }
+
+  .tpma-reg-nested-main-header > *:nth-child(n+4),
+  .tpma-reg-class-grid-layout > *:nth-child(n+4),
+  .tpma-reg-student-grid-layout > *:nth-child(n+4){
+    display:none;
+  }
+
+  .tpma-reg-class-body{
+    padding-left:20px;
+  }
+
+  .tpma-view-mode-row{
+    width:100%;
+    justify-content:flex-start;
+  }
+
+  .tpma-reg-detail-view{
+    margin-left:10px;
+  }
+
+  .tpma-reg-detail-view::before{
+    display:none;
+  }
+}
+
+@media (max-width: 760px){
+  .tpma-toolbar-row{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .tpma-toolbar-left,
+  .tpma-toolbar-right{
+    justify-content:flex-start;
+  }
+
+  .tpma-view-mode-row{
+    width:100%;
+  }
+
+  .tpma-reg-nested-main-header,
+  .tpma-reg-student-header{
+    display:none;
+  }
+
+  .tpma-nested-month-tabs{
+    gap:6px;
+    margin-bottom:12px;
+  }
+
+  .tpma-nested-month-tab{
+    padding:7px 12px;
+    font-size:12px;
+  }
+
   .tpma-reg-class-grid-layout,
   .tpma-reg-student-grid-layout{
     display:flex !important;
     flex-direction:column;
+    gap:8px;
+    align-items:stretch;
   }
 
   .tpma-reg-class-summary,
-  .tpma-reg-student-header{
-    border-radius:0;
+  .tpma-reg-grid-flat-mode .tpma-reg-card-summary,
+  .tpma-reg-student-card .tpma-reg-card-summary{
+    padding:14px;
   }
 
-  .tpma-reg-student-header{
-    display:none !important;
+  .tpma-reg-class-body{
+    padding:12px;
   }
 
-  .tpma-reg-class-cell,
-  .tpma-reg-student-card .tpma-reg-cell{
-    align-items:flex-start;
-    gap:10px;
-    border-bottom:1px dashed var(--tpma-medium-gray);
+  .tpma-reg-class-summary .tpma-reg-class-cell,
+  .tpma-reg-student-card .tpma-reg-cell,
+  .tpma-reg-grid-flat-mode .tpma-reg-card .tpma-reg-cell{
+    display:grid;
+    grid-template-columns:minmax(78px, 96px) 1fr;
+    gap:4px 12px;
+    align-items:start;
+    min-width:0;
   }
 
-  .tpma-reg-class-cell:last-child,
-  .tpma-reg-student-card .tpma-reg-cell:last-child{
-    border-bottom:none;
+  .tpma-reg-grid-flat-mode .tpma-reg-card .tpma-reg-cell{
+    display:block;
   }
 
-  .tpma-reg-class-cell::before,
-  .tpma-reg-student-card .tpma-reg-cell::before{
-    flex:0 0 96px;
+  .tpma-reg-class-summary .tpma-reg-class-cell::before,
+  .tpma-reg-student-card .tpma-reg-cell::before,
+  .tpma-reg-grid-flat-mode .tpma-reg-card .tpma-reg-cell::before{
+    content:attr(data-label);
+    font-size:11px;
     font-weight:700;
-    color:var(--tpma-secondary-color);
-    line-height:1.4;
+    color:var(--tpma-reg-muted);
+    letter-spacing:.02em;
+    text-transform:uppercase;
   }
 
-  .tpma-reg-class-cell:nth-child(1)::before{ content:"選取"; }
-  .tpma-reg-class-cell:nth-child(2)::before{ content:"序號"; }
-  .tpma-reg-class-cell:nth-child(3)::before{ content:"授課日期"; }
-  .tpma-reg-class-cell:nth-child(4)::before{ content:"課程名稱"; }
-  .tpma-reg-class-cell:nth-child(5)::before{ content:"授課講師"; }
-  .tpma-reg-class-cell:nth-child(6)::before{ content:"人數統計"; }
+  .tpma-reg-grid-flat-mode .tpma-reg-card .tpma-reg-cell::before{
+    display:block;
+    margin-bottom:4px;
+  }
 
-  .tpma-reg-student-card .tpma-reg-cell:nth-child(1)::before{ content:"選取"; }
-  .tpma-reg-student-card .tpma-reg-cell:nth-child(2)::before{ content:"序號"; }
-  .tpma-reg-student-card .tpma-reg-cell:nth-child(3)::before{ content:"報名時間"; }
-  .tpma-reg-student-card .tpma-reg-cell:nth-child(4)::before{ content:"學員姓名"; }
-  .tpma-reg-student-card .tpma-reg-cell:nth-child(5)::before{ content:"公司抬頭"; }
-  .tpma-reg-student-card .tpma-reg-cell:nth-child(6)::before{ content:"狀態"; }
-  .tpma-reg-student-card .tpma-reg-cell:nth-child(7)::before{ content:"操作"; }
+  .tpma-reg-class-summary .tpma-cell-wrap,
+  .tpma-reg-student-card .tpma-cell-wrap,
+  .tpma-reg-grid-flat-mode .tpma-reg-card .tpma-cell-wrap{
+    display:block;
+    -webkit-line-clamp:unset;
+    overflow:visible;
+    min-height:0;
+  }
+
+  .tpma-reg-class-title-wrap,
+  .tpma-reg-student-name-wrap{
+    gap:8px;
+  }
+
+  .tpma-reg-class-count-wrap{
+    justify-content:flex-start;
+  }
+
+  .tpma-reg-grid-flat-mode .tpma-reg-card{
+    margin-bottom:10px;
+  }
+
+  .tpma-reg-grid-flat-mode .tpma-reg-card-summary{
+    gap:10px;
+  }
+
+  .tpma-reg-grid-flat-mode .tpma-reg-detail-view{
+    margin:0 12px 12px;
+    padding:18px;
+  }
+
+  .tpma-reg-detail-view{
+    margin:10px 0 0;
+    padding:18px;
+  }
+
+  .tpma-reg-detail-view-grid{
+    grid-template-columns:1fr;
+    gap:14px;
+  }
+
+  .tpma-reg-detail-info.span-2,
+  .tpma-reg-detail-info.span-all{
+    grid-column:auto;
+  }
 }
 
 /* ===== Excel 匯出 Modal ===== */

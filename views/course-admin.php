@@ -186,6 +186,7 @@ $restNonce = wp_create_nonce( 'wp_rest' );
 window.TPMACourseAdminConfig = <?php echo wp_json_encode(array(
     'apiBase' => $apiBase,
     'nonce'   => $restNonce,
+    'formUrl' => isset($form_url) ? $form_url : '',
 )); ?>;
 </script>
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/public/00.tpma-datetime.js?ver=' . TPMA_CR_VERSION ); ?>"></script>

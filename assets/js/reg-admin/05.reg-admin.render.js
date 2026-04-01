@@ -26,6 +26,7 @@ R.getCourseHoursForRow = function getCourseHoursForRow(ctx, row){
   if (row.class_hours){ const n=tryParse(row.class_hours); if (n>0) return n; }
   if (row.course_hours){ const n=tryParse(row.course_hours); if (n>0) return n; }
   if (row.hours){ const n=tryParse(row.hours); if (n>0) return n; }
+  if (row.duration_minutes){ const n=tryParse(row.duration_minutes); if (n>0) return n/60; }
 
   const courses = ctx.data.allCourses || [];
   if (courses.length && row.course_id) {
@@ -34,6 +35,7 @@ R.getCourseHoursForRow = function getCourseHoursForRow(ctx, row){
       if (c.class_hours){ const n=tryParse(c.class_hours); if (n>0) return n; }
       if (c.course_hours){ const n=tryParse(c.course_hours); if (n>0) return n; }
       if (c.hours){ const n=tryParse(c.hours); if (n>0) return n; }
+      if (c.duration_minutes){ const n=tryParse(c.duration_minutes); if (n>0) return n/60; }
     }
   }
   return 3;
@@ -67,8 +69,8 @@ R.buildClassDateRangeHtml = function buildClassDateRangeHtml(ctx, row){
       const d = new Date(datePart + 'T00:00:00');
       if (!isNaN(d.getTime())) week = U.dayNames[d.getDay()] || '';
     }catch(e){}
-    const text = datePart + (week ? '（'+week+'）' : '');
-    return U.esc(text);
+    const weekHtml = week ? '<wbr><span class="tpma-class-date-fragment tpma-class-date-week">（' + U.esc(week) + '）</span>' : '';
+    return '<span class="tpma-class-date-fragment tpma-class-date-date">' + U.esc(datePart) + '</span>' + weekHtml;
   }
 
   const datePart = s.substring(0,10);
@@ -90,8 +92,37 @@ R.buildClassDateRangeHtml = function buildClassDateRangeHtml(ctx, row){
   }catch(e){}
 
   const range = endTimeStr ? (timePart + '~' + endTimeStr) : timePart;
-  const full  = datePart + (week ? '（'+week+'） ' : ' ') + range;
-  return U.esc(full);
+  const weekHtml = week ? '<wbr><span class="tpma-class-date-fragment tpma-class-date-week">（' + U.esc(week) + '）</span>' : '';
+  const timeHtml = range ? '<wbr><span class="tpma-class-date-fragment tpma-class-date-time">' + U.esc(range) + '</span>' : '';
+  return '<span class="tpma-class-date-fragment tpma-class-date-date">' + U.esc(datePart) + '</span>' + weekHtml + timeHtml;
+};
+
+R.getClassStartDate = function getClassStartDate(ctx, row){
+  if (!row) return null;
+  let raw = row.class_date ? String(row.class_date).trim() : '';
+  if (isAdjustingDate(raw) || !raw) return null;
+
+  if (raw.length <= 10 || raw.indexOf(' ') === -1) {
+    const sessionDt = R.findSessionDatetimeForRow(ctx, row);
+    if (sessionDt) raw = String(sessionDt).trim();
+  }
+
+  let start = new Date(raw.replace(' ', 'T'));
+  if (!isNaN(start.getTime())) return start;
+
+  const dateOnly = raw.substring(0,10);
+  start = new Date(dateOnly + 'T00:00:00');
+  return isNaN(start.getTime()) ? null : start;
+};
+
+R.isClassCompleted = function isClassCompleted(ctx, row){
+  const start = R.getClassStartDate(ctx, row);
+  if (!start) return false;
+
+  const hours = R.getCourseHoursForRow(ctx, row);
+  const durationMs = hours > 0 ? hours * 60 * 60 * 1000 : 0;
+  const end = new Date(start.getTime() + durationMs);
+  return end.getTime() < Date.now();
 };
 
 R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
@@ -182,99 +213,73 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   const lecturerText = isAdjustingRow ? ADJUSTING_LABEL : U.display(row.lecturer || row.lecturer_name);
 
   const detailContainer = document.createElement('div');
-  detailContainer.className = 'tpma-reg-detail-container';
+  detailContainer.className = 'tpma-reg-detail-container tpma-reg-detail-view';
 
-  const title = document.createElement('h2');
-  title.className = 'text-xl font-semibold mb-4 border-b pb-2';
-  title.innerHTML = `報名編號：<span id="detail-reg-id">${U.esc(row.reg_no || 'N/A')}</span> 詳細資料`;
-  detailContainer.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'tpma-reg-detail-view-grid';
 
-  // 區塊 1: 課程資料
-  const basicSection = document.createElement('div');
-  basicSection.className = 'tpma-reg-detail-section';
-  basicSection.id = 'section-basic';
-  
-  const appendField = (parent, labelText, value, isHtml = false) => {
-    const fieldDiv = document.createElement('div');
-    fieldDiv.className = 'tpma-detail-field';
+  const appendField = (labelText, value, opts = {}) => {
+    const item = document.createElement('div');
+    item.className = 'tpma-reg-detail-info' + (opts.span ? ' ' + opts.span : '');
+
     const label = document.createElement('label');
     label.textContent = labelText;
-    const valueSpan = document.createElement('span');
-    valueSpan.className = 'value';
-    if (isHtml) {
-      valueSpan.innerHTML = value || '';
+    item.appendChild(label);
+
+    const valueDiv = document.createElement('div');
+    valueDiv.className = 'tpma-reg-detail-info-value';
+    if (opts.html) {
+      valueDiv.innerHTML = value || '';
     } else {
-      valueSpan.textContent = U.esc(U.display(value));
+      valueDiv.textContent = U.display(value);
     }
-    fieldDiv.appendChild(label);
-    fieldDiv.appendChild(valueSpan);
-    parent.appendChild(fieldDiv);
+    item.appendChild(valueDiv);
+    grid.appendChild(item);
   };
 
-  appendField(basicSection, '課程名稱', courseText);
-  appendField(basicSection, '授課講師', lecturerText);
-  appendField(basicSection, '授課日期時間', R.buildClassDateRangeHtml(ctx, row), true);
-  detailContainer.appendChild(basicSection);
+  appendField('課程名稱', courseText);
+  appendField('授課講師', lecturerText);
+  appendField('授課日期時間', R.buildClassDateRangeHtml(ctx, row), { html: true });
+  appendField('報名編號', row.reg_no || 'N/A');
 
-  // 區塊 2: 學員資料
-  const studentSection = document.createElement('div');
-  studentSection.className = 'tpma-reg-detail-section';
-  studentSection.id = 'section-student';
-  appendField(studentSection, '學員姓名', row.student_name);
-  appendField(studentSection, '部門', row.department);
-  appendField(studentSection, '職稱', row.job_title);
-  appendField(studentSection, '手機', row.mobile);
-  appendField(studentSection, 'Email', row.emails);
-  detailContainer.appendChild(studentSection);
+  appendField('學員姓名', row.student_name);
+  appendField('部門 / 職稱', [U.display(row.department), U.display(row.job_title)].filter(Boolean).join(' / '));
+  appendField('手機', row.mobile);
+  appendField('Email', row.emails);
 
-  // 區塊 3: 公司資料
-  const companySection = document.createElement('div');
-  companySection.className = 'tpma-reg-detail-section';
-  companySection.id = 'section-company';
-  appendField(companySection, '公司抬頭', row.company_name);
-  appendField(companySection, '統一編號', row.tax_id);
-  appendField(companySection, '承辦人姓名', row.contact_name);
-  appendField(companySection, '承辦人Email', row.contact_email);
-  appendField(companySection, '電話', row.phone);
-  appendField(companySection, '收件人', row.receiver);
-  appendField(companySection, '地址', row.address);
-  appendField(companySection, '資訊來源', row.source);
-  detailContainer.appendChild(companySection);
+  appendField('公司抬頭', row.company_name);
+  appendField('統一編號', row.tax_id);
+  appendField('承辦人姓名', row.contact_name);
+  appendField('承辦人 Email', row.contact_email);
 
-  // 區塊 4: 帳單資訊
-  const receiptSection = document.createElement('div');
-  receiptSection.className = 'tpma-reg-detail-section';
-  receiptSection.id = 'section-receipt';
+  appendField('地址', row.address, { span: 'span-2' });
+  appendField('電話', row.phone);
+  appendField('收件人', row.receiver);
+  appendField('報名時間', U.trimToMinute(row.created_at));
+  appendField('報名狀態', L.statusLabel(row.status));
+  appendField('付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
+  appendField('收據方式 / 狀態', [L.receiptTypeLabel(row.receipt_type), L.receiptStatusLabel(row.receipt_status)].filter(Boolean).join(' / '));
+  appendField('測驗成績', row.test_score);
+  appendField('證書編號', row.certificate_id);
+  appendField('匯款金額（元）', U.formatAmount(row.remit_amount));
+  appendField('匯款帳號', row.remit_account);
+  appendField('匯款日期', row.remit_paid_at);
+  appendField('資訊來源', row.source);
+
   if (row.woocommerce_order_id) {
     const wcOrderLink = ctx.orderEditBase ? `${ctx.orderEditBase}${row.woocommerce_order_id}&action=edit` : '';
     const orderIdLabel = row.woocommerce_order_id;
     const linkHtml = wcOrderLink ? `<a href="${wcOrderLink}" target="_blank">${orderIdLabel}</a>` : orderIdLabel;
-    appendField(receiptSection, 'WooCommerce 訂單 ID', linkHtml, true);
+    appendField('WooCommerce 訂單 ID', linkHtml, { html: true });
   }
-  appendField(receiptSection, '付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
-  appendField(receiptSection, '報名時間', U.trimToMinute(row.created_at));
-  appendField(receiptSection, '收據方式', L.receiptTypeLabel(row.receipt_type));
-  appendField(receiptSection, '收據狀態', L.receiptStatusLabel(row.receipt_status));
-  appendField(receiptSection, '匯款金額（元）', U.formatAmount(row.remit_amount));
-  appendField(receiptSection, '匯款帳號', row.remit_account);
-  appendField(receiptSection, '匯款日期', row.remit_paid_at);
-  detailContainer.appendChild(receiptSection);
 
-  // 區塊 5: 學習狀態
-  const otherSection = document.createElement('div');
-  otherSection.className = 'tpma-reg-detail-section';
-  otherSection.id = 'section-other';
-  appendField(otherSection, '報名狀態', L.statusLabel(row.status));
-  appendField(otherSection, '測驗成績', row.test_score);
-  appendField(otherSection, '證書編號', row.certificate_id);
-  appendField(otherSection, '備註', row.note);
-  detailContainer.appendChild(otherSection);
+  appendField('備註', row.note, { span: 'span-all' });
+  detailContainer.appendChild(grid);
 
-  // 操作按鈕
   const actionsDiv = document.createElement('div');
-  actionsDiv.className = 'tpma-reg-detail-actions';
+  actionsDiv.className = 'tpma-reg-detail-actions tpma-reg-detail-view-actions';
   actionsDiv.innerHTML = `
-    <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-${row.id}">編輯詳情</button>
+    <button class="tpma-btn tpma-btn-secondary tpma-reg-action-btn" id="tpma-btn-edit-${row.id}">編輯詳情</button>
   `;
 
   detailContainer.appendChild(actionsDiv);
@@ -619,6 +624,7 @@ R.bindDetailToggle = function bindDetailToggle(button, details){
     const isOpen = details.classList.contains('open');
     details.classList.toggle('open', !isOpen);
     this.textContent = isOpen ? '詳細' : '收合';
+    this.classList.toggle('is-open', !isOpen);
   });
 };
 
@@ -641,64 +647,65 @@ R.createFlatRowCard = function createFlatRowCard(ctx, row, seq){
   card.dataset.id = row.id || '';
 
   const summary = document.createElement('div');
-  summary.className = 'tpma-reg-card-summary tpma-reg-grid-layout';
+  summary.className = 'tpma-reg-card-summary tpma-reg-grid-layout tpma-reg-flat-summary';
 
   const cSel = document.createElement('div');
   cSel.className = 'tpma-reg-cell';
+  cSel.setAttribute('data-label', '選取');
   cSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
   summary.appendChild(cSel);
 
   const cSeq = document.createElement('div');
   cSeq.className = 'tpma-reg-cell tpma-seq-col';
+  cSeq.setAttribute('data-label', '序');
   cSeq.textContent = seq;
   summary.appendChild(cSeq);
 
   const cCreated = document.createElement('div');
   cCreated.className = 'tpma-reg-cell';
+  cCreated.setAttribute('data-label', '報名時間');
   cCreated.innerHTML = '<div class="tpma-cell-wrap">' + R.buildCreatedAtHtml(row.created_at) + '</div>';
   summary.appendChild(cCreated);
 
   const cCourse = document.createElement('div');
   cCourse.className = 'tpma-reg-cell';
+  cCourse.setAttribute('data-label', '課程名稱');
   const courseText = R.getCourseSummaryText(row);
   const lecturerText = R.getLecturerSummaryText(row);
   const titleAttr = lecturerText ? ' title="講師：' + U.esc(lecturerText) + '"' : '';
-  cCourse.innerHTML = '<div class="tpma-cell-wrap"><span' + titleAttr + '>' + U.esc(courseText) + '</span></div>';
+  cCourse.innerHTML = '<div class="tpma-cell-wrap"><div><strong class="tpma-reg-flat-primary"' + titleAttr + '>' + U.esc(courseText) + '</strong>' + (lecturerText ? '<div class="tpma-reg-flat-secondary">講師：' + U.esc(lecturerText) + '</div>' : '') + '</div></div>';
   summary.appendChild(cCourse);
 
   const cDate = document.createElement('div');
   cDate.className = 'tpma-reg-cell';
+  cDate.setAttribute('data-label', '授課日期');
   const classText = R.buildClassDateRangeHtml(ctx, row);
-  let classHtml = '';
-  if (classText) {
-    const sp = classText.indexOf(' ');
-    if (sp > 0) {
-      classHtml = U.esc(classText.substring(0, sp)) + '<br>' + U.esc(classText.substring(sp + 1).trim());
-    } else {
-      classHtml = U.esc(classText);
-    }
-  }
-  cDate.innerHTML = '<div class="tpma-cell-wrap">' + classHtml + '</div>';
+  cDate.innerHTML = '<div class="tpma-cell-wrap">' + (classText || '') + '</div>';
   summary.appendChild(cDate);
 
   const cStu = document.createElement('div');
   cStu.className = 'tpma-reg-cell';
-  cStu.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.student_name)) + '</div>';
+  cStu.setAttribute('data-label', '學員姓名');
+  const studentSub = [U.display(row.department), U.display(row.job_title)].filter(Boolean).join(' / ');
+  cStu.innerHTML = '<div class="tpma-cell-wrap"><div><strong class="tpma-reg-flat-primary">' + U.esc(U.display(row.student_name)) + '</strong>' + (studentSub ? '<div class="tpma-reg-flat-secondary">' + U.esc(studentSub) + '</div>' : '') + '</div></div>';
   summary.appendChild(cStu);
 
   const cComp = document.createElement('div');
   cComp.className = 'tpma-reg-cell';
+  cComp.setAttribute('data-label', '公司抬頭');
   cComp.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.company_name)) + '</div>';
   summary.appendChild(cComp);
 
   const cStatus = document.createElement('div');
   cStatus.className = 'tpma-reg-cell';
+  cStatus.setAttribute('data-label', '狀態');
   cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
   summary.appendChild(cStatus);
 
   const cAct = document.createElement('div');
   cAct.className = 'tpma-reg-cell';
-  cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
+  cAct.setAttribute('data-label', '操作');
+  cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-btn-secondary tpma-view-btn tpma-reg-view-action">詳細</button></div>';
   summary.appendChild(cAct);
 
   card.appendChild(summary);
@@ -721,41 +728,49 @@ R.createNestedStudentRow = function createNestedStudentRow(ctx, row, seq){
   card.dataset.id = row.id || '';
 
   const summary = document.createElement('div');
-  summary.className = 'tpma-reg-card-summary tpma-reg-student-grid-layout';
+  summary.className = 'tpma-reg-card-summary tpma-reg-student-grid-layout tpma-reg-student-summary';
 
   const cSel = document.createElement('div');
   cSel.className = 'tpma-reg-cell';
+  cSel.setAttribute('data-label', '選取');
   cSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-reg-select"></div>';
   summary.appendChild(cSel);
 
   const cSeq = document.createElement('div');
   cSeq.className = 'tpma-reg-cell tpma-seq-col';
+  cSeq.setAttribute('data-label', '序');
   cSeq.textContent = seq;
   summary.appendChild(cSeq);
 
   const cCreated = document.createElement('div');
   cCreated.className = 'tpma-reg-cell';
+  cCreated.setAttribute('data-label', '報名時間');
   cCreated.innerHTML = '<div class="tpma-cell-wrap">' + R.buildCreatedAtHtml(row.created_at) + '</div>';
   summary.appendChild(cCreated);
 
   const cStu = document.createElement('div');
   cStu.className = 'tpma-reg-cell';
-  cStu.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.student_name)) + '</div>';
+  cStu.setAttribute('data-label', '學員姓名');
+  const studentSub = [U.display(row.department), U.display(row.job_title)].filter(Boolean).join(' / ');
+  cStu.innerHTML = '<div class="tpma-cell-wrap tpma-reg-student-name-wrap"><div><strong class="tpma-reg-student-name">' + U.esc(U.display(row.student_name)) + '</strong>' + (studentSub ? '<div class="tpma-reg-student-sub">' + U.esc(studentSub) + '</div>' : '') + '</div></div>';
   summary.appendChild(cStu);
 
   const cComp = document.createElement('div');
   cComp.className = 'tpma-reg-cell';
+  cComp.setAttribute('data-label', '公司抬頭');
   cComp.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(U.display(row.company_name)) + '</div>';
   summary.appendChild(cComp);
 
   const cStatus = document.createElement('div');
   cStatus.className = 'tpma-reg-cell';
+  cStatus.setAttribute('data-label', '狀態');
   cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
   summary.appendChild(cStatus);
 
   const cAct = document.createElement('div');
   cAct.className = 'tpma-reg-cell';
-  cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-view-btn">詳細</button></div>';
+  cAct.setAttribute('data-label', '操作');
+  cAct.innerHTML = '<div class="tpma-cell-wrap"><button class="tpma-btn tpma-btn-secondary tpma-view-btn tpma-reg-view-action">詳細</button></div>';
   summary.appendChild(cAct);
 
   card.appendChild(summary);
@@ -782,10 +797,64 @@ R.renderFlatTable = function renderFlatTable(ctx, tbody){
 };
 
 R.renderNestedTable = function renderNestedTable(ctx, tbody){
-  const pageGroups = S.getCurrentPageGroups(ctx);
+  const pageGroups = S.getNestedMonthGroups(ctx);
+  const hasAdjustingTab = !!(((ctx.data || {}).nestedMonths || {}).adjusting || []).length;
+
+  const tabs = document.createElement('div');
+  tabs.className = 'tpma-nested-month-tabs';
+  for (let month = 1; month <= 12; month += 1) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tpma-nested-month-tab' + (month === ctx.state.nestedMonth ? ' is-active' : '');
+    btn.textContent = month + '月';
+    btn.dataset.month = String(month);
+    btn.addEventListener('click', function(){
+      const selectedMonth = parseInt(this.dataset.month || '', 10);
+      if (!selectedMonth || selectedMonth === ctx.state.nestedMonth) return;
+      ctx.state.nestedMonth = selectedMonth;
+      R.renderTable(ctx);
+    });
+    tabs.appendChild(btn);
+  }
+  if (hasAdjustingTab) {
+    const adjustingBtn = document.createElement('button');
+    adjustingBtn.type = 'button';
+    adjustingBtn.className = 'tpma-nested-month-tab' + (ctx.state.nestedMonth === ADJUSTING_VALUE ? ' is-active' : '');
+    adjustingBtn.textContent = ADJUSTING_LABEL;
+    adjustingBtn.dataset.month = ADJUSTING_VALUE;
+    adjustingBtn.addEventListener('click', function(){
+      if (ctx.state.nestedMonth === ADJUSTING_VALUE) return;
+      ctx.state.nestedMonth = ADJUSTING_VALUE;
+      R.renderTable(ctx);
+    });
+    tabs.appendChild(adjustingBtn);
+  }
+  tbody.appendChild(tabs);
+
+  if (!pageGroups.length) {
+    const empty = document.createElement('div');
+    empty.className = 'tpma-empty-row';
+    empty.textContent = ctx.state.nestedMonth === ADJUSTING_VALUE
+      ? ADJUSTING_LABEL + '查無課程資料。'
+      : ctx.state.nestedMonth + ' 月查無課程資料。';
+    tbody.appendChild(empty);
+    return;
+  }
+
+  const header = document.createElement('div');
+  header.className = 'tpma-reg-nested-main-header tpma-reg-class-grid-layout';
+  header.innerHTML = [
+    '<div class="tpma-reg-nested-main-cell"><input type="checkbox" id="tpma-select-all-nested"></div>',
+    '<div class="tpma-reg-nested-main-cell">序</div>',
+    '<div class="tpma-reg-nested-main-cell">授課日期</div>',
+    '<div class="tpma-reg-nested-main-cell">課程名稱</div>',
+    '<div class="tpma-reg-nested-main-cell">授課講師</div>',
+    '<div class="tpma-reg-nested-main-cell">人數統計</div>'
+  ].join('');
+  tbody.appendChild(header);
 
   pageGroups.forEach(function(group, classIdx){
-    const firstRow = (group.rows || [])[0] || {};
+    const firstRow = S.getGroupBaseRow(group);
     const classCard = document.createElement('section');
     classCard.className = 'tpma-reg-class-card';
     classCard.dataset.groupKey = group.key || '';
@@ -794,60 +863,74 @@ R.renderNestedTable = function renderNestedTable(ctx, tbody){
     classSummary.className = 'tpma-reg-class-summary tpma-reg-class-grid-layout';
     classSummary.setAttribute('role', 'button');
     classSummary.setAttribute('tabindex', '0');
-    classSummary.setAttribute('aria-expanded', 'true');
+    classSummary.setAttribute('aria-expanded', 'false');
+    classSummary.classList.add('is-collapsed');
 
     const classSel = document.createElement('div');
     classSel.className = 'tpma-reg-class-cell';
+    classSel.setAttribute('data-label', '選取');
     classSel.innerHTML = '<div class="tpma-cell-wrap"><input type="checkbox" class="tpma-class-select"></div>';
     classSummary.appendChild(classSel);
 
     const classSeq = document.createElement('div');
     classSeq.className = 'tpma-reg-class-cell tpma-seq-col';
+    classSeq.setAttribute('data-label', '序');
     classSeq.textContent = classIdx + 1;
     classSummary.appendChild(classSeq);
 
     const classDate = document.createElement('div');
     classDate.className = 'tpma-reg-class-cell';
+    classDate.setAttribute('data-label', '授課日期');
     classDate.innerHTML = '<div class="tpma-cell-wrap">' + R.buildClassDateRangeHtml(ctx, firstRow) + '</div>';
     classSummary.appendChild(classDate);
 
     const classCourse = document.createElement('div');
     classCourse.className = 'tpma-reg-class-cell';
-    classCourse.innerHTML = '<div class="tpma-cell-wrap"><span class="tpma-class-toggle-indicator" aria-hidden="true">▾</span>' + U.esc(R.getCourseSummaryText(firstRow)) + '</div>';
+    classCourse.setAttribute('data-label', '課程名稱');
+    classCourse.innerHTML = '<div class="tpma-cell-wrap tpma-reg-class-title-wrap"><div><strong class="tpma-reg-class-title">' + U.esc(R.getCourseSummaryText(firstRow)) + '</strong></div></div>';
     classSummary.appendChild(classCourse);
 
     const classLecturer = document.createElement('div');
     classLecturer.className = 'tpma-reg-class-cell';
+    classLecturer.setAttribute('data-label', '授課講師');
     classLecturer.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(R.getLecturerSummaryText(firstRow)) + '</div>';
     classSummary.appendChild(classLecturer);
 
     const classCount = document.createElement('div');
     classCount.className = 'tpma-reg-class-cell';
-    classCount.innerHTML = '<div class="tpma-cell-wrap">' + U.esc(String(group.studentCount || 0)) + ' 人</div>';
+    classCount.setAttribute('data-label', '人數統計');
+    classCount.innerHTML = '<div class="tpma-cell-wrap tpma-reg-class-count-wrap"><span class="tpma-reg-class-count">' + U.esc(String(group.studentCount || 0)) + ' 人</span><span class="tpma-class-toggle-btn" aria-hidden="true">▶</span></div>';
     classSummary.appendChild(classCount);
 
     classCard.appendChild(classSummary);
 
     const classBody = document.createElement('div');
-    classBody.className = 'tpma-reg-class-body open';
+    classBody.className = 'tpma-reg-class-body';
     classCard.appendChild(classBody);
 
-    const studentHeader = document.createElement('div');
-    studentHeader.className = 'tpma-reg-student-header tpma-reg-student-grid-layout';
-    studentHeader.innerHTML = [
-      '<div class="tpma-reg-student-head">選取</div>',
-      '<div class="tpma-reg-student-head">序</div>',
-      '<div class="tpma-reg-student-head">報名時間</div>',
-      '<div class="tpma-reg-student-head">學員姓名</div>',
-      '<div class="tpma-reg-student-head">公司抬頭</div>',
-      '<div class="tpma-reg-student-head">狀態</div>',
-      '<div class="tpma-reg-student-head">操作</div>'
-    ].join('');
-    classBody.appendChild(studentHeader);
+    if ((group.rows || []).length) {
+      const studentHeader = document.createElement('div');
+      studentHeader.className = 'tpma-reg-student-header tpma-reg-student-grid-layout';
+      studentHeader.innerHTML = [
+        '<div class="tpma-reg-student-head">選取</div>',
+        '<div class="tpma-reg-student-head">序</div>',
+        '<div class="tpma-reg-student-head">報名時間</div>',
+        '<div class="tpma-reg-student-head">學員姓名</div>',
+        '<div class="tpma-reg-student-head">公司抬頭</div>',
+        '<div class="tpma-reg-student-head">狀態</div>',
+        '<div class="tpma-reg-student-head">操作</div>'
+      ].join('');
+      classBody.appendChild(studentHeader);
 
-    (group.rows || []).forEach(function(row, idx){
-      classBody.appendChild(R.createNestedStudentRow(ctx, row, idx + 1));
-    });
+      (group.rows || []).forEach(function(row, idx){
+        classBody.appendChild(R.createNestedStudentRow(ctx, row, idx + 1));
+      });
+    } else {
+      const emptyStudents = document.createElement('div');
+      emptyStudents.className = 'tpma-empty-row tpma-reg-class-empty';
+      emptyStudents.textContent = '目前尚無報名學員';
+      classBody.appendChild(emptyStudents);
+    }
 
     const classCheckbox = classSel.querySelector('.tpma-class-select');
     classCheckbox.addEventListener('click', function(e){
@@ -868,6 +951,7 @@ R.renderNestedTable = function renderNestedTable(ctx, tbody){
       const isOpen = classBody.classList.contains('open');
       classBody.classList.toggle('open', !isOpen);
       classSummary.classList.toggle('is-collapsed', isOpen);
+      classCard.classList.toggle('is-open', !isOpen);
       classSummary.setAttribute('aria-expanded', isOpen ? 'false' : 'true');
     };
 
@@ -887,6 +971,20 @@ R.renderNestedTable = function renderNestedTable(ctx, tbody){
 
     tbody.appendChild(classCard);
   });
+
+  const nestedSelectAll = header.querySelector('#tpma-select-all-nested');
+  if (nestedSelectAll) {
+    nestedSelectAll.addEventListener('change', function(){
+      document.querySelectorAll('.tpma-class-select, .tpma-reg-select').forEach(function(cb){
+        cb.checked = nestedSelectAll.checked;
+        cb.indeterminate = false;
+      });
+      ctx.actions.updateBatchButtonsEnabled();
+      if (UI.updateAllClassSelectionStates) {
+        UI.updateAllClassSelectionStates(ctx);
+      }
+    });
+  }
 };
 
 R.renderTable = function renderTable(ctx){

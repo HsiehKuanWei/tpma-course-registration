@@ -112,11 +112,18 @@ UI.updateAllClassSelectionStates = function updateAllClassSelectionStates(ctx){
     UI.updateClassSelectionState(classCard);
   });
 
+  const allStudentCheckboxes = Array.from(document.querySelectorAll('.tpma-reg-select'));
+  const checkedCount = allStudentCheckboxes.filter(cb => cb.checked).length;
+
   if (ctx.dom.selectAllHead) {
-    const allStudentCheckboxes = Array.from(document.querySelectorAll('.tpma-reg-select'));
-    const checkedCount = allStudentCheckboxes.filter(cb => cb.checked).length;
     ctx.dom.selectAllHead.checked = !!allStudentCheckboxes.length && checkedCount === allStudentCheckboxes.length;
     ctx.dom.selectAllHead.indeterminate = checkedCount > 0 && checkedCount < allStudentCheckboxes.length;
+  }
+
+  const nestedSelectAll = document.getElementById('tpma-select-all-nested');
+  if (nestedSelectAll) {
+    nestedSelectAll.checked = !!allStudentCheckboxes.length && checkedCount === allStudentCheckboxes.length;
+    nestedSelectAll.indeterminate = checkedCount > 0 && checkedCount < allStudentCheckboxes.length;
   }
 };
 
@@ -134,9 +141,18 @@ UI.updateViewModeButtons = function updateViewModeButtons(ctx){
     ctx.dom.grid.classList.toggle('tpma-reg-grid-nested-mode', isNested);
     ctx.dom.grid.classList.toggle('tpma-reg-grid-flat-mode', !isNested);
   }
+  if (ctx.dom.pagination) {
+    ctx.dom.pagination.style.display = isNested ? 'none' : '';
+  }
 };
 
 UI.updatePaginationControls = function updatePaginationControls(ctx){
+  if (ctx.state.viewMode === 'nested') {
+    if (ctx.dom.pageInfo) ctx.dom.pageInfo.textContent = '';
+    if (ctx.dom.pagePrev) ctx.dom.pagePrev.disabled = true;
+    if (ctx.dom.pageNext) ctx.dom.pageNext.disabled = true;
+    return;
+  }
   const meta = S.getPaginationMeta(ctx);
   if (ctx.dom.pageInfo) {
     ctx.dom.pageInfo.textContent = '第 ' + meta.currentPage + ' / ' + meta.totalPages + ' 頁，顯示 ' + meta.start + '–' + meta.end + ' 筆，共 ' + meta.totalRows + ' 筆';

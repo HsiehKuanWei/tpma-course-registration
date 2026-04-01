@@ -10,6 +10,7 @@
   const PublicUtil = (w.TPMAPublic = w.TPMAPublic || {}).util || {};
   const DateUtil = (w.TPMAPublic = w.TPMAPublic || {}).datetime || {};
   const ns = w.TPMACourseAdmin = w.TPMACourseAdmin || {};
+  const state = ns.state = ns.state || {};
   const util = ns.util = ns.util || {};
 
   /**
@@ -57,6 +58,22 @@
     const range = info.end ? `${info.start}~${info.end}` : info.start;
     const wd = info.weekday ? `（${info.weekday}）` : '';
     return `${info.date}${wd} ${range}`;
+  };
+
+  util.getSessionVisibilityLabel = function getSessionVisibilityLabel(mode) {
+    if (mode === 'force_show') return '強制顯示';
+    if (mode === 'force_hide') return '強制隱藏';
+    return '自動判斷';
+  };
+
+  util.buildRegUrl = function buildRegUrl(courseId, sessionId) {
+    const base = state.formUrl || '';
+    if (!base) return '';
+    const params = new URLSearchParams();
+    if (courseId) params.set('course_id', courseId);
+    if (sessionId) params.set('session_id', sessionId);
+    const qs = params.toString();
+    return qs ? `${base}${base.includes('?') ? '&' : '?'}${qs}` : base;
   };
 
 })(window);

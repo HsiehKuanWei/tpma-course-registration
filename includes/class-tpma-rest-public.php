@@ -104,6 +104,7 @@ class TPMA_CR_REST_Public
                 c.duration_minutes,
                 s.id             AS session_id,
                 s.session_datetime,
+                s.visibility_override,
                 (
                     SELECT COUNT(*)
                     FROM {$regs_table} r

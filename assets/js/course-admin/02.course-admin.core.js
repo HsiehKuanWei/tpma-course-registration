@@ -18,6 +18,7 @@
   const state = ns.state = ns.state || {
     apiBase: '',
     nonce: '',
+    formUrl: '',
     allCourses: [],
     lecturers: [],
     currentLecturerTargetSelect: null,
@@ -64,6 +65,7 @@
   ns.setConfig = function setConfig(config) {
     state.apiBase = (config && config.apiBase) ? config.apiBase : '';
     state.nonce = (config && config.nonce) ? config.nonce : '';
+    state.formUrl = (config && config.formUrl) ? config.formUrl : '';
   };
 
   /**

@@ -182,7 +182,18 @@ ns.renderCourses = function renderCourses(list){
       sessionsHtml = '<ul>';
       sessions.forEach(s => {
         const label = util.formatSessionLabel(s.session_datetime, c.duration_minutes);
-        sessionsHtml += '<li>' + util.esc(label) + (s.is_active ? '' : '（已停用）') + '</li>';
+        const regUrl = util.buildRegUrl(c.id, s.id);
+        const visibility = s.visibility_override || '';
+        const visibilityLabel = util.getSessionVisibilityLabel(visibility);
+        const visibilityClass = visibility ? ` tpma-session-override-${visibility}` : '';
+        const sessionLabelHtml = regUrl
+          ? `<a class="tpma-session-link" href="${util.esc(regUrl)}" target="_blank" rel="noopener noreferrer">${util.esc(label)}</a>`
+          : util.esc(label);
+        sessionsHtml += '<li>'
+          + sessionLabelHtml
+          + (s.is_active ? '' : '（已停用）')
+          + `<span class="tpma-session-override-badge${visibilityClass}">${util.esc(visibilityLabel)}</span>`
+          + '</li>';
       });
       sessionsHtml += '</ul>';
     } else {
@@ -264,7 +275,12 @@ ns.renderCourses = function renderCourses(list){
     if (toggleBtn) toggleBtn.onclick = () => ns.renderCourseView(div, !showAllDates);
   };
 
-  ns.addSessionRow = function addSessionRow(container, raw) {
+  ns.addSessionRow = function addSessionRow(container, sessionData) {
+    const session = sessionData && typeof sessionData === 'object'
+      ? sessionData
+      : { session_datetime: sessionData || '', visibility_override: '' };
+    const raw = session.session_datetime || '';
+    const visibility = session.visibility_override || '';
     let val = '';
     if (raw) {
       const dt = raw.replace('T', ' ').trim();
@@ -282,8 +298,29 @@ ns.renderCourses = function renderCourses(list){
     row.className = 'tpma-session-row';
     row.innerHTML = `
       <input type="datetime-local" value="${val}">
+      <select class="tpma-session-visibility">
+        <option value="" ${visibility === '' ? 'selected' : ''}>自動判斷</option>
+        <option value="force_show" ${visibility === 'force_show' ? 'selected' : ''}>強制顯示</option>
+        <option value="force_hide" ${visibility === 'force_hide' ? 'selected' : ''}>強制隱藏</option>
+      </select>
+      <a href="#" class="tpma-session-reg-link" target="_blank" rel="noopener noreferrer">開啟報名表</a>
       <button type="button" class="tpma-btn tpma-session-remove">移除</button>
     `;
+    const updateRegLink = () => {
+      const cardDiv = container.closest('.tpma-course-item');
+      const courseId = cardDiv?.dataset?.id || '';
+      const href = util.buildRegUrl(courseId, session.id || '');
+      const linkEl = row.querySelector('.tpma-session-reg-link');
+      if (!linkEl) return;
+      if (href) {
+        linkEl.href = href;
+        linkEl.classList.remove('is-disabled');
+      } else {
+        linkEl.href = '#';
+        linkEl.classList.add('is-disabled');
+      }
+    };
+    updateRegLink();
     row.querySelector('.tpma-session-remove').onclick = () => row.remove();
     container.appendChild(row);
   };
@@ -397,9 +434,9 @@ ns.renderCourses = function renderCourses(list){
     const datesWrap = div.querySelector('.tpma-course-dates[data-field="sessions"]');
     if (datesWrap) {
       if (sessions.length) {
-        sessions.forEach(s => ns.addSessionRow(datesWrap, s.session_datetime));
+        sessions.forEach(s => ns.addSessionRow(datesWrap, s));
       } else {
-        ns.addSessionRow(datesWrap, '');
+        ns.addSessionRow(datesWrap, { session_datetime: '', visibility_override: '' });
       }
     }
 
@@ -411,7 +448,7 @@ ns.renderCourses = function renderCourses(list){
         const lines = bulkArea.value.split(/\r?\n/).map(l => l.trim()).filter(l => l);
         lines.forEach(line => {
           const m = line.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})$/);
-          if (m) ns.addSessionRow(datesWrap, m[1] + ' ' + m[2]);
+          if (m) ns.addSessionRow(datesWrap, { session_datetime: m[1] + ' ' + m[2], visibility_override: '' });
         });
         bulkArea.value = '';
       };

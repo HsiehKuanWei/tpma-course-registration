@@ -170,6 +170,32 @@ add_shortcode('tpma_import_admin', array('TPMA_CR_Import', 'shortcode_import_adm
  * [tpma_form]         公開報名表單
  * [tpma_course_list]  公開課程列表，form_url 可覆寫報名頁網址，api_base 可自訂 REST 位置
  */
+function tpma_cr_get_registration_form_url()
+{
+    $saved = get_option('tpma_cr_registration_form_url', '');
+    if (is_string($saved) && $saved !== '') {
+        return esc_url_raw($saved);
+    }
+
+    $pages = get_posts(array(
+        'post_type'      => 'page',
+        'post_status'    => 'publish',
+        'posts_per_page' => 1,
+        'orderby'        => 'menu_order title',
+        'order'          => 'ASC',
+        's'              => '[tpma_form]',
+    ));
+
+    if (!empty($pages) && !empty($pages[0]->ID)) {
+        $url = get_permalink($pages[0]->ID);
+        if (is_string($url) && $url !== '') {
+            return esc_url_raw($url);
+        }
+    }
+
+    return esc_url_raw(TPMA_CR_URL . 'form.html');
+}
+
 function tpma_cr_shortcode_form($atts = array())
 {
     $api_base    = rtrim(rest_url('tpma/v1'), '/');
@@ -199,7 +225,7 @@ function tpma_cr_shortcode_course_list($atts = array())
     if (!empty($atts['api_base'])) {
         $api_base = esc_url_raw(rtrim($atts['api_base'], '/'));
     }
-    $form_url = !empty($atts['form_url']) ? esc_url_raw($atts['form_url']) : ($assets_base . 'form.html');
+    $form_url = !empty($atts['form_url']) ? esc_url_raw($atts['form_url']) : tpma_cr_get_registration_form_url();
 
     ob_start();
     include TPMA_CR_PATH . 'views/list-public.php';

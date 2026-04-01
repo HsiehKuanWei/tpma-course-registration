@@ -134,6 +134,9 @@ class TPMA_CR_REST_Admin
         if (!self::can_manage()) {
             return '<p>請先登入管理帳號。</p>';
         }
+        $form_url = function_exists('tpma_cr_get_registration_form_url')
+            ? tpma_cr_get_registration_form_url()
+            : esc_url_raw(TPMA_CR_URL . 'form.html');
         ob_start();
         include TPMA_CR_PATH . 'views/course-admin.php';
         return ob_get_clean();
@@ -551,12 +554,27 @@ public static function admin_update_reg($request)
     public static function admin_get_courses($request)
     {
         global $wpdb;
-        $courses_table  = TPMA_CR_DB::table('courses');
-        $sessions_table = TPMA_CR_DB::table('sessions');
+        $courses_table   = TPMA_CR_DB::table('courses');
+        $sessions_table  = TPMA_CR_DB::table('sessions');
+        $lecturers_table = TPMA_CR_DB::table('lecturers');
 
         $courses = $wpdb->get_results("
             SELECT *
-            FROM {$courses_table}
+            FROM (
+                SELECT
+                    c.*,
+                    CONCAT(
+                        l.lecturers_name,
+                        CASE
+                            WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
+                                THEN ''
+                            ELSE CONCAT(' ', l.lecturers_title)
+                        END
+                    ) AS lecturer
+                FROM {$courses_table} c
+                LEFT JOIN {$lecturers_table} l
+                    ON l.lecturers_code = c.lecturer_code
+            ) courses_with_lecturer
             ORDER BY id DESC
         ", ARRAY_A);
 
@@ -570,7 +588,7 @@ public static function admin_update_reg($request)
         $sessions_map = array();
         if ($ids_in) {
             $sessions = $wpdb->get_results("
-                SELECT id, course_id, session_datetime, is_active
+                SELECT id, course_id, session_datetime, is_active, visibility_override
                 FROM {$sessions_table}
                 WHERE course_id IN ({$ids_in})
                 ORDER BY session_datetime ASC
@@ -745,6 +763,10 @@ public static function admin_update_reg($request)
                 continue;
             }
             $raw = trim($s['datetime']);
+            $visibility_override = sanitize_key($s['visibility_override'] ?? '');
+            if (!in_array($visibility_override, array('', 'force_show', 'force_hide'), true)) {
+                $visibility_override = '';
+            }
 
             // 從 <input type="datetime-local"> 傳來的格式：YYYY-MM-DDTHH:MM
             $dt = str_replace('T', ' ', $raw);
@@ -763,6 +785,7 @@ public static function admin_update_reg($request)
                 'course_id'        => $course_id,
                 'session_datetime' => $dt,
                 'is_active'        => 1,
+                'visibility_override' => $visibility_override,
                 'created_at'       => current_time('mysql'),
             ));
         }
