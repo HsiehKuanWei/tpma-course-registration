@@ -129,6 +129,10 @@ class TPMA_CR_DB
         if (empty($col)) {
             $wpdb->query("ALTER TABLE {$regs_table} ADD COLUMN tutor_enrolled_id BIGINT UNSIGNED DEFAULT NULL");
         }
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$regs_table} LIKE 'contact_emails'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$regs_table} ADD COLUMN contact_emails TEXT DEFAULT NULL AFTER contact_email");
+        }
 
         // ── lecturers: wp_user_id ────────────────────────────────
         $lecturers_table = self::table('lecturers');
@@ -227,6 +231,7 @@ $charset_collate = $wpdb->get_charset_collate();
 			emails TEXT DEFAULT NULL,
 			contact_name VARCHAR(255) DEFAULT NULL,
 			contact_email VARCHAR(255) DEFAULT NULL,
+			contact_emails TEXT DEFAULT NULL,
 			company_name VARCHAR(255) DEFAULT NULL,
 			tax_id VARCHAR(20) DEFAULT NULL,
 			phone VARCHAR(50) DEFAULT NULL,

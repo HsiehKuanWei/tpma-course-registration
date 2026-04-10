@@ -452,7 +452,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(companySection, '公司抬頭', 'company_name', 'text', row.company_name);
   appendEditField(companySection, '統一編號', 'tax_id', 'text', row.tax_id);
   appendEditField(companySection, '承辦人姓名', 'contact_name', 'text', row.contact_name);
-  appendEditField(companySection, '承辦人Email', 'contact_email', 'text', row.contact_email);
+  appendEditField(companySection, '承辦人Email（可用 , 或 ; 分隔多筆）', 'contact_email', 'text', row.contact_email);
   appendEditField(companySection, '電話', 'phone', 'text', row.phone);
   appendEditField(companySection, '收件人', 'receiver', 'text', row.receiver);
 

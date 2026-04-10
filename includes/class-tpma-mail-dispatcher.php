@@ -105,6 +105,24 @@ class TPMA_CR_Mail_Dispatcher
     }
 
     /**
+     * Collect order-level recipients: primary Woo billing email + extra TPMA contact emails.
+     */
+    private static function get_order_contact_recipients(WC_Order $order): array
+    {
+        $to = array();
+
+        $billing_email = trim((string) $order->get_billing_email());
+        if ($billing_email && is_email($billing_email)) {
+            $to[] = sanitize_email($billing_email);
+        }
+
+        $extra = $order->get_meta('_tpma_contact_emails', true);
+        $to = array_merge($to, self::normalize_emails($extra));
+
+        return array_values(array_unique(array_filter($to, 'is_email')));
+    }
+
+    /**
      * 從 Mail Config 取得某模板的「副本/抄送」收件人設定（若有）
      * mail-modal 目前使用的是 cfg.default_cc / cfg.default_bcc
      */
@@ -358,9 +376,8 @@ class TPMA_CR_Mail_Dispatcher
         if ($tpl_order) {
             $ctx_order = self::build_context($order, $draft);
 
-            $billing_email = trim((string)$order->get_billing_email());
-            if ($billing_email && is_email($billing_email)) {
-                TPMA_Mailer::send_template($tpl_order, $billing_email, array(
+            foreach (self::get_order_contact_recipients($order) as $to) {
+                TPMA_Mailer::send_template($tpl_order, $to, array(
                     'reg_context' => $ctx_order,
                 ));
             }
@@ -616,6 +633,8 @@ class TPMA_CR_Mail_Dispatcher
                 // billing（保留你原本姓/名順序邏輯）
                 'billing_name'          => trim($order->get_billing_last_name() . ' ' . $order->get_billing_first_name()),
                 'billing_email'         => $order->get_billing_email(),
+                'contact_emails'        => (string) $order->get_meta('_tpma_contact_emails', true),
+                'order_recipient_emails'=> implode(', ', self::get_order_contact_recipients($order)),
                 'billing_phone'         => $order->get_billing_phone(),
                 'billing_address'       => $billing_address,
 
@@ -850,6 +869,8 @@ class TPMA_CR_Mail_Dispatcher
             'invoice_vat_id' => '公司統編',
             'billing_name' => '帳單姓名（Woo 結帳填寫）',
             'billing_email' => '帳單 Email（Woo 結帳填寫）',
+            'contact_emails' => '承辦人附加 Email（billing_email 以外）',
+            'order_recipient_emails' => '訂單通知收件人清單（billing_email + contact_emails）',
             'billing_phone' => '帳單電話（Woo 結帳填寫）',
             'billing_address' => '帳單地址',
             'shipping_address' => '寄送地址',
@@ -1079,10 +1100,9 @@ class TPMA_CR_Mail_Dispatcher
         $ctx = self::build_context($order, is_array($draft) ? $draft : array());
 
         $sent = false;
-        $billing_email = trim((string)$order->get_billing_email());
-        if ($billing_email && is_email($billing_email)) {
+        foreach (self::get_order_contact_recipients($order) as $to) {
             try {
-                if (TPMA_Mailer::send_template($template_key, $billing_email, array(
+                if (TPMA_Mailer::send_template($template_key, $to, array(
                     'reg_context' => $ctx,
                 ))) {
                     $sent = true;
@@ -1328,10 +1348,9 @@ class TPMA_CR_Mail_Dispatcher
 
         $sent = false;
 
-        // 寄給訂購者（Woo 結帳信箱）
-        $billing_email = trim((string)$order->get_billing_email());
-        if ($billing_email && is_email($billing_email)) {
-            $ok = TPMA_Mailer::send_template($tpl_completed, $billing_email, array(
+        // 寄給訂單聯絡人（主 email + 額外通知 email）
+        foreach (self::get_order_contact_recipients($order) as $to) {
+            $ok = TPMA_Mailer::send_template($tpl_completed, $to, array(
                 'reg_context' => $ctx,
             ));
             if ($ok) $sent = true;

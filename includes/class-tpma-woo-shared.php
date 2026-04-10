@@ -9,14 +9,53 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_Woo_Shared
 {
     /**
+     * Normalize separator variants without changing the stored text shape too much.
+     */
+    private static function normalize_email_separators($raw): string {
+        $text = sanitize_text_field($raw ?? '');
+        if ($text === '') return '';
+        return trim(str_replace(array('，', '；'), array(',', ';'), $text));
+    }
+
+    /**
      * Sanitize learner emails while preserving comma/semicolon separators.
      */
     private static function sanitize_emails_raw($raw) {
-        $text = sanitize_text_field($raw ?? '');
-        if ($text === '') return '';
-        // Normalize full-width separators/spaces to half-width for consistency.
-        $text = str_replace(array('，', '；'), array(',', ';'), $text);
-        return trim($text);
+        return self::normalize_email_separators($raw);
+    }
+
+    /**
+     * Parse a raw email list into valid recipients.
+     */
+    public static function normalize_email_list($raw): array {
+        $text = self::normalize_email_separators($raw);
+        if ($text === '') return array();
+
+        $parts = preg_split('/[\s,;]+/', $text);
+        $emails = array();
+        foreach ((array) $parts as $part) {
+            $email = trim((string) $part);
+            if ($email !== '' && is_email($email)) {
+                $emails[] = sanitize_email($email);
+            }
+        }
+
+        return array_values(array_unique($emails));
+    }
+
+    /**
+     * Split the first email for Woo billing_email and keep the rest as extra contacts.
+     */
+    public static function split_primary_and_extra_emails($raw): array {
+        $emails = self::normalize_email_list($raw);
+        $extras = array_slice($emails, 1);
+
+        return array(
+            'primary'   => $emails[0] ?? '',
+            'extras'    => $extras,
+            'extra_raw' => implode(', ', $extras),
+            'all'       => $emails,
+        );
     }
     /**
      * Ensure WC session/cart is ready.
@@ -427,6 +466,7 @@ class TPMA_CR_Woo_Shared
 
                     'contact_name'         => trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()),
                     'contact_email'        => sanitize_email($order->get_billing_email()),
+                    'contact_emails'       => self::sanitize_emails_raw($order->get_meta('_tpma_contact_emails', true)),
                     'company_name'         => sanitize_text_field($order->get_billing_company()),
                     'tax_id'               => sanitize_text_field($tax_id),
                     'phone'                => sanitize_text_field($order->get_billing_phone()),

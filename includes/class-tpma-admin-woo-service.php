@@ -9,6 +9,143 @@ if (!defined('ABSPATH')) {
  */
 class TPMA_CR_Admin_Woo_Service
 {
+    private static function normalize_email_list($raw): array
+    {
+        if (class_exists('TPMA_CR_Woo_Shared') && method_exists('TPMA_CR_Woo_Shared', 'normalize_email_list')) {
+            return TPMA_CR_Woo_Shared::normalize_email_list($raw);
+        }
+
+        $text = sanitize_text_field($raw ?? '');
+        if ($text === '') {
+            return array();
+        }
+        $text = str_replace(array('，', '；'), array(',', ';'), $text);
+        $parts = preg_split('/[\s,;]+/', $text);
+        $emails = array();
+        foreach ((array) $parts as $part) {
+            $email = trim((string) $part);
+            if ($email !== '' && is_email($email)) {
+                $emails[] = sanitize_email($email);
+            }
+        }
+
+        return array_values(array_unique($emails));
+    }
+
+    private static function build_contact_email_display($primary, $extras_raw = ''): string
+    {
+        $emails = array();
+        if ($primary && is_email($primary)) {
+            $emails[] = sanitize_email($primary);
+        }
+        $emails = array_merge($emails, self::normalize_email_list($extras_raw));
+        $emails = array_values(array_unique($emails));
+        return implode(', ', $emails);
+    }
+
+    private static function parse_contact_email_payload($raw)
+    {
+        $text = sanitize_text_field($raw ?? '');
+        $text = trim(str_replace(array('，', '；'), array(',', ';'), $text));
+        if ($text === '') {
+            return array(
+                'primary' => '',
+                'extras' => array(),
+                'extra_raw' => '',
+            );
+        }
+
+        $parts = preg_split('/[\s,;]+/', $text);
+        $valid = array();
+        $invalid = array();
+        foreach ((array) $parts as $part) {
+            $email = trim((string) $part);
+            if ($email === '') {
+                continue;
+            }
+            if (is_email($email)) {
+                $valid[] = sanitize_email($email);
+            } else {
+                $invalid[] = $email;
+            }
+        }
+
+        if (!empty($invalid)) {
+            return new WP_Error(
+                'invalid_contact_email',
+                '承辦人 Email 格式不正確：' . implode(', ', array_unique($invalid)),
+                array('status' => 400)
+            );
+        }
+
+        $valid = array_values(array_unique($valid));
+        return array(
+            'primary' => $valid[0] ?? '',
+            'extras' => array_slice($valid, 1),
+            'extra_raw' => implode(', ', array_slice($valid, 1)),
+        );
+    }
+
+    private static function sync_contact_emails_to_regs($order, $regs_table, string $primary, string $extra_raw): void
+    {
+        if (!$order || !$regs_table) {
+            return;
+        }
+
+        global $wpdb;
+        $order_id = (int) $order->get_id();
+        if ($order_id <= 0) {
+            return;
+        }
+
+        $wpdb->query(
+            $wpdb->prepare(
+                "UPDATE {$regs_table}
+                 SET contact_email = %s, contact_emails = %s
+                 WHERE woocommerce_order_id = %d",
+                $primary,
+                $extra_raw,
+                $order_id
+            )
+        );
+    }
+
+    private static function update_contact_emails($order, array $payload)
+    {
+        if (!$order || !array_key_exists('contact_email', $payload)) {
+            return array('has_change' => false);
+        }
+
+        $parsed = self::parse_contact_email_payload($payload['contact_email']);
+        if (is_wp_error($parsed)) {
+            return $parsed;
+        }
+
+        $has_change = false;
+        $primary = (string) ($parsed['primary'] ?? '');
+        $extra_raw = (string) ($parsed['extra_raw'] ?? '');
+
+        $billing = $order->get_address('billing');
+        $current_primary = trim((string) ($billing['email'] ?? ''));
+        if ($current_primary !== $primary) {
+            $billing['email'] = $primary;
+            $order->set_address($billing, 'billing');
+            $has_change = true;
+        }
+
+        $current_extra = sanitize_text_field($order->get_meta('_tpma_contact_emails', true));
+        if ($current_extra !== $extra_raw) {
+            if ($extra_raw !== '') {
+                $order->update_meta_data('_tpma_contact_emails', $extra_raw);
+            } else {
+                $order->delete_meta_data('_tpma_contact_emails');
+            }
+            $has_change = true;
+        }
+
+        return array('has_change' => $has_change);
+    }
+
     /**
      * 讀取 rows 中涉及的 Woo 訂單，並將 Woo 資訊覆蓋回傳。
      *
@@ -43,7 +180,11 @@ class TPMA_CR_Admin_Woo_Service
                 'status'             => $order->get_status(),
                 'total'              => $order->get_total(),
                 'contact_name'       => $order->get_billing_first_name(),
-                'contact_email'      => $order->get_billing_email(),
+                'contact_email'      => self::build_contact_email_display(
+                    $order->get_billing_email(),
+                    $order->get_meta('_tpma_contact_emails', true)
+                ),
+                'contact_emails'     => sanitize_text_field($order->get_meta('_tpma_contact_emails', true)),
                 'company_name'       => $order->get_billing_company(),
                 'phone'              => $order->get_billing_phone(),
                 'note'               => (string) $order->get_customer_note(),
@@ -72,6 +213,8 @@ class TPMA_CR_Admin_Woo_Service
         }
 
         foreach ($rows as &$r) {
+            $r['contact_emails'] = sanitize_text_field($r['contact_emails'] ?? '');
+            $r['contact_email'] = self::build_contact_email_display($r['contact_email'] ?? '', $r['contact_emails']);
             $oid = !empty($r['woocommerce_order_id']) ? (int) $r['woocommerce_order_id'] : 0;
             if ($oid && isset($orders_map[$oid])) {
                 $o = $orders_map[$oid];
@@ -96,6 +239,7 @@ class TPMA_CR_Admin_Woo_Service
                 $r['payment_status_label'] = self::admin_label_for_woo_status($o['status']);
                 $r['order_status_label']   = $r['payment_status_label'];
                 $r['note']                = $o['note'];
+                $r['contact_emails']      = $o['contact_emails'];
             }
         }
         unset($r);
@@ -110,7 +254,6 @@ class TPMA_CR_Admin_Woo_Service
     {
         return array(
             'contact_name'     => array('type' => 'billing', 'field' => 'first_name'),
-            'contact_email'    => array('type' => 'billing', 'field' => 'email'),
             'company_name'     => array('type' => 'billing', 'field' => 'company'),
             'phone'            => array('type' => 'billing', 'field' => 'phone'),
 
@@ -144,6 +287,11 @@ class TPMA_CR_Admin_Woo_Service
             return array('has_change' => false);
         }
         $has_change   = false;
+        $contact_result = self::update_contact_emails($order, $payload);
+        if (is_wp_error($contact_result)) {
+            return $contact_result;
+        }
+        $has_change = $has_change || !empty($contact_result['has_change']);
         $field_map    = self::get_field_map();
         foreach ($field_map as $payload_key => $info) {
             if (!isset($payload[$payload_key])) {
@@ -246,7 +394,22 @@ class TPMA_CR_Admin_Woo_Service
 
         // 欄位同步
         $field_result = self::update_order_fields($order, $payload);
+        if (is_wp_error($field_result)) {
+            return $field_result;
+        }
         $has_change = $has_change || !empty($field_result['has_change']);
+        if (array_key_exists('contact_email', $payload)) {
+            $parsed_contact_email = self::parse_contact_email_payload($payload['contact_email']);
+            if (is_wp_error($parsed_contact_email)) {
+                return $parsed_contact_email;
+            }
+            self::sync_contact_emails_to_regs(
+                $order,
+                $regs_table,
+                (string) ($parsed_contact_email['primary'] ?? ''),
+                (string) ($parsed_contact_email['extra_raw'] ?? '')
+            );
+        }
 
         // ★ NEW：允許後台更新 Woo 訂單狀態（payload 送 payment_status）
         if (isset($payload['payment_status'])) {
