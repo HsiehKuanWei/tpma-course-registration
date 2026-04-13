@@ -11,6 +11,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
+    const SCHEMA_VERSION = '1.5.1';
 
     public static function table($key)
 
@@ -35,6 +36,10 @@ class TPMA_CR_DB
             case 'lecturers':
 
                 return $wpdb->prefix . 'tpma_lecturers';
+
+            case 'magic_tokens':
+
+                return $wpdb->prefix . 'tpma_magic_tokens';
 
         }
 
@@ -103,9 +108,20 @@ class TPMA_CR_DB
 }
 
     public static function ensure_schema_current() {
-        // 你原本就有這個可擴充的話，把其他「補欄位」一起放這裡
+        static $checked = false;
+        if ($checked) {
+            return;
+        }
+        $checked = true;
+
+        $current = (string) get_option('tpma_cr_schema_version', '');
+        if ($current === self::SCHEMA_VERSION) {
+            return;
+        }
+
         self::ensure_reg_no_not_unique();
         self::maybe_upgrade();
+        update_option('tpma_cr_schema_version', self::SCHEMA_VERSION, false);
     }
 
     /**
