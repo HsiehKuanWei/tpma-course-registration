@@ -43,6 +43,33 @@ class TPMA_CR_Admin_Woo_Service
         return implode(', ', $emails);
     }
 
+    private static function is_cancelled_status($status): bool
+    {
+        $status = strtolower(trim((string) $status));
+        return in_array($status, array('cancelled', 'wc-cancelled'), true)
+            || strpos($status, '已取消') !== false;
+    }
+
+    private static function counts_for_class(array $row): bool
+    {
+        $values = array(
+            $row['status'] ?? '',
+            $row['status_label'] ?? '',
+            $row['payment_status'] ?? '',
+            $row['payment_status_label'] ?? '',
+            $row['order_status'] ?? '',
+            $row['order_status_label'] ?? '',
+        );
+
+        foreach ($values as $value) {
+            if (self::is_cancelled_status($value)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static function parse_contact_email_payload($raw)
     {
         $text = sanitize_text_field($raw ?? '');
@@ -241,6 +268,7 @@ class TPMA_CR_Admin_Woo_Service
                 $r['note']                = $o['note'];
                 $r['contact_emails']      = $o['contact_emails'];
             }
+            $r['counts_for_class'] = self::counts_for_class($r) ? 1 : 0;
         }
         unset($r);
 

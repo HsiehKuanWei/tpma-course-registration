@@ -18,6 +18,38 @@ function todayStr(){
   return y + m + day;
 }
 
+function formatAddress(row){
+  if (row.address) return row.address;
+
+  return [
+    row.address_postcode,
+    row.address_state,
+    row.address_city,
+    row.address_line1
+  ].filter(function(v){
+    return v != null && String(v).trim() !== '';
+  }).join(' ');
+}
+
+function getSelectedStudentRows(ctx){
+  const selectedIds = Array.from(document.querySelectorAll('.tpma-reg-select:checked')).map(function(cb){
+    const card = cb.closest('.tpma-reg-card');
+    return card && card.dataset ? String(card.dataset.id || '') : '';
+  }).filter(Boolean);
+
+  if (!selectedIds.length) return [];
+
+  const selectedSet = new Set(selectedIds);
+  return (ctx.data.currentRegs || []).filter(function(row){
+    return selectedSet.has(String(row.id || ''));
+  });
+}
+
+function getStudentExportRows(ctx){
+  const selectedRows = getSelectedStudentRows(ctx);
+  return selectedRows.length ? selectedRows : (ctx.data.currentRegs || []);
+}
+
 // ------------------------------------------------------------
 // Modal 開關
 // ------------------------------------------------------------
@@ -26,7 +58,7 @@ EXP.openModal = function openModal(ctx){
   if (!overlay) return;
 
   // 更新筆數顯示
-  const count = (ctx.data.currentRegs || []).length;
+  const count = getStudentExportRows(ctx).length;
   const countEl = document.getElementById('tpma-export-student-count');
   if (countEl) countEl.textContent = count;
 
@@ -54,6 +86,7 @@ EXP.exportStudents = function exportStudents(rows){
     '報名時間', '報名編號', '課程名稱', '授課日期',
     '學員姓名', '部門', '職稱', '行動電話', 'Email',
     '公司抬頭', '統一編號', '承辦人', '承辦Email', '聯絡電話',
+    '地址',
     '付款狀態', '報名狀態', '收據方式', '收據狀態',
     '匯款金額', '匯款帳號', '匯款日期',
     '測驗成績', '證書編號', '備註'
@@ -75,6 +108,7 @@ EXP.exportStudents = function exportStudents(rows){
       r.contact_name || '',
       r.contact_email || '',
       r.phone        || '',
+      formatAddress(r),
       labels.paymentStatusLabel ? labels.paymentStatusLabel(r.payment_status) : (r.payment_status || ''),
       labels.statusLabel        ? labels.statusLabel(r.status)                : (r.status || ''),
       labels.receiptTypeLabel   ? labels.receiptTypeLabel(r.receipt_type)     : (r.receipt_type || ''),
@@ -226,7 +260,7 @@ EXP.init = function init(ctx){
     if (!checked) return;
 
     if (checked.value === 'students') {
-      EXP.exportStudents(ctx.data.currentRegs || []);
+      EXP.exportStudents(getStudentExportRows(ctx));
       EXP.closeModal();
     } else if (checked.value === 'statistics') {
       var dateFrom = (document.getElementById('tpma-export-stats-from') || {}).value || '';

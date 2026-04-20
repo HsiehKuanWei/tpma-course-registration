@@ -39,6 +39,34 @@ S.getTestState = function getTestState(row){
   return 'done';
 };
 
+S.isCancelledRegistration = function isCancelledRegistration(row){
+  if (row && row.counts_for_class != null) {
+    return String(row.counts_for_class) === '0' || row.counts_for_class === false;
+  }
+
+  const values = [
+    row && row.status,
+    row && row.status_label,
+    row && row.payment_status,
+    row && row.payment_status_label,
+    row && row.order_status,
+    row && row.order_status_label
+  ];
+
+  return values.some(function(value){
+    const text = String(value || '').toLowerCase();
+    return text === 'cancelled' ||
+      text === 'wc-cancelled' ||
+      text.indexOf('已取消') !== -1;
+  });
+};
+
+S.getCountedRows = function getCountedRows(rows){
+  return (rows || []).filter(function(row){
+    return !S.isCancelledRegistration(row);
+  });
+};
+
 S.getNormalizedClassDateKey = function getNormalizedClassDateKey(ctx, row){
   const classDate = row && row.class_date != null ? String(row.class_date).trim() : '';
   if (!classDate) return '';
@@ -164,7 +192,7 @@ S.buildClassGroups = function buildClassGroups(ctx, rows){
   });
 
   groups.forEach(function(group){
-    group.studentCount = group.rows.length;
+    group.studentCount = S.getCountedRows(group.rows).length;
   });
 
   return groups;

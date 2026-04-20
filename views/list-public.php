@@ -3,9 +3,18 @@ if (!defined('ABSPATH')) { exit; }
 $api_base   = isset($api_base) ? $api_base : rtrim(rest_url('tpma/v1'), '/');
 $assets_base = isset($assets_base) ? $assets_base : TPMA_CR_URL;
 $form_url   = isset($form_url) ? $form_url : ($assets_base . 'form.html');
+
+if (!function_exists('tpma_cr_public_asset_ver')) {
+    function tpma_cr_public_asset_ver($relativePath) {
+        $relativePath = ltrim((string)$relativePath, '/\\');
+        $fullPath = (defined('TPMA_CR_PATH') ? TPMA_CR_PATH : '') . $relativePath;
+        $mtime = (is_string($fullPath) && $fullPath !== '' && file_exists($fullPath)) ? (string)filemtime($fullPath) : (defined('TPMA_CR_VERSION') ? (string)TPMA_CR_VERSION : '1');
+        return (defined('TPMA_CR_VERSION') ? (string)TPMA_CR_VERSION : '1') . '.' . $mtime;
+    }
+}
 ?>
-<link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/admin-common.css'); ?>">
-<link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/list-public.css'); ?>">
+<link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/admin-common.css?ver=' . tpma_cr_public_asset_ver('assets/css/admin-common.css')); ?>">
+<link rel="stylesheet" href="<?php echo esc_url($assets_base . 'assets/css/list-public.css?ver=' . tpma_cr_public_asset_ver('assets/css/list-public.css')); ?>">
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <div class="tpma-course-list">
 	<div class="tpma-course-list-wrap tpma-wrap">
@@ -95,6 +104,6 @@ window.TPMAPublicConfig = <?php echo wp_json_encode(array(
     'nonce'     => wp_create_nonce( 'wp_rest' ), // Add nonce for consistency, even if not strictly needed for public GET
 )); ?>;
 </script>
-<script src="<?php echo esc_url($assets_base . 'assets/js/public/00.tpma-datetime.js'); ?>"></script>
-<script src="<?php echo esc_url($assets_base . 'assets/js/public/01.tpma-public.utils.js'); ?>"></script>
-<script src="<?php echo esc_url($assets_base . 'assets/js/public/list-public.js'); ?>"></script>
+<script src="<?php echo esc_url($assets_base . 'assets/js/public/00.tpma-datetime.js?ver=' . tpma_cr_public_asset_ver('assets/js/public/00.tpma-datetime.js')); ?>"></script>
+<script src="<?php echo esc_url($assets_base . 'assets/js/public/01.tpma-public.utils.js?ver=' . tpma_cr_public_asset_ver('assets/js/public/01.tpma-public.utils.js')); ?>"></script>
+<script src="<?php echo esc_url($assets_base . 'assets/js/public/list-public.js?ver=' . tpma_cr_public_asset_ver('assets/js/public/list-public.js')); ?>"></script>

@@ -111,6 +111,8 @@ class TPMA_CR_REST_Public
                     {$orders_join}
                     WHERE r.course_id = c.id
                     AND r.class_date = DATE(s.session_datetime)
+                    AND COALESCE(r.status, '') <> 'cancelled'
+                    AND COALESCE(r.payment_status, '') NOT IN ('cancelled', 'wc-cancelled')
                     {$orders_where}
                 ) AS registration_count
             FROM {$courses_table}  c

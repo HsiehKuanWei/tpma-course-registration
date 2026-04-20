@@ -899,7 +899,8 @@ R.renderNestedTable = function renderNestedTable(ctx, tbody){
     const classCount = document.createElement('div');
     classCount.className = 'tpma-reg-class-cell';
     classCount.setAttribute('data-label', '人數統計');
-    classCount.innerHTML = '<div class="tpma-cell-wrap tpma-reg-class-count-wrap"><span class="tpma-reg-class-count">' + U.esc(String(group.studentCount || 0)) + ' 人</span><span class="tpma-class-toggle-btn" aria-hidden="true">▶</span></div>';
+    const countedRows = S.getCountedRows ? S.getCountedRows(group.rows || []) : (group.rows || []);
+    classCount.innerHTML = '<div class="tpma-cell-wrap tpma-reg-class-count-wrap"><span class="tpma-reg-class-count">' + U.esc(String(countedRows.length || 0)) + ' 人</span><span class="tpma-class-toggle-btn" aria-hidden="true">▶</span></div>';
     classSummary.appendChild(classCount);
 
     classCard.appendChild(classSummary);

@@ -5,7 +5,7 @@ const TPMA_CR_API_BASE_PHP = window.TPMAPublicConfig?.apiBase || '';
 const REG_FORM_URL = window.TPMAPublicConfig?.formUrl || '';
 const TPMA_API_BASE = Util.getApiBase(TPMA_CR_API_BASE_PHP);
 const UPCOMING_HIDE_DAYS = 7;
-const LOW_ENROLLMENT_THRESHOLD = 4;
+const LOW_ENROLLMENT_THRESHOLD = 3;
 const UPCOMING_HIDE_MS = UPCOMING_HIDE_DAYS * 24 * 60 * 60 * 1000;
 const DEBUG_HIDE_REASON = true;
 
