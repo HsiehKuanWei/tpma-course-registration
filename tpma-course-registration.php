@@ -60,6 +60,7 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-rest-public.php';
 
 require_once TPMA_CR_PATH . 'includes/class-tpma-rest-admin.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-mail-dispatcher.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-cr-mailer-registration.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-import.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-cr-dependencies.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-cr-settings.php';

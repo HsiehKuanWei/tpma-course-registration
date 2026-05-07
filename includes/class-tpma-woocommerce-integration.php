@@ -73,30 +73,13 @@ public static function init() {
     
         // 建單後：先寫 regs，再寄信
         add_action('woocommerce_checkout_order_processed', [self::class, 'sync_order_to_registrations'], 10, 3);
-        add_action('woocommerce_checkout_order_processed', [self::class, 'send_tpma_mails_after_order_created'], 12, 1);
     
         // TPMA 報名單：關閉 Woo 內建 email（避免重複）
-        add_filter('woocommerce_email_enabled_customer_completed_order', function($enabled, $order){
-            if (!$order instanceof WC_Order) return $enabled;
-            $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
-                || (bool)$order->get_meta('_tpma_reg_no', true);
-            return $is_tpma ? false : $enabled;
-        }, 99, 2);
+        add_filter('woocommerce_email_enabled_customer_completed_order', [self::class, 'maybe_disable_completed_woo_email_for_tpma'], 99, 2);
     
-        add_filter('woocommerce_email_enabled_customer_on_hold_order', function($enabled, $order){
-            if (!$order instanceof WC_Order) return $enabled;
-            $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
-                || (bool)$order->get_meta('_tpma_reg_no', true);
-            return $is_tpma ? false : $enabled;
-        }, 99, 2);
+        add_filter('woocommerce_email_enabled_customer_on_hold_order', [self::class, 'maybe_disable_initial_woo_email_for_tpma'], 99, 2);
     
-        add_filter('woocommerce_email_enabled_new_order', function($enabled, $order){
-            if (!$order instanceof WC_Order) return $enabled;
-            $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
-                || (bool)$order->get_meta('_tpma_reg_no', true);
-            return $is_tpma ? false : $enabled;
-        }, 99, 2);
-        add_action('woocommerce_order_status_completed', [self::class, 'send_tpma_mails_after_order_completed'], 10, 1);
+        add_filter('woocommerce_email_enabled_new_order', [self::class, 'maybe_disable_initial_woo_email_for_tpma'], 99, 2);
 
     }
 
@@ -316,6 +299,32 @@ JS);
             || (bool)$order->get_meta('_tpma_reg_no', true);
 
         return $is_tpma ? false : $enabled;
+    }
+
+    public static function maybe_disable_initial_woo_email_for_tpma($enabled, $order) {
+        if (!$order instanceof WC_Order) return $enabled;
+
+        $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+            || (bool)$order->get_meta('_tpma_reg_no', true);
+        if (!$is_tpma) return $enabled;
+
+        if (!function_exists('tpma_mailer_boot') || !tpma_mailer_boot()) return $enabled;
+        if (!class_exists('TPMA_CR_Mail_Dispatcher')) return $enabled;
+
+        return TPMA_CR_Mail_Dispatcher::has_template_mapping($order, 'checkout_order_processed') ? false : $enabled;
+    }
+
+    public static function maybe_disable_completed_woo_email_for_tpma($enabled, $order) {
+        if (!$order instanceof WC_Order) return $enabled;
+
+        $is_tpma = (bool)$order->get_meta('_tpma_reg_draft_json', true)
+            || (bool)$order->get_meta('_tpma_reg_no', true);
+        if (!$is_tpma) return $enabled;
+
+        if (!function_exists('tpma_mailer_boot') || !tpma_mailer_boot()) return $enabled;
+        if (!class_exists('TPMA_CR_Mail_Dispatcher')) return $enabled;
+
+        return TPMA_CR_Mail_Dispatcher::has_template_mapping($order, 'completed') ? false : $enabled;
     }
 
     public static function send_tpma_mails_after_order_completed($order_id) {

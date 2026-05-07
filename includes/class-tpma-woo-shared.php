@@ -143,12 +143,15 @@ class TPMA_CR_Woo_Shared
 
         $lecturer_name = '';
         if (!empty($course->lecturer_code)) {
+            $lect_schema = TPMA_CR_DB::get_lecturer_schema();
             $lect = $wpdb->get_row($wpdb->prepare(
-                "SELECT lecturers_name, lecturers_title FROM {$lecturers_table} WHERE lecturers_code = %s",
+                "SELECT {$lect_schema['name']} AS lecturer_name, {$lect_schema['title']} AS lecturer_title
+                 FROM {$lecturers_table}
+                 WHERE {$lect_schema['code']} = %s",
                 $course->lecturer_code
             ));
-            if ($lect && !empty($lect->lecturers_name)) {
-                $lecturer_name = trim($lect->lecturers_name . (!empty($lect->lecturers_title) ? ' ' . $lect->lecturers_title : ''));
+            if ($lect && !empty($lect->lecturer_name)) {
+                $lecturer_name = trim($lect->lecturer_name . (!empty($lect->lecturer_title) ? ' ' . $lect->lecturer_title : ''));
             }
         }
 

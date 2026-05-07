@@ -51,25 +51,33 @@ class TPMA_CR_REST_Admin
         // 信件模板與設定：限管理員使用
         register_rest_route($ns, '/mail/templates', array(
             'methods'  => 'GET',
-            'callback' => array('TPMA_CR_Mail_Dispatcher', 'get_mail_templates'),
+            'callback' => is_callable(array('TPMA_Mailer_Admin_API', 'get_mail_templates'))
+                ? array('TPMA_Mailer_Admin_API', 'get_mail_templates')
+                : array('TPMA_CR_Mail_Dispatcher', 'get_mail_templates'),
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
         register_rest_route($ns, '/mail/templates', array(
             'methods'  => 'POST',
-            'callback' => array('TPMA_CR_Mail_Dispatcher', 'save_mail_templates'),
+            'callback' => is_callable(array('TPMA_Mailer_Admin_API', 'save_mail_templates'))
+                ? array('TPMA_Mailer_Admin_API', 'save_mail_templates')
+                : array('TPMA_CR_Mail_Dispatcher', 'save_mail_templates'),
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
         register_rest_route($ns, '/mail/preview', array(
             'methods'  => 'POST',
-            'callback' => array('TPMA_CR_Mail_Dispatcher', 'preview_mail_template'),
+            'callback' => is_callable(array('TPMA_Mailer_Admin_API', 'preview_mail_template'))
+                ? array('TPMA_Mailer_Admin_API', 'preview_mail_template')
+                : array('TPMA_CR_Mail_Dispatcher', 'preview_mail_template'),
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
         register_rest_route($ns, '/mail/send-test', array(
             'methods'  => 'POST',
-            'callback' => array('TPMA_CR_Mail_Dispatcher', 'send_test_mail'),
+            'callback' => is_callable(array('TPMA_Mailer_Admin_API', 'send_test_mail'))
+                ? array('TPMA_Mailer_Admin_API', 'send_test_mail')
+                : array('TPMA_CR_Mail_Dispatcher', 'send_test_mail'),
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
@@ -151,6 +159,8 @@ public static function admin_get_regs($request)
     $regs_table      = TPMA_CR_DB::table('regs');
     $courses_table   = TPMA_CR_DB::table('courses');
     $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
+    $lecturer_join_sql    = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
 
     // 新增的綜合文字搜尋
     $q = $request->get_param('q');
@@ -262,21 +272,14 @@ public static function admin_get_regs($request)
         SELECT
             r.*,
             c.course_name,
-            CONCAT(
-                l.lecturers_name,
-                CASE
-                    WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
-                        THEN ''
-                    ELSE CONCAT(' ', l.lecturers_title)
-                END
-            ) AS lecturer,
+            {$lecturer_display_sql} AS lecturer,
             r.woocommerce_order_id,
             r.payment_status
         FROM {$regs_table} r
         LEFT JOIN {$courses_table} c
             ON c.id = r.course_id
         LEFT JOIN {$lecturers_table} l
-            ON l.lecturers_code = c.lecturer_code
+            ON {$lecturer_join_sql}
         WHERE " . implode(' AND ', $where) . "
         ORDER BY r.created_at DESC
     ";
@@ -417,16 +420,23 @@ public static function admin_update_reg($request)
         global $wpdb;
 
         $lecturers_table = TPMA_CR_DB::table('lecturers');
+        $schema = TPMA_CR_DB::get_lecturer_schema();
+        $sort_select = $schema['sort_order'] !== ''
+            ? $schema['sort_order'] . ' AS sort_order'
+            : '0 AS sort_order';
+        $sort_order_by = $schema['sort_order'] !== ''
+            ? $schema['sort_order'] . ' ASC, '
+            : '';
 
         $rows = $wpdb->get_results("
             SELECT
                 id,
-                lecturers_code       AS code,
-                lecturers_name       AS name,
-                lecturers_title      AS title,
-                lecturers_sort_order AS sort_order
+                {$schema['code']} AS code,
+                {$schema['name']} AS name,
+                {$schema['title']} AS title,
+                {$sort_select}
             FROM {$lecturers_table}
-            ORDER BY lecturers_sort_order ASC, lecturers_name ASC
+            ORDER BY {$sort_order_by}{$schema['name']} ASC
         ", ARRAY_A);
 
         return rest_ensure_response($rows);
@@ -437,6 +447,7 @@ public static function admin_update_reg($request)
         global $wpdb;
 
         $lecturers_table = TPMA_CR_DB::table('lecturers');
+        $schema = TPMA_CR_DB::get_lecturer_schema();
         $p = $request->get_json_params();
 
         $id    = intval($p['id'] ?? 0);
@@ -455,7 +466,7 @@ public static function admin_update_reg($request)
             $exists = $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT id FROM {$lecturers_table}
-                     WHERE lecturers_code = %s AND id != %d",
+                     WHERE {$schema['code']} = %s AND id != %d",
                     $code,
                     $id
                 )
@@ -464,7 +475,7 @@ public static function admin_update_reg($request)
             $exists = $wpdb->get_var(
                 $wpdb->prepare(
                     "SELECT id FROM {$lecturers_table}
-                     WHERE lecturers_code = %s",
+                     WHERE {$schema['code']} = %s",
                     $code
                 )
             );
@@ -474,20 +485,22 @@ public static function admin_update_reg($request)
             return new WP_Error('duplicate', '講師代碼已存在', array('status' => 400));
         }
 
-        // sort_order（用 lecturers_sort_order）
+        // sort_order 欄位可能不存在於舊 schema
         if ($sort === null) {
-            $max = (int)$wpdb->get_var("SELECT MAX(lecturers_sort_order) FROM {$lecturers_table}");
+            $max = $schema['sort_order'] !== ''
+                ? (int) $wpdb->get_var("SELECT MAX({$schema['sort_order']}) FROM {$lecturers_table}")
+                : 0;
             $sort = $max + 10;
         }
 
         // shift_sort：將 >= sort 的講師序往後移
-        if ($shift && $sort !== null) {
+        if ($shift && $sort !== null && $schema['sort_order'] !== '') {
             if ($id > 0) {
                 $wpdb->query(
                     $wpdb->prepare(
                         "UPDATE {$lecturers_table}
-                         SET lecturers_sort_order = lecturers_sort_order + 1
-                         WHERE lecturers_sort_order >= %d AND id != %d",
+                         SET {$schema['sort_order']} = {$schema['sort_order']} + 1
+                         WHERE {$schema['sort_order']} >= %d AND id != %d",
                         $sort,
                         $id
                     )
@@ -496,8 +509,8 @@ public static function admin_update_reg($request)
                 $wpdb->query(
                     $wpdb->prepare(
                         "UPDATE {$lecturers_table}
-                         SET lecturers_sort_order = lecturers_sort_order + 1
-                         WHERE lecturers_sort_order >= %d",
+                         SET {$schema['sort_order']} = {$schema['sort_order']} + 1
+                         WHERE {$schema['sort_order']} >= %d",
                         $sort
                     )
                 );
@@ -506,11 +519,13 @@ public static function admin_update_reg($request)
 
         // 寫入資料：欄位用新的，值用前端傳進來的 code/name/title/sort_order
         $data = array(
-            'lecturers_code'       => $code,
-            'lecturers_name'       => $name,
-            'lecturers_title'      => $title,
-            'lecturers_sort_order' => $sort,
+            $schema['code']  => $code,
+            $schema['name']  => $name,
+            $schema['title'] => $title,
         );
+        if ($schema['sort_order'] !== '') {
+            $data[$schema['sort_order']] = $sort;
+        }
         // wp_user_id binding (optional — for Tutor instructor mapping)
         if (isset($p['wp_user_id'])) {
             $wp_uid = $p['wp_user_id'] !== '' && $p['wp_user_id'] !== null
@@ -530,10 +545,10 @@ public static function admin_update_reg($request)
             $wpdb->prepare(
                 "SELECT
                     id,
-                    lecturers_code       AS code,
-                    lecturers_name       AS name,
-                    lecturers_title      AS title,
-                    lecturers_sort_order AS sort_order,
+                    {$schema['code']} AS code,
+                    {$schema['name']} AS name,
+                    {$schema['title']} AS title,
+                    " . ($schema['sort_order'] !== '' ? "{$schema['sort_order']} AS sort_order" : "0 AS sort_order") . ",
                     wp_user_id
                  FROM {$lecturers_table}
                  WHERE id = %d",
@@ -557,23 +572,18 @@ public static function admin_update_reg($request)
         $courses_table   = TPMA_CR_DB::table('courses');
         $sessions_table  = TPMA_CR_DB::table('sessions');
         $lecturers_table = TPMA_CR_DB::table('lecturers');
+        $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
+        $lecturer_join_sql    = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
 
         $courses = $wpdb->get_results("
             SELECT *
             FROM (
                 SELECT
                     c.*,
-                    CONCAT(
-                        l.lecturers_name,
-                        CASE
-                            WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
-                                THEN ''
-                            ELSE CONCAT(' ', l.lecturers_title)
-                        END
-                    ) AS lecturer
+                    {$lecturer_display_sql} AS lecturer
                 FROM {$courses_table} c
                 LEFT JOIN {$lecturers_table} l
-                    ON l.lecturers_code = c.lecturer_code
+                    ON {$lecturer_join_sql}
             ) courses_with_lecturer
             ORDER BY id DESC
         ", ARRAY_A);

@@ -244,13 +244,19 @@ class TPMA_Tutor_Bridge {
         global $wpdb;
         $tbl = TPMA_CR_DB::table('lecturers');
 
+        $schema = TPMA_CR_DB::get_lecturer_schema();
+        $code_col = trim((string) ($schema['code'] ?? ''));
+
+        if ($code_col === '') {
+            return (int)get_option('tpma_cr_tutor_default_instructor', 0);
+        }
+
         $uid = $wpdb->get_var(
             $wpdb->prepare(
                 "SELECT wp_user_id FROM {$tbl}
-                 WHERE (lecturer_code = %s OR lecturers_code = %s)
+                 WHERE {$code_col} = %s
                  AND wp_user_id IS NOT NULL AND wp_user_id > 0
                  LIMIT 1",
-                $lecturer_code,
                 $lecturer_code
             )
         );

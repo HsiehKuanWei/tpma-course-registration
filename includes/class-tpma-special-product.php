@@ -63,8 +63,6 @@ class TPMA_Woo_Special_Product {
         add_filter('tpma_is_tpma_order', [__CLASS__, 'filter_tpma_order'], 10, 2);
         add_filter('tpma_woo_fields_allow_order_pay_retry', [__CLASS__, 'filter_allow_order_pay_retry'], 10, 2);
         add_filter('tpma_woo_fields_allow_card_retry', [__CLASS__, 'filter_allow_card_retry'], 10, 2);
-        add_action('woocommerce_checkout_order_processed', [__CLASS__, 'send_tpma_mails_after_order_created'], 12, 1);
-        add_action('woocommerce_order_status_completed', [__CLASS__, 'send_tpma_mails_after_order_completed'], 10, 1);
 
         // 禁止混車 + 中斷流程自動清空
         add_filter('woocommerce_add_to_cart_validation', [__CLASS__, 'enforce_no_mixed_cart'], 10, 3);
@@ -274,12 +272,10 @@ class TPMA_Woo_Special_Product {
         if (!function_exists('WC') || !WC()->cart) {
             return false;
         }
-        $target_id = self::get_target_product_id();
         $cart = WC()->cart->get_cart();
         if (empty($cart)) return false;
         foreach ($cart as $item) {
-            $pid = intval($item['product_id'] ?? 0);
-            if ($pid !== intval($target_id)) {
+            if (!self::cart_item_matches_target_product($item)) {
                 return false;
             }
         }
@@ -290,10 +286,8 @@ class TPMA_Woo_Special_Product {
         if (!function_exists('WC') || !WC()->cart) {
             return false;
         }
-        $target_id = self::get_target_product_id();
         foreach (WC()->cart->get_cart() as $item) {
-            $pid = intval($item['product_id'] ?? 0);
-            if ($pid === intval($target_id)) {
+            if (self::cart_item_matches_target_product($item)) {
                 return true;
             }
         }
@@ -304,14 +298,59 @@ class TPMA_Woo_Special_Product {
         if (!function_exists('WC') || !WC()->cart) {
             return false;
         }
-        $target_id = self::get_target_product_id();
         foreach (WC()->cart->get_cart() as $item) {
             $pid = intval($item['product_id'] ?? 0);
-            if ($pid && $pid !== intval($target_id)) {
+            $vid = intval($item['variation_id'] ?? 0);
+            if (($pid || $vid) && !self::cart_item_matches_target_product($item)) {
                 return true;
             }
         }
         return false;
+    }
+
+    protected static function get_recognized_product_ids(): array {
+        $ids = array();
+
+        $target_id = self::get_target_product_id();
+        if ($target_id > 0) {
+            $ids[] = $target_id;
+        }
+
+        list($registration_product_id) = self::resolve_registration_product();
+        if ($registration_product_id > 0) {
+            $ids[] = (int) $registration_product_id;
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        return $ids;
+    }
+
+    protected static function product_id_matches_tpma($product_id, $variation_id = 0, $parent_id = 0): bool {
+        $recognized_ids = self::get_recognized_product_ids();
+        if (empty($recognized_ids)) {
+            return false;
+        }
+
+        $product_id = (int) $product_id;
+        $variation_id = (int) $variation_id;
+        $parent_id = (int) $parent_id;
+
+        return in_array($product_id, $recognized_ids, true)
+            || in_array($variation_id, $recognized_ids, true)
+            || in_array($parent_id, $recognized_ids, true);
+    }
+
+    protected static function cart_item_matches_target_product(array $item): bool {
+        if (empty(self::get_recognized_product_ids())) {
+            return false;
+        }
+
+        $product_id = intval($item['product_id'] ?? 0);
+        $variation_id = intval($item['variation_id'] ?? 0);
+        $product = $item['data'] ?? null;
+        $parent_id = ($product instanceof WC_Product) ? intval($product->get_parent_id()) : 0;
+
+        return self::product_id_matches_tpma($product_id, $variation_id, $parent_id);
     }
 
     protected static function is_target_product_enabled(): bool {
@@ -611,11 +650,12 @@ class TPMA_Woo_Special_Product {
             return $purchasable;
         }
         $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
-        if (empty($draft) || empty($draft['total_learners'])) {
+        $has_tpma_context = (!empty($draft) && !empty($draft['total_learners'])) || self::cart_has_tpma_product();
+        if (!$has_tpma_context) {
             return $purchasable;
         }
-        list($pid) = self::resolve_registration_product();
-        if ($pid && intval($product->get_id()) === intval($pid)) {
+        $parent_id = method_exists($product, 'get_parent_id') ? intval($product->get_parent_id()) : 0;
+        if (self::product_id_matches_tpma($product->get_id(), 0, $parent_id)) {
             return true;
         }
         return $purchasable;
@@ -623,7 +663,7 @@ class TPMA_Woo_Special_Product {
 
     public static function allow_guest_checkout_for_tpma($is_required) {
         $draft = WC()->session ? WC()->session->get('tpma_reg_draft') : null;
-        if (!empty($draft) && !empty($draft['total_learners'])) {
+        if ((!empty($draft) && !empty($draft['total_learners'])) || self::cart_has_tpma_product()) {
             return false;
         }
         return $is_required;
@@ -655,6 +695,27 @@ class TPMA_Woo_Special_Product {
     public static function maybe_disable_woo_emails($enabled, $order) {
         if (!$order instanceof WC_Order) return $enabled;
         if (!self::is_tpma_order($order)) return $enabled;
+        if (!function_exists('tpma_mailer_boot') || !tpma_mailer_boot()) return $enabled;
+        if (!class_exists('TPMA_CR_Mail_Dispatcher')) return $enabled;
+        $flow_key = (string) $order->get_status();
+
+        if ($flow_key === 'completed') {
+            return TPMA_CR_Mail_Dispatcher::has_template_mapping($order, 'completed') ? false : $enabled;
+        }
+
+        if (TPMA_CR_Mail_Dispatcher::has_template_mapping($order, 'checkout_order_processed')) return false;
+        return ($flow_key !== '' && TPMA_CR_Mail_Dispatcher::has_template_mapping($order, $flow_key)) ? false : $enabled;
+    }
+
+    public static function force_custom_mail_path_for_tpma($skip, $order, $flow_key) {
+        if (!$order instanceof WC_Order) {
+            return $skip;
+        }
+        if (!self::is_tpma_order($order)) {
+            return $skip;
+        }
+
+        // TPMA 特殊課程不跳過 send_after_order_created，確保承辦人與學員都能走自訂模板。
         return false;
     }
 
@@ -700,8 +761,6 @@ class TPMA_Woo_Special_Product {
         if (class_exists('TPMA_CR_Mail_Dispatcher')) {
             TPMA_CR_Mail_Dispatcher::send_after_order_created($order);
         }
-        $order->update_meta_data('_tpma_mail_sent', 'yes');
-        $order->save();
     }
 
     public static function send_tpma_mails_after_order_completed($order_id) {
@@ -709,16 +768,19 @@ class TPMA_Woo_Special_Product {
         if (!$order || !self::is_tpma_order($order)) return;
         if ($order->get_meta('_tpma_completed_mail_sent', true) === 'yes') return;
 
+        $sent = false;
         if (class_exists('TPMA_CR_Mail_Dispatcher')) {
             if (method_exists('TPMA_CR_Mail_Dispatcher', 'send_after_order_completed')) {
-                TPMA_CR_Mail_Dispatcher::send_after_order_completed($order);
+                $sent = (bool) TPMA_CR_Mail_Dispatcher::send_after_order_completed($order);
             } else {
-                TPMA_CR_Mail_Dispatcher::send_after_order_created($order);
+                $sent = (bool) TPMA_CR_Mail_Dispatcher::send_after_order_created($order);
             }
         }
 
-        $order->update_meta_data('_tpma_completed_mail_sent', 'yes');
-        $order->save();
+        if ($sent) {
+            $order->update_meta_data('_tpma_completed_mail_sent', 'yes');
+            $order->save();
+        }
     }
 
     /**
@@ -785,20 +847,20 @@ class TPMA_Woo_Special_Product {
         if (!function_exists('WC') || !WC()->cart) {
             return $passed;
         }
-        $target_id = self::get_target_product_id();
         $pid = intval($product_id);
+        $is_tpma_product = self::product_id_matches_tpma($pid);
 
         $has_tpma = self::cart_has_tpma_product();
         $has_non_tpma = self::cart_has_non_tpma_product();
 
         // 新加入的是特殊商品，購物車有其他商品 → 清空再加入
-        if ($pid === intval($target_id) && $has_non_tpma) {
-            self::clear_tpma_cart_and_session(true);
+        if ($is_tpma_product && $has_non_tpma) {
+            self::clear_tpma_cart_and_session(true, 'mixed_cart_adding_tpma');
         }
 
         // 新加入的是非特殊商品，購物車已有特殊商品 → 清空再加入
-        if ($pid !== intval($target_id) && $has_tpma) {
-            self::clear_tpma_cart_and_session(true);
+        if (!$is_tpma_product && $has_tpma) {
+            self::clear_tpma_cart_and_session(true, 'mixed_cart_adding_non_tpma');
         }
 
         return $passed;
@@ -809,7 +871,7 @@ class TPMA_Woo_Special_Product {
             return;
         }
         if (self::cart_has_tpma_product() && self::cart_has_non_tpma_product()) {
-            self::clear_tpma_cart_and_session(true);
+            self::clear_tpma_cart_and_session(true, 'mixed_cart_check_cart_items');
             wc_add_notice('特殊報名商品不可與其他商品同時結帳，購物車已清空。', 'notice');
         }
     }
@@ -819,6 +881,16 @@ class TPMA_Woo_Special_Product {
      */
     public static function maybe_abort_tpma_flow() {
         if (is_admin() && !defined('DOING_AJAX')) {
+            return;
+        }
+        if (self::is_background_request()) {
+            return;
+        }
+        $request_method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper((string) wp_unslash($_SERVER['REQUEST_METHOD'])) : 'GET';
+        if (!in_array($request_method, array('GET', 'HEAD'), true)) {
+            return;
+        }
+        if (self::is_non_page_request()) {
             return;
         }
         if (!function_exists('WC') || !WC()->session || !WC()->cart) {
@@ -837,13 +909,13 @@ class TPMA_Woo_Special_Product {
 
         if (self::is_tpma_flow_page()) {
             if ($expired) {
-                self::clear_tpma_cart_and_session(true);
+                self::clear_tpma_cart_and_session(true, 'flow_expired');
             }
             return;
         }
 
         // 非流程頁即視為中斷
-        self::clear_tpma_cart_and_session(true);
+        self::clear_tpma_cart_and_session(true, 'left_tpma_flow');
     }
 
     /* --------- Helper functions --------- */
@@ -863,8 +935,7 @@ class TPMA_Woo_Special_Product {
             return false;
         }
 
-        $target_id = self::get_target_product_id();
-        if ($target_id < 1) {
+        if (empty(self::get_recognized_product_ids())) {
             return false;
         }
 
@@ -875,12 +946,9 @@ class TPMA_Woo_Special_Product {
 
             $product_id = intval($item->get_product_id());
             $variation_id = intval($item->get_variation_id());
-            if ($product_id === $target_id || $variation_id === $target_id) {
-                return true;
-            }
-
             $product = $item->get_product();
-            if ($product instanceof WC_Product && intval($product->get_parent_id()) === $target_id) {
+            $parent_id = ($product instanceof WC_Product) ? intval($product->get_parent_id()) : 0;
+            if (self::product_id_matches_tpma($product_id, $variation_id, $parent_id)) {
                 return true;
             }
         }
@@ -901,7 +969,98 @@ class TPMA_Woo_Special_Product {
         if (function_exists('is_checkout_pay_page') && is_checkout_pay_page()) {
             return true;
         }
+        $custom_checkout_page_id = (int) get_option('tpma_cr_custom_checkout_page_id', 0);
+        if ($custom_checkout_page_id > 0 && function_exists('is_page') && is_page($custom_checkout_page_id)) {
+            return true;
+        }
+        if (function_exists('is_page') && (is_page('tpma-checkout') || is_page('tpma-order'))) {
+            return true;
+        }
+
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? (string) wp_unslash($_SERVER['REQUEST_URI']) : '';
+        if ($request_uri !== '') {
+            $request_path = (string) wp_parse_url($request_uri, PHP_URL_PATH);
+            $request_path = self::normalize_path_for_compare($request_path);
+
+            $custom_checkout_url = self::get_custom_checkout_url();
+            if ($custom_checkout_url !== '') {
+                $custom_path = (string) wp_parse_url($custom_checkout_url, PHP_URL_PATH);
+                $custom_path = self::normalize_path_for_compare($custom_path);
+                if ($custom_path !== '' && $custom_path === $request_path) {
+                    return true;
+                }
+            }
+
+            if (in_array($request_path, array('/tpma-checkout', '/tpma-order'), true)) {
+                return true;
+            }
+        }
         return false;
+    }
+
+    protected static function is_background_request(): bool {
+        if ((defined('DOING_AJAX') && DOING_AJAX)
+            || (defined('WC_DOING_AJAX') && WC_DOING_AJAX)
+            || (defined('REST_REQUEST') && REST_REQUEST)) {
+            return true;
+        }
+
+        if (function_exists('wp_doing_ajax') && wp_doing_ajax()) {
+            return true;
+        }
+
+        if (function_exists('wp_is_json_request') && wp_is_json_request()) {
+            return true;
+        }
+
+        $wc_ajax = '';
+        if (isset($_REQUEST['wc-ajax'])) {
+            $wc_ajax = sanitize_key(wp_unslash($_REQUEST['wc-ajax']));
+        } elseif (function_exists('get_query_var')) {
+            $wc_ajax = sanitize_key((string) get_query_var('wc-ajax'));
+        }
+
+        if ($wc_ajax !== '') {
+            return true;
+        }
+
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? (string) wp_unslash($_SERVER['REQUEST_URI']) : '';
+        if ($request_uri !== ''
+            && (strpos($request_uri, 'wc-ajax=') !== false
+                || strpos($request_uri, 'admin-ajax.php') !== false
+                || strpos($request_uri, '/wp-json/') !== false)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    protected static function is_non_page_request(): bool {
+        $request_uri = isset($_SERVER['REQUEST_URI']) ? (string) wp_unslash($_SERVER['REQUEST_URI']) : '';
+        if ($request_uri === '') {
+            return false;
+        }
+
+        $request_path = (string) wp_parse_url($request_uri, PHP_URL_PATH);
+        $request_path = self::normalize_path_for_compare($request_path);
+        if ($request_path === '') {
+            return false;
+        }
+
+        if ($request_path === '/favicon.ico' || $request_path === '/robots.txt' || $request_path === '/ads.txt') {
+            return true;
+        }
+
+        $ext = strtolower(pathinfo($request_path, PATHINFO_EXTENSION));
+        if ($ext === '') {
+            return false;
+        }
+
+        return in_array($ext, array(
+            'ico', 'png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'avif',
+            'css', 'js', 'map', 'txt', 'xml', 'json', 'webmanifest',
+            'woff', 'woff2', 'ttf', 'otf', 'eot', 'pdf', 'zip'
+        ), true);
     }
 
     protected static function resolve_registration_product() {
@@ -936,9 +1095,20 @@ class TPMA_Woo_Special_Product {
         return TPMA_CR_Woo_Shared::ensure_virtual_user($reg_no, $display_name, false);
     }
 
-    protected static function clear_tpma_cart_and_session($clear_cart = true) {
+    protected static function clear_tpma_cart_and_session($clear_cart = true, string $reason = '') {
         if (!function_exists('WC')) {
             return;
+        }
+        if ($reason !== '') {
+            $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper((string) wp_unslash($_SERVER['REQUEST_METHOD'])) : '';
+            $uri = isset($_SERVER['REQUEST_URI']) ? (string) wp_unslash($_SERVER['REQUEST_URI']) : '';
+            $flags = array(
+                'is_checkout' => function_exists('is_checkout') && is_checkout() ? '1' : '0',
+                'is_cart' => function_exists('is_cart') && is_cart() ? '1' : '0',
+                'is_order_received' => function_exists('is_order_received_page') && is_order_received_page() ? '1' : '0',
+                'is_order_pay' => function_exists('is_checkout_pay_page') && is_checkout_pay_page() ? '1' : '0',
+            );
+            error_log('[TPMA Special] clearing cart/session: ' . $reason . ' method=' . $method . ' uri=' . $uri . ' flags=' . wp_json_encode($flags));
         }
         if ($clear_cart && WC()->cart) {
             WC()->cart->empty_cart();
@@ -948,6 +1118,16 @@ class TPMA_Woo_Special_Product {
             WC()->session->set('tpma_reg_active', null);
             WC()->session->set('tpma_reg_started_at', null);
         }
+    }
+
+    protected static function normalize_path_for_compare($path): string {
+        $path = trim((string) $path);
+        if ($path === '') {
+            return '';
+        }
+
+        $path = '/' . ltrim($path, '/');
+        return rtrim($path, '/');
     }
 }
 

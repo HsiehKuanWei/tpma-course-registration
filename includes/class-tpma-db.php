@@ -13,6 +13,8 @@ class TPMA_CR_DB
 {
     const SCHEMA_VERSION = '1.5.1';
 
+    private static $table_columns_cache = array();
+
     public static function table($key)
 
     {
@@ -156,6 +158,11 @@ class TPMA_CR_DB
         if (empty($col)) {
             $wpdb->query("ALTER TABLE {$lecturers_table} ADD COLUMN wp_user_id BIGINT UNSIGNED DEFAULT NULL");
         }
+        $lecturer_cols = self::get_table_columns('lecturers');
+        if (!in_array('lecturers_sort_order', $lecturer_cols, true) && !in_array('sort_order', $lecturer_cols, true)) {
+            $wpdb->query("ALTER TABLE {$lecturers_table} ADD COLUMN lecturers_sort_order INT NOT NULL DEFAULT 0");
+            self::$table_columns_cache[$lecturers_table][] = 'lecturers_sort_order';
+        }
 
         // ── sessions: visibility_override ───────────────────────
         $sessions_table = self::table('sessions');
@@ -182,6 +189,78 @@ class TPMA_CR_DB
                 KEY user_reg_idx (wp_user_id, registration_id)
             ) {$charset_collate};"
         );
+    }
+
+    public static function get_table_columns($key): array
+    {
+        global $wpdb;
+
+        $table = self::table($key);
+        if ($table === '') {
+            return array();
+        }
+
+        if (isset(self::$table_columns_cache[$table])) {
+            return self::$table_columns_cache[$table];
+        }
+
+        $rows = $wpdb->get_results("SHOW COLUMNS FROM {$table}", ARRAY_A);
+        if (!is_array($rows)) {
+            self::$table_columns_cache[$table] = array();
+            return self::$table_columns_cache[$table];
+        }
+
+        self::$table_columns_cache[$table] = array_values(array_filter(array_map(
+            static function ($row) {
+                return isset($row['Field']) ? (string) $row['Field'] : '';
+            },
+            $rows
+        )));
+
+        return self::$table_columns_cache[$table];
+    }
+
+    public static function get_lecturer_schema(): array
+    {
+        $columns = self::get_table_columns('lecturers');
+
+        $pick = static function (array $candidates, string $fallback) use ($columns): string {
+            foreach ($candidates as $candidate) {
+                if (in_array($candidate, $columns, true)) {
+                    return $candidate;
+                }
+            }
+            return $fallback;
+        };
+
+        return array(
+            'code' => $pick(array('lecturers_code', 'lecturer_code'), 'lecturer_code'),
+            'name' => $pick(array('lecturers_name', 'lecturer_name'), 'lecturer_name'),
+            'title' => $pick(array('lecturers_title', 'lecturer_title', 'title'), 'title'),
+            'sort_order' => $pick(array('lecturers_sort_order', 'sort_order'), ''),
+        );
+    }
+
+    public static function sql_lecturer_display(string $lecturer_alias = 'l'): string
+    {
+        $schema = self::get_lecturer_schema();
+        $name_col = $schema['name'];
+        $title_col = $schema['title'];
+
+        return "CONCAT(
+            {$lecturer_alias}.{$name_col},
+            CASE
+                WHEN {$lecturer_alias}.{$title_col} IS NULL OR {$lecturer_alias}.{$title_col} = ''
+                THEN ''
+                ELSE CONCAT(' ', {$lecturer_alias}.{$title_col})
+            END
+        )";
+    }
+
+    public static function sql_lecturer_join_on_course(string $lecturer_alias = 'l', string $course_alias = 'c'): string
+    {
+        $schema = self::get_lecturer_schema();
+        return "{$lecturer_alias}.{$schema['code']} = {$course_alias}.lecturer_code";
     }
 
 

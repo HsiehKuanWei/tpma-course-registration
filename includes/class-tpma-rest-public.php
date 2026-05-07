@@ -62,6 +62,8 @@ class TPMA_CR_REST_Public
         $regs_table      = TPMA_CR_DB::table('regs');
         $orders_table_posts = $wpdb->posts;
         $orders_table_hpos  = $wpdb->prefix . 'wc_orders';
+        $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
+        $lecturer_join_sql    = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
 
         $use_hpos = $wpdb->get_var(
             $wpdb->prepare("SHOW TABLES LIKE %s", $orders_table_hpos)
@@ -91,14 +93,7 @@ class TPMA_CR_REST_Public
                 c.category,
                 c.category_code,
                 c.lecturer_code,
-                CONCAT(
-                    l.lecturers_name,
-                    CASE
-                        WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
-                        THEN ''
-                        ELSE CONCAT(' ', l.lecturers_title)
-                    END
-                ) AS lecturer,
+                {$lecturer_display_sql} AS lecturer,
                 c.intro,
                 c.outline,
                 c.duration_minutes,
@@ -119,7 +114,7 @@ class TPMA_CR_REST_Public
             INNER JOIN {$sessions_table} s
                 ON s.course_id = c.id
             LEFT JOIN {$lecturers_table} l
-                ON l.lecturers_code = c.lecturer_code
+                ON {$lecturer_join_sql}
             WHERE
                 c.is_active = 1
                 AND s.is_active = 1
@@ -181,6 +176,8 @@ class TPMA_CR_REST_Public
         $regs_table      = TPMA_CR_DB::table('regs');
         $courses_table   = TPMA_CR_DB::table('courses');
         $lecturers_table = TPMA_CR_DB::table('lecturers');
+        $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
+        $lecturer_join_sql    = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
 
         $p = $request->get_json_params();
 
@@ -213,14 +210,7 @@ class TPMA_CR_REST_Public
                 r.id,
                 r.reg_no,
                 c.course_name,
-                CONCAT(
-                    l.lecturers_name,
-                    CASE
-                        WHEN l.lecturers_title IS NULL OR l.lecturers_title = ''
-                        THEN ''
-                        ELSE CONCAT(' ', l.lecturers_title)
-                    END
-                ) AS lecturer,
+                {$lecturer_display_sql} AS lecturer,
                 r.class_date,
                 r.student_name,
                 r.company_name,
@@ -230,7 +220,7 @@ class TPMA_CR_REST_Public
             LEFT JOIN {$courses_table} c
                 ON c.id = r.course_id
             LEFT JOIN {$lecturers_table} l
-                ON l.lecturers_code = c.lecturer_code
+                ON {$lecturer_join_sql}
             WHERE " . implode(' AND ', $where);
 
         if (!empty($params)) {

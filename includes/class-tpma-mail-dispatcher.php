@@ -45,7 +45,7 @@ class TPMA_CR_Mail_Dispatcher
      * - 寄信流程完全不依賴 session
      * - 只依賴 Woo order meta（_tpma_reg_draft_json、_tpma_reg_ids）與 DB
      * - learners_list 以純文字輸出（可讀、可換行）
-     * - 明確列出可用模板變數（mail-modal 顯示）
+     * - 明確列出可用模板變數（TPMA Mailer 後台顯示）
      * - 保留原有 REST 介面方法與 payload 形狀（避免前端壞掉）
      */
 
@@ -124,8 +124,83 @@ class TPMA_CR_Mail_Dispatcher
 
     /**
      * 從 Mail Config 取得某模板的「副本/抄送」收件人設定（若有）
-     * mail-modal 目前使用的是 cfg.default_cc / cfg.default_bcc
+     * TPMA Mailer 後台目前使用的是 cfg.default_cc / cfg.default_bcc
      */
+    /**
+     * Extract recipient source key(s) from a route entry.
+     * Supports both new `recipient_sources` (array) and legacy `recipient_source` (string).
+     *
+     * @param array $route Route configuration entry.
+     * @return string[] Non-empty sanitized source keys.
+     */
+    private static function extract_route_sources(array $route): array
+    {
+        if (!empty($route['recipient_sources']) && is_array($route['recipient_sources'])) {
+            return array_values(array_filter(array_map('sanitize_key', $route['recipient_sources'])));
+        }
+
+        if (!empty($route['recipient_source'])) {
+            $key = sanitize_key((string) $route['recipient_source']);
+            return $key !== '' ? array($key) : array();
+        }
+
+        return array();
+    }
+
+    private static function extract_route_template(array $route): string
+    {
+        return trim(sanitize_text_field((string) ($route['template_key'] ?? '')));
+    }
+
+    private static function get_existing_template_key_map(): array
+    {
+        if (!class_exists('TPMA_CR_Mail_Templates')) {
+            return array();
+        }
+
+        $templates = TPMA_CR_Mail_Templates::get_all();
+        if (!is_array($templates)) {
+            return array();
+        }
+
+        $map = array();
+        foreach ($templates as $key => $template) {
+            if (!is_array($template)) {
+                continue;
+            }
+
+            $has_subject = trim((string) ($template['subject'] ?? '')) !== '';
+            $has_body = trim((string) ($template['body_html'] ?? '')) !== '';
+            if (!$has_subject && !$has_body) {
+                continue;
+            }
+
+            $raw_key = trim((string) $key);
+            if ($raw_key === '') {
+                continue;
+            }
+
+            $map[$raw_key] = $raw_key;
+        }
+
+        return $map;
+    }
+
+    private static function resolve_existing_template_key(string $template_key): string
+    {
+        $template_key = trim($template_key);
+        if ($template_key === '') {
+            return '';
+        }
+
+        $map = self::get_existing_template_key_map();
+        if (isset($map[$template_key]) && $map[$template_key] !== '') {
+            return (string) $map[$template_key];
+        }
+
+        return '';
+    }
+
     private static function get_copy_recipients_from_config(string $template_key): array
     {
         $emails = array();
@@ -150,6 +225,150 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         return array_values(array_unique($emails));
+    }
+
+    private static function send_template_to_recipients(string $template_key, array $recipients, array $context): bool
+    {
+        $sent = false;
+        $recipients = array_values(array_unique(array_filter(array_map('sanitize_email', $recipients), 'is_email')));
+
+        foreach ($recipients as $to) {
+            try {
+                if (TPMA_Mailer::send_template($template_key, $to, array(
+                    'reg_context' => $context,
+                ))) {
+                    $sent = true;
+                }
+            } catch (Throwable $e) {
+                error_log('[TPMA CR Mail] route send failed template=' . $template_key . ': ' . $e->getMessage());
+            }
+        }
+
+        return $sent;
+    }
+
+    private static function get_route_recipients(array $route_sources, array $route_context): array
+    {
+        $recipients = array();
+        foreach ($route_sources as $route_source) {
+            $resolved = function_exists('tpma_mailer_resolve_recipients')
+                ? tpma_mailer_resolve_recipients($route_source, $route_context)
+                : array();
+            $recipients = array_merge($recipients, $resolved);
+        }
+
+        return array_values(array_unique(array_filter(array_map('sanitize_email', $recipients), 'is_email')));
+    }
+
+    private static function get_primary_or_copy_recipients(array $primary_recipients, string $template_key): array
+    {
+        $primary_recipients = array_values(array_unique(array_filter(array_map('sanitize_email', $primary_recipients), 'is_email')));
+        if (!empty($primary_recipients)) {
+            return $primary_recipients;
+        }
+
+        return self::get_copy_recipients_from_config($template_key);
+    }
+
+    private static function send_route_with_copy_fallback(string $template_key, array $primary_recipients, array $context): bool
+    {
+        $recipients = self::get_primary_or_copy_recipients($primary_recipients, $template_key);
+        return self::send_template_to_recipients($template_key, $recipients, $context);
+    }
+
+    private static function send_route_copies_if_primary_sent(string $template_key, array $primary_recipients, array $context): bool
+    {
+        $primary_recipients = array_values(array_unique(array_filter(array_map('sanitize_email', $primary_recipients), 'is_email')));
+        if (empty($primary_recipients)) {
+            return false;
+        }
+
+        $copies = array_diff(self::get_copy_recipients_from_config($template_key), $primary_recipients);
+        return self::send_template_to_recipients($template_key, $copies, $context);
+    }
+
+    private static function notify_admin_unmatched_event(string $event_key, array $context = array(), ?WC_Order $order = null): void
+    {
+        if ($order instanceof WC_Order) {
+            $meta_key = '_tpma_mailer_unmatched_' . sanitize_key($event_key);
+            if ($order->get_meta($meta_key, true) === 'yes') {
+                return;
+            }
+            $context['order'] = $order;
+        }
+
+        if (function_exists('tpma_mailer_notify_admin_unmatched_event')) {
+            tpma_mailer_notify_admin_unmatched_event($event_key, $context);
+        }
+
+        if ($order instanceof WC_Order) {
+            $order->update_meta_data($meta_key, 'yes');
+            $order->save();
+        }
+    }
+
+    private static function send_registration_notice_route(
+        WC_Order $order,
+        array $draft,
+        array $route,
+        array $base_ctx
+    ): bool {
+        $route_template = self::resolve_existing_template_key(self::extract_route_template($route));
+        $route_sources = self::extract_route_sources($route);
+        if ($route_template === '') {
+            return false;
+        }
+
+        if (empty($route_sources)) {
+            return self::send_route_with_copy_fallback($route_template, array(), $base_ctx);
+        }
+
+        $sent = false;
+        foreach ($route_sources as $route_source) {
+            if ($route_source === 'tpma_cr_learner') {
+                $learners = is_array($draft['learners'] ?? null) ? $draft['learners'] : array();
+                foreach ($learners as $learner) {
+                    if (!is_array($learner)) {
+                        continue;
+                    }
+
+                    $ctx_student = self::build_context($order, $draft, $learner);
+                    $source_context = array(
+                        'event_key'      => 'registration_notice',
+                        'order'          => $order,
+                        'draft'          => $draft,
+                        'reg_context'    => $ctx_student,
+                        'single_learner' => $learner,
+                        'product_ids'    => self::get_order_product_ids($order),
+                    );
+                    $recipients = self::get_route_recipients(array($route_source), $source_context);
+                    if (self::send_route_with_copy_fallback($route_template, $recipients, $ctx_student)) {
+                        $sent = true;
+                    }
+                    if (self::send_route_copies_if_primary_sent($route_template, $recipients, $ctx_student)) {
+                        $sent = true;
+                    }
+                }
+                continue;
+            }
+
+            $source_context = array(
+                'event_key'   => 'registration_notice',
+                'order'       => $order,
+                'draft'       => $draft,
+                'reg_context' => $base_ctx,
+                'product_ids' => self::get_order_product_ids($order),
+            );
+            $recipients = self::get_route_recipients(array($route_source), $source_context);
+            if (self::send_route_with_copy_fallback($route_template, $recipients, $base_ctx)) {
+                $sent = true;
+            }
+            if (self::send_route_copies_if_primary_sent($route_template, $recipients, $base_ctx)) {
+                $sent = true;
+            }
+        }
+
+        return $sent;
     }
 
     /**
@@ -267,37 +486,39 @@ class TPMA_CR_Mail_Dispatcher
 
 
     /**
-     * ✅ lookup lecturer_name：courses.lecturer_code -> lecturers 表
-     * - 不能用 OR 連不存在的欄位，會讓整個 SQL 失敗（Unknown column）
-     * - 先查舊欄位 lecturers_code，再查新欄位 lecturer_code
+     * lookup lecturer_name：courses.lecturer_code -> lecturers 表
+     * 依目前資料表 schema 動態選欄位，避免查詢不存在欄位導致整段流程中斷。
      */
     private static function lookup_lecturer_name($lecturer_code): string
     {
         global $wpdb;
-        $code = trim((string)$lecturer_code);
-        if ($code === '' || !class_exists('TPMA_CR_DB')) return '';
+
+        $code = trim((string) $lecturer_code);
+        if ($code === '' || !class_exists('TPMA_CR_DB')) {
+            return '';
+        }
 
         $tbl = TPMA_CR_DB::table('lecturers');
+        $schema = TPMA_CR_DB::get_lecturer_schema();
+        $code_col = trim((string) ($schema['code'] ?? ''));
 
-        // ① 先用舊版欄位：lecturers_code（你舊版有效就是靠這個）
+        if ($code_col === '') {
+            return '';
+        }
+
         $row = $wpdb->get_row(
-            $wpdb->prepare("SELECT * FROM {$tbl} WHERE lecturers_code = %s LIMIT 1", $code),
+            $wpdb->prepare("SELECT * FROM {$tbl} WHERE {$code_col} = %s LIMIT 1", $code),
             ARRAY_A
         );
 
-        // ② 再嘗試新版欄位：lecturer_code（若你的表其實有）
         if (!$row) {
-            $row = $wpdb->get_row(
-                $wpdb->prepare("SELECT * FROM {$tbl} WHERE lecturer_code = %s LIMIT 1", $code),
-                ARRAY_A
-            );
+            return '';
         }
 
-        if (!$row) return '';
-
-        // 兼容 name/title 欄位
-        $name  = trim((string)($row['lecturers_name'] ?? $row['lecturer_name'] ?? ''));
-        $title = trim((string)($row['lecturers_title'] ?? $row['lecturer_title'] ?? ''));
+        $name_col = trim((string) ($schema['name'] ?? ''));
+        $title_col = trim((string) ($schema['title'] ?? ''));
+        $name = $name_col !== '' ? trim((string) ($row[$name_col] ?? '')) : '';
+        $title = $title_col !== '' ? trim((string) ($row[$title_col] ?? '')) : '';
 
         return trim($name . ($title ? ' ' . $title : ''));
     }
@@ -325,9 +546,11 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         $flow_key = self::normalize_flow_key($order->get_status() ?: 'on-hold');
-        if (self::has_template_mapping($order, $flow_key)
-            && apply_filters('tpma_mailer_skip_tpma_order_flow', true, $order, $flow_key)) {
-            return;
+        if (self::has_template_mapping($order, $flow_key)) {
+            $default_skip = !self::is_tpma_order_like($order);
+            if (apply_filters('tpma_mailer_skip_tpma_order_flow', $default_skip, $order, $flow_key)) {
+                return;
+            }
         }
 
         if (!is_array($draft)) {
@@ -335,62 +558,46 @@ class TPMA_CR_Mail_Dispatcher
         }
         $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
 
-        $templates   = $draft['mail_templates'] ?? array();
-        $tpl_student = (string)($templates['student'] ?? '');
-        $tpl_order   = (string)($templates['order'] ?? '');
-        $flow_key    = $flow_key ?: self::normalize_flow_key($order->get_status() ?: 'on-hold');
+        $base_ctx = self::build_context($order, $draft);
+        $route_context = array(
+            'event_key'   => 'registration_notice',
+            'order'       => $order,
+            'draft'       => $draft,
+            'reg_context' => $base_ctx,
+            'product_ids' => self::get_order_product_ids($order),
+        );
+        $has_route_config = function_exists('tpma_mailer_has_event_route_config')
+            ? tpma_mailer_has_event_route_config('registration_notice')
+            : false;
+        $routes = function_exists('tpma_mailer_get_event_routes_for_event')
+            ? tpma_mailer_get_event_routes_for_event('registration_notice', $route_context)
+            : array();
 
-        $tpl_student = self::resolve_template_for_flow($order, $flow_key, $tpl_student);
-        $tpl_order   = self::resolve_template_for_flow($order, $flow_key, $tpl_order);
-
-        $learners = $draft['learners'] ?? array();
-
-        // 1) 學員信：每一筆 learner 都寄
-        if ($tpl_student && !empty($learners) && is_array($learners)) {
-            foreach ($learners as $learner) {
-                if (!is_array($learner)) continue;
-
-                $student_emails = array();
-                foreach (array($learner['emails'] ?? null, $learner['student_email'] ?? null, $learner['email'] ?? null) as $raw) {
-                    if ($raw) $student_emails = array_merge($student_emails, self::normalize_emails($raw));
-                }
-                $student_emails = array_values(array_unique($student_emails));
-
-                $ctx_student = self::build_context($order, $draft, $learner);
-
-                foreach ($student_emails as $to) {
-                    TPMA_Mailer::send_template($tpl_student, $to, array(
-                        'reg_context' => $ctx_student,
-                    ));
-                }
-
-                foreach (self::get_copy_recipients_from_config($tpl_student) as $copy) {
-                    TPMA_Mailer::send_template($tpl_student, $copy, array(
-                        'reg_context' => $ctx_student,
-                    ));
+        if ($has_route_config && !empty($routes)) {
+            $sent = false;
+            foreach ($routes as $route) {
+                if (self::send_registration_notice_route($order, $draft, $route, $base_ctx)) {
+                    $sent = true;
                 }
             }
+
+            if ($sent) {
+                $order->update_meta_data('_tpma_mail_sent', 'yes');
+                $order->save();
+                return true;
+            }
+            self::notify_admin_unmatched_event('registration_notice', array(
+                'reason' => 'routes_matched_but_no_mail_sent',
+            ), $order);
+            return false;
         }
 
-        // 2) 訂單信：每筆訂單 1 封
-        if ($tpl_order) {
-            $ctx_order = self::build_context($order, $draft);
-
-            foreach (self::get_order_contact_recipients($order) as $to) {
-                TPMA_Mailer::send_template($tpl_order, $to, array(
-                    'reg_context' => $ctx_order,
-                ));
-            }
-
-            foreach (self::get_copy_recipients_from_config($tpl_order) as $copy) {
-                TPMA_Mailer::send_template($tpl_order, $copy, array(
-                    'reg_context' => $ctx_order,
-                ));
-            }
+        if ($has_route_config) {
+            self::notify_admin_unmatched_event('registration_notice', array(
+                'reason' => 'event_triggered_but_no_route_matched',
+            ), $order);
         }
-
-        $order->update_meta_data('_tpma_mail_sent', 'yes');
-        $order->save();
+        return false;
     }
 
     // =========================================================
@@ -619,7 +826,6 @@ class TPMA_CR_Mail_Dispatcher
                 'order_status'          => $order->get_status(),
                 'order_total'           => $order->get_total(),
                 'currency'              => $order->get_currency(),
-                'order_items_table'     => self::build_order_items_table($order),
 
                 'payment_method'        => $order->get_payment_method(),
                 'payment_method_title'  => $order->get_payment_method_title(),
@@ -690,123 +896,6 @@ class TPMA_CR_Mail_Dispatcher
         return apply_filters('tpma_cr_mail_context', $context, $order, !empty($learner) ? $learner : null);
     }
 
-    private static function build_order_items_table(WC_Order $order): string
-    {
-        $items = $order->get_items();
-        if (empty($items)) {
-            return '';
-        }
-
-        $currency = $order->get_currency();
-        $subtotal = 0;
-        foreach ($items as $item) {
-            if (!$item instanceof WC_Order_Item_Product) {
-                continue;
-            }
-            $subtotal += (float) $item->get_subtotal();
-        }
-        $tax_total = (float) $order->get_total_tax();
-        $shipping_total = (float) $order->get_shipping_total();
-        $shipping_tax = (float) $order->get_shipping_tax();
-        $shipping_amount = $shipping_total + $shipping_tax;
-        $total = (float) $order->get_total();
-        $summary_flags = apply_filters('tpma_thankyou_summary_flags', array(
-            'show_subtotal' => true,
-            'show_shipping' => true,
-            'show_tax'      => true,
-        ), $order);
-        $show_subtotal = !empty($summary_flags['show_subtotal']);
-        $show_shipping = !empty($summary_flags['show_shipping']);
-        $show_tax = !empty($summary_flags['show_tax']);
-
-        $rows = '';
-        foreach ($items as $item) {
-            if (!$item instanceof WC_Order_Item_Product) {
-                continue;
-            }
-            $product_name = $item->get_name();
-            $qty = (int) $item->get_quantity();
-            $line_total = (float) $item->get_total();
-
-            $rows .= '<tr>';
-            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
-                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">商品名稱</span>'
-                . '<span class="tpma-mail-value">' . esc_html($product_name) . '</span>'
-                . '</td>';
-            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
-                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">數量</span>'
-                . '<span class="tpma-mail-value">' . esc_html((string) $qty) . '</span>'
-                . '</td>';
-            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
-                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">金額</span>'
-                . '<span class="tpma-mail-value">' . wp_kses_post(wc_price($line_total, ['currency' => $currency])) . '</span>'
-                . '</td>';
-
-            $meta_html = '';
-            if (function_exists('wc_display_item_meta')) {
-                ob_start();
-                wc_display_item_meta($item);
-                $meta_html = trim((string) ob_get_clean());
-            }
-            $meta_text = $meta_html !== '' ? wp_strip_all_tags($meta_html) : '-';
-
-            $rows .= '<td style="border:1px solid #ddd;padding:8px 10px;vertical-align:top;">'
-                . '<span class="tpma-mail-label" style="display:none;font-weight:600;margin-bottom:4px;">備註</span>'
-                . '<span class="tpma-mail-value">' . esc_html($meta_text) . '</span>'
-                . '</td>';
-            $rows .= '</tr>';
-        }
-
-        if ($rows === '') {
-            return '';
-        }
-
-        $style = '<style>
-            @media only screen and (max-width: 620px) {
-                .tpma-mail-table thead { display: none !important; }
-                .tpma-mail-table tr { display: block !important; margin-bottom: 12px; border: 1px solid #e5e7eb; }
-                .tpma-mail-table td { display: block !important; width: 100% !important; box-sizing: border-box; border: none !important; border-bottom: 1px solid #e5e7eb !important; }
-                .tpma-mail-table td:last-child { border-bottom: none !important; }
-                .tpma-mail-label { display: block !important; }
-            }
-        </style>';
-
-        $table = $style;
-        $table .= '<table class="tpma-mail-table" style="width:100%;border-collapse:collapse;">';
-        $table .= '<thead><tr style="background:#f3f4f6;">';
-        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">商品名稱</th>';
-        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">數量</th>';
-        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">金額</th>';
-        $table .= '<th style="text-align:left;border:1px solid #ddd;padding:8px 10px;">備註</th>';
-        $table .= '</tr></thead>';
-        $table .= '<tbody>' . $rows;
-        if ($show_subtotal) {
-            $table .= '<tr>';
-            $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:600;">合計</td>';
-            $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:600;">' . wp_kses_post(wc_price($subtotal, ['currency' => $currency])) . '</td>';
-            $table .= '</tr>';
-        }
-        if ($show_shipping && $shipping_amount > 0) {
-            $table .= '<tr>';
-            $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:600;">運費</td>';
-            $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:600;">' . wp_kses_post(wc_price($shipping_amount, ['currency' => $currency])) . '</td>';
-            $table .= '</tr>';
-        }
-        if ($show_tax) {
-            $table .= '<tr>';
-            $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:600;">營業稅</td>';
-            $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:600;">' . wp_kses_post(wc_price($tax_total, ['currency' => $currency])) . '</td>';
-            $table .= '</tr>';
-        }
-        $table .= '<tr>';
-        $table .= '<td colspan="3" style="text-align:right;border:1px solid #ddd;padding:8px 10px;font-weight:700;">總計金額</td>';
-        $table .= '<td style="border:1px solid #ddd;padding:8px 10px;font-weight:700;">' . wp_kses_post(wc_price($total, ['currency' => $currency])) . '</td>';
-        $table .= '</tr>';
-        $table .= '</tbody></table>';
-
-        return $table;
-    }
-
     private static function build_address_text(WC_Order $order, string $type): string
     {
         if ($type === 'shipping') {
@@ -832,11 +921,15 @@ class TPMA_CR_Mail_Dispatcher
     }
 
     // =========================================================
-    // Available vars for mail-modal
+    // Available vars for TPMA Mailer admin page
     // =========================================================
 
     private static function get_available_vars(): array
     {
+        if (function_exists('tpma_mailer_get_available_vars')) {
+            return tpma_mailer_get_available_vars();
+        }
+
         $vars = array(
             // 學員
             'student_name' => '學員姓名',
@@ -861,7 +954,6 @@ class TPMA_CR_Mail_Dispatcher
             'order_date' => '訂單日期',
             'order_total' => '訂單總額',
             'remit_amount' => '訂單總額（order_total）',
-            'order_items_table' => '訂購項目',
             'payment_method_title' => '付款方式',
             'invoice_type' => '發票類型',
             'invoice_type_display' => '發票類型（含抬頭/統編）',
@@ -946,6 +1038,10 @@ class TPMA_CR_Mail_Dispatcher
 
     private static function get_mailer_flows(): array
     {
+        if (function_exists('tpma_mailer_get_events')) {
+            return tpma_mailer_get_events();
+        }
+
         $flows = array();
 
         if (function_exists('wc_get_order_statuses')) {
@@ -972,6 +1068,10 @@ class TPMA_CR_Mail_Dispatcher
 
     private static function normalize_assign($assign): array
     {
+        if (function_exists('tpma_mailer_normalize_template_assign')) {
+            return tpma_mailer_normalize_template_assign($assign);
+        }
+
         $products = is_array($assign['products'] ?? null) ? $assign['products'] : array();
         $flows    = is_array($assign['flows'] ?? null) ? $assign['flows'] : array();
 
@@ -989,13 +1089,15 @@ class TPMA_CR_Mail_Dispatcher
     private static function normalize_config_assignments(array $config): array
     {
         if (!isset($config['templates']) || !is_array($config['templates'])) {
-            return $config;
+            $config['templates'] = array();
         }
 
         foreach ($config['templates'] as $tpl_key => $tpl_cfg) {
             $assign = self::normalize_assign($tpl_cfg['assign'] ?? array());
             $config['templates'][$tpl_key]['assign'] = $assign;
         }
+
+        unset($config['event_routes']);
 
         return $config;
     }
@@ -1011,60 +1113,31 @@ class TPMA_CR_Mail_Dispatcher
         return array_values(array_unique($ids));
     }
 
-    private static function resolve_template_for_flow(WC_Order $order, string $flow_key, string $fallback): string
-    {
-        $template_key = self::find_template_for_flow($order, $flow_key);
-        return $template_key !== '' ? $template_key : $fallback;
-    }
-
-    private static function find_template_for_flow(WC_Order $order, string $flow_key): string
-    {
-        if (!class_exists('TPMA_CR_Mail_Config')) return '';
-
-        $flow_key = self::normalize_flow_key($flow_key);
-        if (!$flow_key) return '';
-
-        $config = TPMA_CR_Mail_Config::get_config();
-        $tpl_cfgs = is_array($config['templates'] ?? null) ? $config['templates'] : array();
-        if (empty($tpl_cfgs)) return '';
-
-        $product_ids = self::get_order_product_ids($order);
-        if (empty($product_ids)) return '';
-
-        foreach ($tpl_cfgs as $tpl_key => $cfg) {
-            $assign = self::normalize_assign($cfg['assign'] ?? array());
-            if (empty($assign['products']) || empty($assign['flows'])) continue;
-            if (!in_array($flow_key, $assign['flows'], true)) continue;
-
-            foreach ($product_ids as $pid) {
-                if (in_array($pid, $assign['products'], true)) {
-                    return (string)$tpl_key;
-                }
-            }
-        }
-
-        return '';
-    }
-
     private static function is_tpma_order_like(WC_Order $order): bool
     {
         if ((bool) $order->get_meta('_tpma_reg_draft_json', true)) return true;
         if ((bool) $order->get_meta('_tpma_reg_no', true)) return true;
         if ((bool) $order->get_meta('_tpma_reg_ids', true)) return true;
         if ((int) $order->get_meta('_tpma_course_id', true) > 0) return true;
-        if ((string) $order->get_meta('_tpma_invoice_type', true) !== '') return true;
-        if ((string) $order->get_meta('_billing_tpma_invoice_type', true) !== '') return true;
-        if ((string) $order->get_meta('_tpma_postcode', true) !== '') return true;
-        if ((string) $order->get_meta('_tpma_state', true) !== '') return true;
-        if ((string) $order->get_meta('_tpma_city', true) !== '') return true;
-        if ((string) $order->get_meta('_tpma_street', true) !== '') return true;
 
         return (bool) apply_filters('tpma_is_tpma_order', false, $order);
     }
 
     public static function has_template_mapping(WC_Order $order, string $flow_key): bool
     {
-        return self::find_template_for_flow($order, $flow_key) !== '';
+        $flow_key = self::normalize_flow_key($flow_key);
+        if ($flow_key === '') {
+            return false;
+        }
+
+        $route_context = array(
+            'order'       => $order,
+            'product_ids' => self::get_order_product_ids($order),
+        );
+
+        return function_exists('tpma_mailer_has_enabled_event_routes')
+            ? tpma_mailer_has_enabled_event_routes($flow_key, $route_context)
+            : false;
     }
 
     public static function send_for_order_flow(WC_Order $order, string $flow_key, array $options = array()): bool
@@ -1081,61 +1154,97 @@ class TPMA_CR_Mail_Dispatcher
         $flow_key = self::normalize_flow_key($flow_key);
         if (!$flow_key) return false;
 
-        $template_key = self::find_template_for_flow($order, $flow_key);
-        if ($template_key === '') return false;
+        $route_context = array(
+            'event_key'   => $flow_key,
+            'order'       => $order,
+            'product_ids' => self::get_order_product_ids($order),
+        );
+        $has_route_config = function_exists('tpma_mailer_has_event_route_config')
+            ? tpma_mailer_has_event_route_config($flow_key)
+            : false;
+
+        $routes = array();
+        if (function_exists('tpma_mailer_get_event_routes_for_event')) {
+            $routes = tpma_mailer_get_event_routes_for_event($flow_key, $route_context);
+        }
+
+        if ($has_route_config && empty($routes)) {
+            self::notify_admin_unmatched_event($flow_key, array(
+                'reason' => 'event_triggered_but_no_route_matched',
+            ), $order);
+            return false;
+        }
+        if (empty($routes)) {
+            return false;
+        }
 
         $sent_flag = '_tpma_mailer_sent_' . $flow_key;
         if ($order->get_meta($sent_flag, true) === 'yes') {
             return false;
         }
-        $created_tpl_flag = '';
-        if (in_array($flow_key, array('pending', 'on-hold'), true)) {
-            $created_tpl_flag = '_tpma_mailer_sent_created_tpl_' . md5($template_key);
-            if ($order->get_meta($created_tpl_flag, true) === 'yes') {
-                return false;
-            }
-        }
 
         $draft = self::get_draft_from_order($order);
         $ctx = self::build_context($order, is_array($draft) ? $draft : array());
+        $route_context['draft'] = $draft;
+        $route_context['reg_context'] = $ctx;
 
         $sent = false;
-        foreach (self::get_order_contact_recipients($order) as $to) {
-            try {
-                if (TPMA_Mailer::send_template($template_key, $to, array(
-                    'reg_context' => $ctx,
-                ))) {
-                    $sent = true;
-                }
-            } catch (Exception $e) {
-                return false;
+        foreach ($routes as $route) {
+            $route_template = self::resolve_existing_template_key(self::extract_route_template($route));
+            $route_sources = self::extract_route_sources($route);
+            if ($route_template === '') {
+                continue;
             }
-        }
 
-        $copies = self::get_copy_recipients_from_config($template_key);
-        foreach ((array)$copies as $copy) {
-            $copy = trim((string)$copy);
-            if (!$copy || !is_email($copy)) continue;
-            try {
-                if (TPMA_Mailer::send_template($template_key, $copy, array(
-                    'reg_context' => $ctx,
-                ))) {
-                    $sent = true;
+            $handled_learner_route = false;
+            if (in_array('tpma_cr_learner', $route_sources, true)) {
+                $learners = is_array($draft['learners'] ?? null) ? $draft['learners'] : array();
+                foreach ($learners as $learner) {
+                    if (!is_array($learner)) {
+                        continue;
+                    }
+
+                    $ctx_student = self::build_context($order, is_array($draft) ? $draft : array(), $learner);
+                    $learner_context = $route_context;
+                    $learner_context['single_learner'] = $learner;
+                    $learner_context['reg_context'] = $ctx_student;
+
+                    $learner_recipients = self::get_route_recipients(array('tpma_cr_learner'), $learner_context);
+                    if (self::send_route_with_copy_fallback($route_template, $learner_recipients, $ctx_student)) {
+                        $sent = true;
+                    }
+                    if (self::send_route_copies_if_primary_sent($route_template, $learner_recipients, $ctx_student)) {
+                        $sent = true;
+                    }
                 }
-            } catch (Exception $e) {
-                return false;
+
+                $handled_learner_route = true;
+                $route_sources = array_values(array_diff($route_sources, array('tpma_cr_learner')));
+            }
+
+            if ($handled_learner_route && empty($route_sources)) {
+                continue;
+            }
+
+            $all_recipients = self::get_route_recipients($route_sources, $route_context);
+            if (self::send_route_with_copy_fallback($route_template, $all_recipients, $ctx)) {
+                $sent = true;
+            }
+            if (self::send_route_copies_if_primary_sent($route_template, $all_recipients, $ctx)) {
+                $sent = true;
             }
         }
 
         if ($sent) {
             $order->update_meta_data($sent_flag, 'yes');
-            if ($created_tpl_flag !== '') {
-                $order->update_meta_data($created_tpl_flag, 'yes');
-            }
             $order->save();
+            return true;
         }
 
-        return $sent;
+        self::notify_admin_unmatched_event($flow_key, array(
+            'reason' => 'routes_matched_but_no_mail_sent',
+        ), $order);
+        return false;
     }
 
     // =========================================================
@@ -1154,10 +1263,13 @@ class TPMA_CR_Mail_Dispatcher
         return rest_ensure_response(array(
             'templates' => $templates,
             'config'    => $config,
-            // ✅ 新增：讓 mail-modal 顯示可用變數（不破壞既有 keys）
+            // ✅ 新增：讓 TPMA Mailer 後台顯示可用變數（不破壞既有 keys）
             'available_vars' => self::get_available_vars(),
+            'available_var_groups' => function_exists('tpma_mailer_get_variable_groups') ? tpma_mailer_get_variable_groups() : array(),
+            'recipient_sources' => function_exists('tpma_mailer_get_recipient_sources') ? tpma_mailer_get_recipient_sources() : array(),
             'products' => self::get_mailer_products(),
             'flows'    => self::get_mailer_flows(),
+            'event_groups' => function_exists('tpma_mailer_get_event_groups') ? tpma_mailer_get_event_groups() : array(),
         ));
     }
 
@@ -1201,7 +1313,7 @@ class TPMA_CR_Mail_Dispatcher
 
         // 簡單版變數替換（沿用你原本的行為）
         $replace = array();
-        $raw_keys = apply_filters('tpma_mailer_raw_vars', array('order_items_table'), $context);
+        $raw_keys = apply_filters('tpma_mailer_raw_vars', array(), $context);
         foreach ($context as $k => $v) {
             if (is_array($v)) $v = 'Array';
             if (in_array($k, $raw_keys, true)) {
@@ -1266,108 +1378,65 @@ class TPMA_CR_Mail_Dispatcher
 
     /**
      * 管理員通知：匯款回報（thankyou 頁）
-     * - 優先使用資料庫模板（TPMA_Mailer::send_template）
-     * - 若模板/寄送類別不可用，fallback 純文字 wp_mail
+     * - 僅走 TPMA Mailer 事件路由
+     * - 未命中模板時通知管理員
      */
     public static function notify_admin_remit_report(WC_Order $order, string $remit_date, string $remit_account)
     {
-        // 主收件人：admin_email + 後台設定 tpma_cr_admin_notify_emails（逗號/分號）
-        $admin_email = get_option('admin_email');
-        $extra = get_option('tpma_cr_admin_notify_emails', '');
-        $to = array();
-        if ($admin_email && is_email($admin_email)) {
-            $to[] = sanitize_email($admin_email);
-        }
-        $to = array_merge($to, self::normalize_emails($extra));
-        $to = array_values(array_unique(array_filter($to, 'is_email')));
-        if (empty($to)) return;
-
-        // 模板 key
-        $defaults = self::get_default_templates();
-        $template_key = $defaults['admin_remit_report'] ?? 'admin_remit_report';
-        $template_key = self::resolve_template_for_flow($order, 'admin_remit_report', $template_key);
-
-        // draft/context
         $draft = self::get_draft_from_order($order);
         $ctx   = self::build_context($order, is_array($draft) ? $draft : array(), array());
         $ctx['remit_date']    = $remit_date;
         $ctx['remit_account'] = $remit_account;
         $ctx['admin_link']    = admin_url('post.php?post=' . $order->get_id() . '&action=edit');
 
-        // 合併模板內的副本/抄送
-        if (class_exists('TPMA_Mailer')) {
-            $all_recipients = $to;
-            if (method_exists(__CLASS__, 'get_copy_recipients_from_config')) {
-                $copies = self::get_copy_recipients_from_config($template_key);
-                $all_recipients = array_merge($all_recipients, (array)$copies);
-            }
-            $all_recipients = array_values(array_unique(array_filter(array_map('sanitize_email', $all_recipients), 'is_email')));
+        $route_context = array(
+            'event_key'   => 'admin_remit_report',
+            'order'       => $order,
+            'draft'       => $draft,
+            'reg_context' => $ctx,
+            'product_ids' => self::get_order_product_ids($order),
+        );
+        $routes = function_exists('tpma_mailer_get_event_routes_for_event')
+            ? tpma_mailer_get_event_routes_for_event('admin_remit_report', $route_context)
+            : array();
 
-            foreach ($all_recipients as $email) {
-                TPMA_Mailer::send_template($template_key, $email, array(
-                    'reg_context' => $ctx,
-                ));
+        if (empty($routes)) {
+            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config('admin_remit_report')) {
+                self::notify_admin_unmatched_event('admin_remit_report', array(
+                    'reason' => 'event_triggered_but_no_route_matched',
+                ), $order);
             }
             return;
         }
 
-        // fallback 純文字
-        $subject = sprintf('[TPMA] 匯款回報｜訂單 #%s', $order->get_order_number());
-        $body  = "收到匯款回報：\n";
-        $body .= "訂單編號：#" . $order->get_order_number() . "\n";
-        $body .= "回報匯款日期：" . $remit_date . "\n";
-        $body .= "回報公司戶名/末五碼：" . $remit_account . "\n";
-        $body .= "後台訂單：" . $ctx['admin_link'] . "\n";
-        wp_mail($to, $subject, $body, array('Content-Type: text/plain; charset=UTF-8'));
+        foreach ($routes as $route) {
+            $route_template = self::resolve_existing_template_key(self::extract_route_template($route));
+            $route_sources = self::extract_route_sources($route);
+            if ($route_template === '') {
+                continue;
+            }
+
+            $all_recipients = self::get_route_recipients($route_sources, $route_context);
+            self::send_route_with_copy_fallback($route_template, $all_recipients, $ctx);
+            self::send_route_copies_if_primary_sent($route_template, $all_recipients, $ctx);
+        }
     }
 
 
     public static function send_after_order_completed(WC_Order $order, $draft = null): bool
     {
-        if (!class_exists('TPMA_Mailer')) return false;
-
-        $flow_key = self::normalize_flow_key($order->get_status() ?: 'completed');
-        if (self::has_template_mapping($order, $flow_key)
-            && apply_filters('tpma_mailer_skip_tpma_order_flow', true, $order, $flow_key)) {
+        if ($order->get_meta('_tpma_completed_mail_sent', true) === 'yes') {
             return false;
         }
 
-        if (!is_array($draft)) {
-            $draft = self::get_draft_from_order($order);
-        }
-        $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
+        $flow_key = self::normalize_flow_key($order->get_status() ?: 'completed');
+        $sent = self::send_for_order_flow($order, $flow_key, array(
+            'skip_tpma' => false,
+        ));
 
-        $templates = is_array($draft['mail_templates'] ?? null) ? $draft['mail_templates'] : array();
-        // ✅ 沒有就用預設模板 key（避免 draft 沒帶 completed 造成完全不寄）
-        $tpl_completed = trim((string)($templates['completed'] ?? self::get_default_templates()['completed'] ?? 'registration_completed'));
-        $flow_key = $flow_key ?: self::normalize_flow_key($order->get_status() ?: 'completed');
-        $tpl_completed = self::resolve_template_for_flow($order, $flow_key, $tpl_completed);
-
-        // 如果你想要「必須存在模板才寄」，可在 TPMA_Mailer 內處理；這裡先嘗試寄
-        $ctx = self::build_context($order, $draft);
-
-        $sent = false;
-
-        // 寄給訂單聯絡人（主 email + 額外通知 email）
-        foreach (self::get_order_contact_recipients($order) as $to) {
-            $ok = TPMA_Mailer::send_template($tpl_completed, $to, array(
-                'reg_context' => $ctx,
-            ));
-            if ($ok) $sent = true;
-        }
-
-        // 副本（若模板有設定）
-        $copies = array();
-        if (method_exists(__CLASS__, 'get_copy_recipients_from_config')) {
-            $copies = self::get_copy_recipients_from_config($tpl_completed);
-        }
-        foreach ((array)$copies as $copy) {
-            $copy = trim((string)$copy);
-            if (!$copy || !is_email($copy)) continue;
-            $ok = TPMA_Mailer::send_template($tpl_completed, $copy, array(
-                'reg_context' => $ctx,
-            ));
-            if ($ok) $sent = true;
+        if ($sent) {
+            $order->update_meta_data('_tpma_completed_mail_sent', 'yes');
+            $order->save();
         }
 
         return $sent;
@@ -1392,11 +1461,6 @@ class TPMA_CR_Mail_Dispatcher
         $draft = self::get_draft_from_order($order);
         $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
 
-        $tpl = (string)($draft['mail_templates']['certificate_ready'] ?? 'certificate_ready');
-        if (!$tpl) {
-            return;
-        }
-
         $learner_data = array(
             'reg_id'       => $reg['id']           ?? '',
             'reg_no'       => $reg['reg_no']        ?? '',
@@ -1405,14 +1469,46 @@ class TPMA_CR_Mail_Dispatcher
             'emails'       => $reg['emails']        ?? '',
         );
 
+        $route_context = array(
+            'event_key'      => 'certificate_ready',
+            'order'          => $order,
+            'draft'          => $draft,
+            'single_learner' => $learner_data,
+        );
         $ctx = self::build_context($order, $draft, $learner_data);
-
-        foreach (self::normalize_emails($reg['emails'] ?? '') as $to) {
-            TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $ctx));
+        $route_context['reg_context'] = $ctx;
+        $routes = function_exists('tpma_mailer_get_event_routes_for_event')
+            ? tpma_mailer_get_event_routes_for_event('certificate_ready', $route_context)
+            : array();
+        if (empty($routes)) {
+            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config('certificate_ready')) {
+                self::notify_admin_unmatched_event('certificate_ready', array(
+                    'reason' => 'event_triggered_but_no_route_matched',
+                ), $order);
+            }
+            return;
         }
 
-        foreach (self::get_copy_recipients_from_config($tpl) as $copy) {
-            TPMA_Mailer::send_template($tpl, $copy, array('reg_context' => $ctx));
+        $sent = false;
+        foreach ($routes as $route) {
+            $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
+            $sources = self::extract_route_sources($route);
+            if ($tpl === '') {
+                continue;
+            }
+            $recipients = self::get_route_recipients($sources, $route_context);
+            if (self::send_route_with_copy_fallback($tpl, $recipients, $ctx)) {
+                $sent = true;
+            }
+            if (self::send_route_copies_if_primary_sent($tpl, $recipients, $ctx)) {
+                $sent = true;
+            }
+        }
+
+        if (!$sent) {
+            self::notify_admin_unmatched_event('certificate_ready', array(
+                'reason' => 'routes_matched_but_no_mail_sent',
+            ), $order);
         }
     }
 
@@ -1431,11 +1527,6 @@ class TPMA_CR_Mail_Dispatcher
         $draft = self::get_draft_from_order($order);
         $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
 
-        $tpl = (string)($draft['mail_templates']['pre_class_reminder'] ?? 'pre_class_reminder');
-        if (!$tpl) {
-            return;
-        }
-
         $learner_data = array(
             'reg_id'       => $reg['id']           ?? '',
             'reg_no'       => $reg['reg_no']        ?? '',
@@ -1444,20 +1535,53 @@ class TPMA_CR_Mail_Dispatcher
             'emails'       => $reg['emails']        ?? '',
         );
 
-        $ctx = self::build_context($order, $draft, $learner_data);
-
         // Reminder already sent guard (use order meta per-reg)
         $sent_key = '_tpma_reminder_sent_' . (int)$reg['id'];
         if ($order->get_meta($sent_key, true) === 'yes') {
             return;
         }
 
-        foreach (self::normalize_emails($reg['emails'] ?? '') as $to) {
-            TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $ctx));
+        $route_context = array(
+            'event_key'      => 'pre_class_reminder',
+            'order'          => $order,
+            'draft'          => $draft,
+            'single_learner' => $learner_data,
+        );
+        $ctx = self::build_context($order, $draft, $learner_data);
+        $route_context['reg_context'] = $ctx;
+        $routes = function_exists('tpma_mailer_get_event_routes_for_event')
+            ? tpma_mailer_get_event_routes_for_event('pre_class_reminder', $route_context)
+            : array();
+        if (empty($routes)) {
+            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config('pre_class_reminder')) {
+                self::notify_admin_unmatched_event('pre_class_reminder', array(
+                    'reason' => 'event_triggered_but_no_route_matched',
+                ), $order);
+            }
+            return;
         }
 
-        foreach (self::get_copy_recipients_from_config($tpl) as $copy) {
-            TPMA_Mailer::send_template($tpl, $copy, array('reg_context' => $ctx));
+        $sent = false;
+        foreach ($routes as $route) {
+            $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
+            $sources = self::extract_route_sources($route);
+            if ($tpl === '') {
+                continue;
+            }
+            $recipients = self::get_route_recipients($sources, $route_context);
+            if (self::send_route_with_copy_fallback($tpl, $recipients, $ctx)) {
+                $sent = true;
+            }
+            if (self::send_route_copies_if_primary_sent($tpl, $recipients, $ctx)) {
+                $sent = true;
+            }
+        }
+
+        if (!$sent) {
+            self::notify_admin_unmatched_event('pre_class_reminder', array(
+                'reason' => 'routes_matched_but_no_mail_sent',
+            ), $order);
+            return;
         }
 
         $order->update_meta_data($sent_key, 'yes');
