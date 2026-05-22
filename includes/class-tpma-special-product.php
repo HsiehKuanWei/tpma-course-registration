@@ -1099,7 +1099,11 @@ class TPMA_Woo_Special_Product {
         if (!function_exists('WC')) {
             return;
         }
-        if ($reason !== '') {
+        $debug_log_enabled = defined('TPMA_SPECIAL_PRODUCT_DEBUG_LOG') && TPMA_SPECIAL_PRODUCT_DEBUG_LOG;
+        if (!$debug_log_enabled && function_exists('apply_filters')) {
+            $debug_log_enabled = (bool) apply_filters('tpma_special_product_debug_log_enabled', false);
+        }
+        if ($reason !== '' && $debug_log_enabled) {
             $method = isset($_SERVER['REQUEST_METHOD']) ? strtoupper((string) wp_unslash($_SERVER['REQUEST_METHOD'])) : '';
             $uri = isset($_SERVER['REQUEST_URI']) ? (string) wp_unslash($_SERVER['REQUEST_URI']) : '';
             $flags = array(

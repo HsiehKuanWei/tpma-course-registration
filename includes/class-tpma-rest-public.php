@@ -128,7 +128,6 @@ class TPMA_CR_REST_Public
             error_log("TPMA REST Public: get_courses SQL Error: " . $wpdb->last_error);
             return new WP_Error('db_error', '課程資料庫查詢失敗', array('status' => 500));
         }
-        error_log("TPMA REST Public: get_courses returned " . count($rows) . " rows.");
 
         return rest_ensure_response($rows);
     }

@@ -5,30 +5,77 @@ $result = isset($_GET['tpma_import_result']) ? sanitize_text_field($_GET['tpma_i
 $action_url = esc_url( admin_url('admin-post.php') );
 ?>
 <style>
-.tpma-import-wrap { font-size:13px; }
-.tpma-import-block {
-    border:1px solid #ddd;
-    padding:10px;
-    margin-bottom:12px;
+.tpma-import-wrap {
+    --tpma-admin-bg:#f5f8fb;
+    --tpma-admin-surface:#fff;
+    --tpma-admin-border:#d7e2ee;
+    --tpma-admin-text:#172033;
+    --tpma-admin-muted:#5f7086;
+    --tpma-admin-primary:#0f6c7b;
+    --tpma-admin-primary-dark:#0a4f5a;
+    --tpma-admin-success:#1f7a4d;
+    font-size:14px;
+    color:var(--tpma-admin-text);
+    display:grid;
+    gap:16px;
 }
-.tpma-import-block h3 { margin:0 0 6px; font-size:15px; }
-.tpma-import-block p { margin:0 0 6px; line-height:1.5; }
+.tpma-import-block {
+    border:1px solid var(--tpma-admin-border);
+    border-radius:12px;
+    padding:18px;
+    background:var(--tpma-admin-surface);
+    box-shadow:0 10px 28px rgba(19,35,61,.06);
+}
+.tpma-import-block h3 { margin:0 0 8px; font-size:16px; line-height:1.35; }
+.tpma-import-block p { margin:0 0 8px; line-height:1.55; color:var(--tpma-admin-muted); }
+.tpma-import-block code { white-space:normal; word-break:break-word; }
 .tpma-import-textarea {
     width:100%;
     min-height:120px;
-    font-size:12px;
+    font-size:13px;
     font-family:Consolas, Menlo, monospace;
     box-sizing:border-box;
+    border:1px solid #b6c6d7;
+    border-radius:8px;
+    padding:12px;
+    resize:vertical;
 }
-.tpma-import-submit { padding:4px 10px; font-size:12px; cursor:pointer; margin-top:6px; }
-.tpma-import-note { font-size:11px; color:#666; margin-top:4px; white-space:pre-line; }
+.tpma-import-textarea:focus {
+    border-color:var(--tpma-admin-primary);
+    box-shadow:0 0 0 3px rgba(15,108,123,.16);
+    outline:none;
+}
+.tpma-import-submit {
+    min-height:38px;
+    padding:0 16px;
+    border:1px solid var(--tpma-admin-primary);
+    border-radius:8px;
+    background:var(--tpma-admin-primary);
+    color:#fff;
+    font-weight:700;
+    cursor:pointer;
+    margin-top:8px;
+}
+.tpma-import-submit:hover,
+.tpma-import-submit:focus {
+    background:var(--tpma-admin-primary-dark);
+    border-color:var(--tpma-admin-primary-dark);
+}
+.tpma-import-note { font-size:12px; color:var(--tpma-admin-muted); margin-top:4px; white-space:pre-line; }
 .tpma-import-result {
-    padding:6px 8px;
-    margin-bottom:10px;
-    border:1px solid #4cae4c;
-    background:#dff0d8;
-    font-size:12px;
+    padding:12px 14px;
+    border:1px solid #9acfb1;
+    border-radius:10px;
+    background:#e8f6ee;
+    color:var(--tpma-admin-success);
+    font-size:13px;
+    font-weight:700;
     white-space:pre-line;
+}
+@media (max-width: 640px) {
+    .tpma-import-wrap { gap:12px; }
+    .tpma-import-block { padding:14px; border-radius:10px; }
+    .tpma-import-submit { width:100%; }
 }
 </style>
 
@@ -100,4 +147,3 @@ R20250101001,HSSA101,董事會運作實務,王小明,2025-03-01,張三,ABC公司
         </form>
     </div>
 </div>
-

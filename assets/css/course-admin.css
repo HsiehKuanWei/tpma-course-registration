@@ -79,4 +79,38 @@
   column-gap:0;
 }
 
+@media (max-width: 900px){
+  .tpma-course-grid-layout{
+    grid-template-columns:1fr;
+  }
+
+  .tpma-session-row{
+    align-items:stretch;
+    flex-wrap:wrap;
+  }
+
+  .tpma-session-row input[type="datetime-local"],
+  .tpma-session-row .tpma-session-visibility{
+    flex:1 1 100%;
+    width:100%;
+    box-sizing:border-box;
+  }
+
+  .tpma-session-row .tpma-session-reg-link{
+    display:inline-flex;
+    min-height:34px;
+    align-items:center;
+  }
+}
+
+@media (max-width: 640px){
+  #tpma-course-admin .tpma-filter-row > span{
+    display:block;
+  }
+
+  #tpma-course-admin .tpma-filter-row span[style]{
+    font-size:12px !important;
+    line-height:1.5;
+  }
+}
 
