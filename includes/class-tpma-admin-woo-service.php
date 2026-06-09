@@ -173,6 +173,188 @@ class TPMA_CR_Admin_Woo_Service
         return array('has_change' => $has_change);
     }
 
+    private static function get_course_snapshot(int $course_id): array
+    {
+        if ($course_id <= 0 || !class_exists('TPMA_CR_DB')) {
+            return array();
+        }
+
+        global $wpdb;
+        $courses_table   = TPMA_CR_DB::table('courses');
+        $lecturers_table = TPMA_CR_DB::table('lecturers');
+
+        $course = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $course_id),
+            ARRAY_A
+        );
+        if (!$course) {
+            return array();
+        }
+
+        $lecturer = '';
+        if (!empty($course['lecturer_code'])) {
+            $lect_schema = TPMA_CR_DB::get_lecturer_schema();
+            $lect = $wpdb->get_row($wpdb->prepare(
+                "SELECT {$lect_schema['name']} AS lecturer_name, {$lect_schema['title']} AS lecturer_title
+                 FROM {$lecturers_table}
+                 WHERE {$lect_schema['code']} = %s",
+                $course['lecturer_code']
+            ));
+            if ($lect && !empty($lect->lecturer_name)) {
+                $lecturer = trim($lect->lecturer_name . (!empty($lect->lecturer_title) ? ' ' . $lect->lecturer_title : ''));
+            }
+        }
+
+        return array(
+            'course_name'      => sanitize_text_field($course['course_name'] ?? ''),
+            'lecturer'         => $lecturer,
+            'duration_minutes' => (int) ($course['duration_minutes'] ?? 0),
+        );
+    }
+
+    private static function get_session_snapshot(int $course_id, string $class_date): array
+    {
+        if ($course_id <= 0 || $class_date === '' || !class_exists('TPMA_CR_DB')) {
+            return array();
+        }
+
+        global $wpdb;
+        $sessions_table = TPMA_CR_DB::table('sessions');
+        $class_date = sanitize_text_field($class_date);
+
+        $session = null;
+        if (strlen($class_date) > 10 && strpos($class_date, ' ') !== false) {
+            $session = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT id, session_datetime FROM {$sessions_table} WHERE course_id = %d AND session_datetime = %s LIMIT 1",
+                    $course_id,
+                    $class_date
+                ),
+                ARRAY_A
+            );
+        }
+
+        if (!$session) {
+            $date_only = substr($class_date, 0, 10);
+            $session = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT id, session_datetime FROM {$sessions_table} WHERE course_id = %d AND DATE(session_datetime) = %s ORDER BY session_datetime ASC LIMIT 1",
+                    $course_id,
+                    $date_only
+                ),
+                ARRAY_A
+            );
+        }
+
+        return $session ? array(
+            'session_id'       => (int) $session['id'],
+            'session_datetime' => sanitize_text_field($session['session_datetime']),
+            'class_date'       => substr((string) $session['session_datetime'], 0, 10),
+        ) : array();
+    }
+
+    private static function build_learners_from_regs(array $rows): array
+    {
+        $learners = array();
+        foreach ($rows as $row) {
+            $name = sanitize_text_field($row['student_name'] ?? '');
+            if ($name === '') {
+                continue;
+            }
+
+            $learners[] = array(
+                'student_name' => $name,
+                'department'   => sanitize_text_field($row['department'] ?? ''),
+                'job_title'    => sanitize_text_field($row['job_title'] ?? ''),
+                'mobile'       => sanitize_text_field($row['mobile'] ?? ''),
+                'emails'       => implode(', ', self::normalize_email_list($row['emails'] ?? '')),
+                'reg_no'       => sanitize_text_field($row['reg_no'] ?? ''),
+                'reg_id'       => (int) ($row['id'] ?? 0),
+            );
+        }
+
+        return $learners;
+    }
+
+    /**
+     * Keep the TPMA order snapshot aligned after reg-admin edits course/date/student fields.
+     */
+    public static function sync_registration_snapshot($order, string $regs_table, int $updated_reg_id, string $raw_class_date = '')
+    {
+        if (!$order || !$regs_table || $updated_reg_id <= 0 || !class_exists('TPMA_CR_DB')) {
+            return array('has_change' => false);
+        }
+
+        global $wpdb;
+        $order_id = (int) $order->get_id();
+        if ($order_id <= 0) {
+            return array('has_change' => false);
+        }
+
+        $updated_row = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$regs_table} WHERE id = %d", $updated_reg_id),
+            ARRAY_A
+        );
+        if (!$updated_row) {
+            return array('has_change' => false);
+        }
+
+        $course_id = (int) ($updated_row['course_id'] ?? 0);
+        if ($course_id <= 0) {
+            return array('has_change' => false);
+        }
+
+        $date_source = $raw_class_date !== '' ? $raw_class_date : (string) ($updated_row['class_date'] ?? '');
+        $session = self::get_session_snapshot($course_id, $date_source);
+        if (empty($session)) {
+            return array('has_change' => false);
+        }
+
+        $course = self::get_course_snapshot($course_id);
+        if (empty($course)) {
+            return array('has_change' => false);
+        }
+
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT * FROM {$regs_table} WHERE woocommerce_order_id = %d ORDER BY id ASC",
+                $order_id
+            ),
+            ARRAY_A
+        );
+        if (empty($rows)) {
+            return array('has_change' => false);
+        }
+
+        $draft_json = (string) $order->get_meta('_tpma_reg_draft_json', true);
+        $draft = $draft_json ? json_decode($draft_json, true) : array();
+        if (!is_array($draft)) {
+            $draft = array();
+        }
+
+        $learners = self::build_learners_from_regs($rows);
+        if (!empty($learners)) {
+            $draft['learners'] = $learners;
+            $draft['total_learners'] = count($learners);
+        }
+
+        $draft['course_id'] = $course_id;
+        $draft['session_id'] = (int) $session['session_id'];
+        $draft['course_name'] = $course['course_name'];
+        $draft['lecturer'] = $course['lecturer'];
+        $draft['duration_minutes'] = (int) $course['duration_minutes'];
+        $draft['session_datetime'] = $session['session_datetime'];
+        $draft['class_date'] = $session['class_date'];
+
+        $order->update_meta_data('_tpma_reg_draft_json', wp_json_encode($draft, JSON_UNESCAPED_UNICODE));
+        $order->update_meta_data('_tpma_course_id', $course_id);
+        $order->update_meta_data('_tpma_session_id', (int) $session['session_id']);
+        $order->update_meta_data('_tpma_session_datetime', $session['session_datetime']);
+        $order->update_meta_data('_tpma_learner_count', count($draft['learners'] ?? array()));
+
+        return array('has_change' => true);
+    }
+
     /**
      * 讀取 rows 中涉及的 Woo 訂單，並將 Woo 資訊覆蓋回傳。
      *

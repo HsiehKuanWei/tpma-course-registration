@@ -405,6 +405,15 @@ public static function admin_update_reg($request)
         $wpdb->update($regs_table, $tpma_update, array('id' => $id));
     }
 
+    if ($order && !empty($tpma_update)) {
+        $raw_class_date = '';
+        if (array_key_exists('class_date', $d)) {
+            $raw_class_date = is_scalar($d['class_date']) ? sanitize_text_field((string) $d['class_date']) : '';
+        }
+        $snapshot_result = TPMA_CR_Admin_Woo_Service::sync_registration_snapshot($order, $regs_table, $id, $raw_class_date);
+        $woo_changed = $woo_changed || !empty($snapshot_result['has_change']);
+    }
+
     if ($order && $woo_changed) {
         $order->save();
     }

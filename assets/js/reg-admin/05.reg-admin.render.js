@@ -305,12 +305,29 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
   adjustingCourseOpt.textContent = ADJUSTING_LABEL;
   if (isAdjustingCourse(row.course_id)) adjustingCourseOpt.selected = true;
   courseSel.appendChild(adjustingCourseOpt);
+
+  const courseGroups = {};
   (ctx.data.allCourses || []).forEach(c=>{
-    const opt = document.createElement('option');
-    opt.value = c.id || '';
-    opt.textContent = c.course_name || '';
-    if (String(c.id) === String(row.course_id || '')) opt.selected = true;
-    courseSel.appendChild(opt);
+    const lecturer = U.display(c.lecturer || c.lecturer_name || c.lecturer_code) || '未指定講師';
+    if (!courseGroups[lecturer]) {
+      courseGroups[lecturer] = [];
+    }
+    courseGroups[lecturer].push(c);
+  });
+
+  Object.keys(courseGroups).forEach(lecturer=>{
+    const group = document.createElement('optgroup');
+    group.label = lecturer;
+
+    courseGroups[lecturer].forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c.id || '';
+      opt.textContent = c.course_name || '';
+      if (String(c.id) === String(row.course_id || '')) opt.selected = true;
+      group.appendChild(opt);
+    });
+
+    courseSel.appendChild(group);
   });
 
   function rebuildDates(selectedCourseId){
