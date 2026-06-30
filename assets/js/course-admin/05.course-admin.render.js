@@ -22,7 +22,7 @@
     const lec = dom.filter.lec;
     if (!lec) return;
     lec.innerHTML = '<option value="">全部講師</option>';
-    state.lecturers.forEach(l => {
+    state.lecturers.filter(l => parseInt(l.is_active, 10) !== 0).forEach(l => {
       const opt = document.createElement('option');
       opt.value = l.code;
       opt.textContent = util.lecturerLabel(l);
@@ -34,14 +34,14 @@
    * 重建「課程編輯表單內」講師 select（保留既有選取值）
    * @param {HTMLSelectElement} sel
    */
-  ns.rebuildLecturerSelect = function rebuildLecturerSelect(sel) {
+  ns.rebuildLecturerSelect = function rebuildLecturerSelect(sel, selectedCode) {
     if (!sel) return;
-    const current = sel.value;
+    const current = selectedCode || sel.value;
     sel.innerHTML = '<option value="">選擇講師</option>';
-    state.lecturers.forEach(l => {
+    state.lecturers.filter(l => parseInt(l.is_active, 10) !== 0 || l.code === current).forEach(l => {
       const opt = document.createElement('option');
       opt.value = l.code;
-      opt.textContent = util.lecturerLabel(l);
+      opt.textContent = util.lecturerLabel(l) + (parseInt(l.is_active, 10) === 0 ? '（已停用）' : '');
       sel.appendChild(opt);
     });
     if (current) sel.value = current;
@@ -264,12 +264,20 @@ ns.renderCourses = function renderCourses(list){
 
         <div class="tpma-reg-detail-actions">
           <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-edit-course-${c.id}">編輯課程</button>
+          <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-merge-course-${c.id}">合併課程</button>
+          <button class="tpma-btn tpma-btn-danger" id="tpma-btn-remove-course-${c.id}">移除課程</button>
         </div>
       </div>
     `;
 
     const editBtn = div.querySelector(`#tpma-btn-edit-course-${c.id}`);
     if (editBtn) editBtn.onclick = () => ns.renderCourseEdit(div);
+
+    const mergeBtn = div.querySelector(`#tpma-btn-merge-course-${c.id}`);
+    if (mergeBtn) mergeBtn.onclick = () => ns.openMergeCourseModal(c.id);
+
+    const removeBtn = div.querySelector(`#tpma-btn-remove-course-${c.id}`);
+    if (removeBtn) removeBtn.onclick = () => ns.removeCourse(c.id);
 
     const toggleBtn = div.querySelector('.tpma-toggle-dates');
     if (toggleBtn) toggleBtn.onclick = () => ns.renderCourseView(div, !showAllDates);
@@ -366,6 +374,7 @@ ns.renderCourses = function renderCourses(list){
             <div class="flex items-center gap-2">
               <select data-field="lecturer_code" class="flex-grow"></select>
               <button type="button" class="tpma-btn tpma-add-lecturer">新增講師</button>
+              <button type="button" class="tpma-btn tpma-btn-danger tpma-remove-lecturer">移除講師</button>
             </div>
           </div>
           <div class="tpma-detail-field">
@@ -426,7 +435,7 @@ ns.renderCourses = function renderCourses(list){
     // 2) 反填講師 + 綁新增講師 modal
     const lecSel = div.querySelector('[data-field="lecturer_code"]');
     if (lecSel) {
-      ns.rebuildLecturerSelect(lecSel);
+      ns.rebuildLecturerSelect(lecSel, c.lecturer_code || '');
       if (c.lecturer_code) lecSel.value = c.lecturer_code;
     }
 
@@ -458,6 +467,11 @@ ns.renderCourses = function renderCourses(list){
     const addLectBtn = div.querySelector('.tpma-add-lecturer');
     if (addLectBtn && lecSel) {
       addLectBtn.onclick = () => ns.openLecturerModal(lecSel);
+    }
+
+    const removeLectBtn = div.querySelector('.tpma-remove-lecturer');
+    if (removeLectBtn && lecSel) {
+      removeLectBtn.onclick = () => ns.removeSelectedLecturer(lecSel);
     }
 
     // 6) 儲存事件

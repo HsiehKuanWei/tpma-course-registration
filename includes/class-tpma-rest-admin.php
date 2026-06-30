@@ -35,6 +35,24 @@ class TPMA_CR_REST_Admin
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
+        register_rest_route($ns, '/admin/course/remove', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_remove_course'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
+        register_rest_route($ns, '/admin/course/restore', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_restore_course'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
+        register_rest_route($ns, '/admin/course/merge', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_merge_course'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
         // 講師
         register_rest_route($ns, '/admin/lecturers', array(
             'methods'  => 'GET',
@@ -45,6 +63,18 @@ class TPMA_CR_REST_Admin
         register_rest_route($ns, '/admin/lecturer/save', array(
             'methods'  => 'POST',
             'callback' => array(__CLASS__, 'admin_save_lecturer'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
+        register_rest_route($ns, '/admin/lecturer/remove', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_remove_lecturer'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
+        register_rest_route($ns, '/admin/lecturer/restore', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_restore_lecturer'),
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
@@ -443,7 +473,8 @@ public static function admin_update_reg($request)
                 {$schema['code']} AS code,
                 {$schema['name']} AS name,
                 {$schema['title']} AS title,
-                {$sort_select}
+                {$sort_select},
+                is_active
             FROM {$lecturers_table}
             ORDER BY {$sort_order_by}{$schema['name']} ASC
         ", ARRAY_A);
@@ -558,7 +589,8 @@ public static function admin_update_reg($request)
                     {$schema['name']} AS name,
                     {$schema['title']} AS title,
                     " . ($schema['sort_order'] !== '' ? "{$schema['sort_order']} AS sort_order" : "0 AS sort_order") . ",
-                    wp_user_id
+                    wp_user_id,
+                    is_active
                  FROM {$lecturers_table}
                  WHERE id = %d",
                 $id
@@ -570,6 +602,58 @@ public static function admin_update_reg($request)
             'success'  => true,
             'lecturer' => $lect,
         ));
+    }
+
+    public static function admin_remove_lecturer($request)
+    {
+        global $wpdb;
+
+        $lecturers_table = TPMA_CR_DB::table('lecturers');
+        $p = $request->get_json_params();
+        $id = intval($p['id'] ?? 0);
+        if ($id <= 0) {
+            return new WP_Error('invalid', '缺少講師 id', array('status' => 400));
+        }
+
+        $exists = (int) $wpdb->get_var(
+            $wpdb->prepare("SELECT COUNT(1) FROM {$lecturers_table} WHERE id = %d", $id)
+        );
+        if (!$exists) {
+            return new WP_Error('not_found', '找不到講師', array('status' => 404));
+        }
+
+        $ok = $wpdb->update($lecturers_table, array('is_active' => 0), array('id' => $id), array('%d'), array('%d'));
+        if ($ok === false) {
+            return new WP_Error('db_error', '無法停用講師', array('status' => 500));
+        }
+
+        return rest_ensure_response(array('success' => true, 'id' => $id));
+    }
+
+    public static function admin_restore_lecturer($request)
+    {
+        global $wpdb;
+
+        $lecturers_table = TPMA_CR_DB::table('lecturers');
+        $p = $request->get_json_params();
+        $id = intval($p['id'] ?? 0);
+        if ($id <= 0) {
+            return new WP_Error('invalid', '缺少講師 id', array('status' => 400));
+        }
+
+        $exists = (int) $wpdb->get_var(
+            $wpdb->prepare("SELECT COUNT(1) FROM {$lecturers_table} WHERE id = %d", $id)
+        );
+        if (!$exists) {
+            return new WP_Error('not_found', '找不到講師', array('status' => 404));
+        }
+
+        $ok = $wpdb->update($lecturers_table, array('is_active' => 1), array('id' => $id), array('%d'), array('%d'));
+        if ($ok === false) {
+            return new WP_Error('db_error', '無法恢復講師', array('status' => 500));
+        }
+
+        return rest_ensure_response(array('success' => true, 'id' => $id));
     }
 
 
@@ -822,6 +906,255 @@ public static function admin_update_reg($request)
             'tutor_course_id'  => class_exists('TPMA_Tutor_Bridge')
                 ? TPMA_Tutor_Bridge::get_tutor_course_id($course_id)
                 : 0,
+        ));
+    }
+
+    public static function admin_remove_course($request)
+    {
+        global $wpdb;
+
+        $courses_table = TPMA_CR_DB::table('courses');
+        $p = $request->get_json_params();
+        $id = intval($p['id'] ?? 0);
+        if ($id <= 0) {
+            return new WP_Error('invalid', '缺少課程 id', array('status' => 400));
+        }
+
+        $exists = (int) $wpdb->get_var(
+            $wpdb->prepare("SELECT COUNT(1) FROM {$courses_table} WHERE id = %d", $id)
+        );
+        if (!$exists) {
+            return new WP_Error('not_found', '找不到課程', array('status' => 404));
+        }
+
+        $ok = $wpdb->update(
+            $courses_table,
+            array('is_active' => 0, 'updated_at' => current_time('mysql')),
+            array('id' => $id),
+            array('%d', '%s'),
+            array('%d')
+        );
+        if ($ok === false) {
+            return new WP_Error('db_error', '無法移除課程', array('status' => 500));
+        }
+
+        return rest_ensure_response(array('success' => true, 'id' => $id));
+    }
+
+    public static function admin_restore_course($request)
+    {
+        global $wpdb;
+
+        $courses_table = TPMA_CR_DB::table('courses');
+        $p = $request->get_json_params();
+        $id = intval($p['id'] ?? 0);
+        if ($id <= 0) {
+            return new WP_Error('invalid', '缺少課程 id', array('status' => 400));
+        }
+
+        $exists = (int) $wpdb->get_var(
+            $wpdb->prepare("SELECT COUNT(1) FROM {$courses_table} WHERE id = %d", $id)
+        );
+        if (!$exists) {
+            return new WP_Error('not_found', '找不到課程', array('status' => 404));
+        }
+
+        $ok = $wpdb->update(
+            $courses_table,
+            array('is_active' => 1, 'updated_at' => current_time('mysql')),
+            array('id' => $id),
+            array('%d', '%s'),
+            array('%d')
+        );
+        if ($ok === false) {
+            return new WP_Error('db_error', '無法恢復課程', array('status' => 500));
+        }
+
+        if (class_exists('TPMA_Tutor_Bridge')) {
+            TPMA_Tutor_Bridge::sync_course($id);
+        }
+
+        return rest_ensure_response(array('success' => true, 'id' => $id));
+    }
+
+    public static function admin_merge_course($request)
+    {
+        global $wpdb;
+
+        $courses_table  = TPMA_CR_DB::table('courses');
+        $sessions_table = TPMA_CR_DB::table('sessions');
+        $regs_table     = TPMA_CR_DB::table('regs');
+
+        $p = $request->get_json_params();
+        $source_id = intval($p['source_id'] ?? 0);
+        $target_id = intval($p['target_id'] ?? 0);
+
+        if ($source_id <= 0 || $target_id <= 0 || $source_id === $target_id) {
+            return new WP_Error('invalid', '來源課程與目標課程必須不同', array('status' => 400));
+        }
+
+        $source = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $source_id),
+            ARRAY_A
+        );
+        $target = $wpdb->get_row(
+            $wpdb->prepare("SELECT * FROM {$courses_table} WHERE id = %d", $target_id),
+            ARRAY_A
+        );
+        if (!$source || !$target) {
+            return new WP_Error('not_found', '找不到來源或目標課程', array('status' => 404));
+        }
+
+        $source_tutor_id = (int)($source['tutor_course_id'] ?? 0);
+        $target_tutor_id = class_exists('TPMA_Tutor_Bridge')
+            ? (int) TPMA_Tutor_Bridge::sync_course($target_id)
+            : 0;
+
+        $moved_sessions = 0;
+        $moved_regs = 0;
+        $updated_orders = 0;
+        $reenrolled = 0;
+
+        $source_sessions = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT session_datetime, is_active, visibility_override
+                 FROM {$sessions_table}
+                 WHERE course_id = %d
+                 ORDER BY session_datetime ASC",
+                $source_id
+            ),
+            ARRAY_A
+        );
+
+        $order_ids = $wpdb->get_col(
+            $wpdb->prepare(
+                "SELECT DISTINCT woocommerce_order_id
+                 FROM {$regs_table}
+                 WHERE course_id = %d AND woocommerce_order_id IS NOT NULL AND woocommerce_order_id > 0",
+                $source_id
+            )
+        );
+
+        $regs_for_tutor = $target_tutor_id ? $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT id, wp_user_id, class_date
+                 FROM {$regs_table}
+                 WHERE course_id = %d",
+                $source_id
+            ),
+            ARRAY_A
+        ) : array();
+
+        $wpdb->query('START TRANSACTION');
+        try {
+            foreach ((array)$source_sessions as $session) {
+                $exists = (int) $wpdb->get_var(
+                    $wpdb->prepare(
+                        "SELECT COUNT(1)
+                         FROM {$sessions_table}
+                         WHERE course_id = %d AND session_datetime = %s",
+                        $target_id,
+                        $session['session_datetime']
+                    )
+                );
+                if ($exists) {
+                    continue;
+                }
+
+                $inserted = $wpdb->insert(
+                    $sessions_table,
+                    array(
+                        'course_id'            => $target_id,
+                        'session_datetime'     => $session['session_datetime'],
+                        'is_active'            => isset($session['is_active']) ? (int)$session['is_active'] : 1,
+                        'visibility_override'  => sanitize_key($session['visibility_override'] ?? ''),
+                        'created_at'           => current_time('mysql'),
+                    ),
+                    array('%d', '%s', '%d', '%s', '%s')
+                );
+                if ($inserted === false) {
+                    throw new RuntimeException('無法搬移來源課程場次');
+                }
+                $moved_sessions++;
+            }
+
+            $updated_regs = $wpdb->query(
+                $wpdb->prepare(
+                    "UPDATE {$regs_table}
+                     SET course_id = %d
+                     WHERE course_id = %d",
+                    $target_id,
+                    $source_id
+                )
+            );
+            if ($updated_regs === false) {
+                throw new RuntimeException('無法搬移報名資料');
+            }
+            $moved_regs = (int) $updated_regs;
+
+            $deleted_sessions = $wpdb->delete($sessions_table, array('course_id' => $source_id), array('%d'));
+            if ($deleted_sessions === false) {
+                throw new RuntimeException('無法刪除來源課程場次');
+            }
+
+            $deleted_course = $wpdb->delete($courses_table, array('id' => $source_id), array('%d'));
+            if ($deleted_course === false || (int)$deleted_course !== 1) {
+                throw new RuntimeException('無法刪除來源課程');
+            }
+
+            $wpdb->query('COMMIT');
+        } catch (Throwable $e) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('merge_failed', $e->getMessage(), array('status' => 500));
+        }
+
+        foreach ((array)$order_ids as $order_id) {
+            $order_id = (int)$order_id;
+            if ($order_id <= 0 || !function_exists('wc_get_order')) {
+                continue;
+            }
+            $order = wc_get_order($order_id);
+            if (!$order) {
+                continue;
+            }
+            if ((int)$order->get_meta('_tpma_course_id', true) === $source_id) {
+                $order->update_meta_data('_tpma_course_id', $target_id);
+                $order->save();
+                $updated_orders++;
+            }
+        }
+
+        if ($target_tutor_id && class_exists('TPMA_Tutor_Bridge')) {
+            foreach ((array)$regs_for_tutor as $reg) {
+                $reg_id = (int)($reg['id'] ?? 0);
+                $wp_user_id = (int)($reg['wp_user_id'] ?? 0);
+                if ($reg_id <= 0 || $wp_user_id <= 0) {
+                    continue;
+                }
+                TPMA_Tutor_Bridge::enroll_learner($wp_user_id, $target_tutor_id, $reg_id);
+                TPMA_Tutor_Bridge::generate_all_tokens_for_registration(
+                    $reg_id,
+                    $wp_user_id,
+                    $target_tutor_id,
+                    (string)($reg['class_date'] ?? '')
+                );
+                $reenrolled++;
+            }
+        }
+
+        if ($source_tutor_id > 0 && $source_tutor_id !== $target_tutor_id && function_exists('wp_trash_post')) {
+            wp_trash_post($source_tutor_id);
+        }
+
+        return rest_ensure_response(array(
+            'success'        => true,
+            'source_id'      => $source_id,
+            'target_id'      => $target_id,
+            'moved_sessions' => $moved_sessions,
+            'moved_regs'     => $moved_regs,
+            'updated_orders' => $updated_orders,
+            'reenrolled'     => $reenrolled,
+            'trashed_tutor_course_id' => $source_tutor_id,
         ));
     }
 

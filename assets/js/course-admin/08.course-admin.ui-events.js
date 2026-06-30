@@ -142,7 +142,12 @@
       const sortKey = btn.getAttribute('data-sort');
       if (sortKey) {
         const [field, dir] = sortKey.split('-');
-        state.sort.field = field || '';
+        const fieldMap = {
+          lecturer: 'lecturer_code',
+          category: 'category_code'
+        };
+        state.sort = state.sort || { field: '', dir: 'asc' };
+        state.sort.field = fieldMap[field] || field || '';
         state.sort.dir = dir || 'asc';
         ns.applyFilters();
         return;
@@ -225,7 +230,8 @@
     };
 
     (header.menuButtons || []).forEach(btn => {
-      const key = btn.getAttribute('data-menu-toggle');
+      const target = btn.getAttribute('data-menu-target') || '';
+      const key = btn.getAttribute('data-menu-toggle') || target.replace(/^menu-/, '');
       const cfg = map[key];
       if (!cfg) return;
       const hasFilter = !!(cfg.filterEl && cfg.filterEl.value);
@@ -233,6 +239,141 @@
       if (hasFilter || hasSort) btn.classList.add('tpma-filter-active');
       else btn.classList.remove('tpma-filter-active');
     });
+  };
+
+  ns.removeCourse = async function removeCourse(courseId) {
+    const id = parseInt(courseId, 10);
+    if (!id) return;
+    const course = state.allCourses.find(c => String(c.id) === String(id));
+    const name = course ? (course.course_name || course.course_code || id) : id;
+    if (!w.confirm(`確定要移除課程「${name}」？此操作會將課程設為停用，不會刪除報名或場次。`)) return;
+
+    try {
+      await ns.apiRemoveCourse(id);
+      await ns.fetchAll();
+      ns.buildLecturerFilter();
+      ns.applyFilters();
+      w.alert('已移除課程');
+    } catch (e) {
+      w.alert(e.message || '移除課程失敗');
+    }
+  };
+
+  ns.removeSelectedLecturer = async function removeSelectedLecturer(selectEl) {
+    if (!selectEl || !selectEl.value) {
+      w.alert('請先選擇要移除的講師');
+      return;
+    }
+    const lecturer = state.lecturers.find(l => l.code === selectEl.value);
+    if (!lecturer) {
+      w.alert('找不到講師資料');
+      return;
+    }
+    const label = ns.util.lecturerLabel(lecturer) || lecturer.code;
+    if (!w.confirm(`確定要移除講師「${label}」？既有課程仍會保留此講師文字，但新增/編輯下拉將不再顯示。`)) return;
+
+    try {
+      await ns.apiRemoveLecturer(lecturer.id);
+      selectEl.value = '';
+      await ns.fetchAll();
+      ns.buildLecturerFilter();
+      ns.rebuildLecturerSelect(selectEl);
+      ns.applyFilters();
+      w.alert('已移除講師');
+    } catch (e) {
+      w.alert(e.message || '移除講師失敗');
+    }
+  };
+
+  ns.openMergeCourseModal = function openMergeCourseModal(sourceId) {
+    const source = state.allCourses.find(c => String(c.id) === String(sourceId));
+    if (!source) {
+      w.alert('找不到來源課程');
+      return;
+    }
+
+    let backdrop = document.getElementById('tpma-course-merge-backdrop');
+    if (!backdrop) {
+      backdrop = document.createElement('div');
+      backdrop.id = 'tpma-course-merge-backdrop';
+      backdrop.className = 'tpma-modal-backdrop';
+      backdrop.innerHTML = `
+        <div id="tpma-course-merge-modal" class="tpma-modal">
+          <div class="tpma-modal-header">
+            <h3>合併課程</h3>
+            <button type="button" class="tpma-modal-close-btn" data-merge-close>×</button>
+          </div>
+          <div class="tpma-modal-content">
+            <label>來源課程</label>
+            <input type="text" id="tpma-merge-source-label" readonly>
+            <label>目標課程</label>
+            <select id="tpma-merge-target"></select>
+            <div class="tpma-error" id="tpma-merge-error" style="display:none;"></div>
+          </div>
+          <div class="tpma-modal-footer">
+            <button type="button" class="tpma-btn secondary" data-merge-close>取消</button>
+            <button type="button" class="tpma-btn" id="tpma-merge-confirm">合併課程</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(backdrop);
+      backdrop.addEventListener('click', e => {
+        if (e.target === backdrop || e.target.hasAttribute('data-merge-close')) {
+          backdrop.classList.remove('open');
+          backdrop.querySelector('#tpma-course-merge-modal')?.classList.remove('open');
+        }
+      });
+    }
+
+    const modal = backdrop.querySelector('#tpma-course-merge-modal');
+    const sourceLabel = backdrop.querySelector('#tpma-merge-source-label');
+    const targetSel = backdrop.querySelector('#tpma-merge-target');
+    const errorEl = backdrop.querySelector('#tpma-merge-error');
+    const confirmBtn = backdrop.querySelector('#tpma-merge-confirm');
+
+    sourceLabel.value = `${source.course_code || source.id} ${source.course_name || ''}`.trim();
+    targetSel.innerHTML = '<option value="">選擇目標課程</option>';
+    state.allCourses
+      .filter(c => String(c.id) !== String(sourceId) && parseInt(c.is_active, 10) !== 0)
+      .forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = `${c.course_code || c.id} ${c.course_name || ''}`.trim();
+        targetSel.appendChild(opt);
+      });
+    errorEl.style.display = 'none';
+    errorEl.textContent = '';
+
+    confirmBtn.onclick = async () => {
+      const targetId = parseInt(targetSel.value, 10);
+      if (!targetId) {
+        errorEl.textContent = '請選擇目標課程';
+        errorEl.style.display = 'block';
+        return;
+      }
+      const target = state.allCourses.find(c => String(c.id) === String(targetId));
+      const targetName = target ? (target.course_name || target.course_code || targetId) : targetId;
+      if (!w.confirm(`確定將「${source.course_name || source.id}」合併到「${targetName}」？來源課程會刪除，報名與不重複場次會移到目標課程。`)) return;
+
+      confirmBtn.disabled = true;
+      try {
+        const json = await ns.apiMergeCourse(sourceId, targetId);
+        await ns.fetchAll();
+        ns.buildLecturerFilter();
+        ns.applyFilters();
+        backdrop.classList.remove('open');
+        modal.classList.remove('open');
+        w.alert(`已合併課程，搬移報名 ${json.moved_regs || 0} 筆，場次 ${json.moved_sessions || 0} 筆`);
+      } catch (e) {
+        errorEl.textContent = e.message || '合併課程失敗';
+        errorEl.style.display = 'block';
+      } finally {
+        confirmBtn.disabled = false;
+      }
+    };
+
+    backdrop.classList.add('open');
+    modal.classList.add('open');
   };
 
 })(window);

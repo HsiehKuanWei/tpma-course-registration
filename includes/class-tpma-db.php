@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
-    const SCHEMA_VERSION = '1.5.1';
+    const SCHEMA_VERSION = '1.5.2';
 
     private static $table_columns_cache = array();
 
@@ -157,6 +157,11 @@ class TPMA_CR_DB
         $col = $wpdb->get_results("SHOW COLUMNS FROM {$lecturers_table} LIKE 'wp_user_id'");
         if (empty($col)) {
             $wpdb->query("ALTER TABLE {$lecturers_table} ADD COLUMN wp_user_id BIGINT UNSIGNED DEFAULT NULL");
+        }
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$lecturers_table} LIKE 'is_active'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$lecturers_table} ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1");
+            self::$table_columns_cache[$lecturers_table][] = 'is_active';
         }
         $lecturer_cols = self::get_table_columns('lecturers');
         if (!in_array('lecturers_sort_order', $lecturer_cols, true) && !in_array('sort_order', $lecturer_cols, true)) {

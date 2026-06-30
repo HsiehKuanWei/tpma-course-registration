@@ -56,6 +56,41 @@
     return { res: { ok: true }, json }; // 模擬 res.ok 以符合原有的 { res, json } 回傳格式
   };
 
+  ns.apiRemoveCourse = async function apiRemoveCourse(id) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/course/remove', {
+      method: 'POST',
+      body: JSON.stringify({ id: id })
+    }, state.nonce);
+  };
+
+  ns.apiRestoreCourse = async function apiRestoreCourse(id) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/course/restore', {
+      method: 'POST',
+      body: JSON.stringify({ id: id })
+    }, state.nonce);
+  };
+
+  ns.apiMergeCourse = async function apiMergeCourse(sourceId, targetId) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/course/merge', {
+      method: 'POST',
+      body: JSON.stringify({ source_id: sourceId, target_id: targetId })
+    }, state.nonce);
+  };
+
+  ns.apiRemoveLecturer = async function apiRemoveLecturer(id) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/lecturer/remove', {
+      method: 'POST',
+      body: JSON.stringify({ id: id })
+    }, state.nonce);
+  };
+
+  ns.apiRestoreLecturer = async function apiRestoreLecturer(id) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/lecturer/restore', {
+      method: 'POST',
+      body: JSON.stringify({ id: id })
+    }, state.nonce);
+  };
+
   /**
    * 重新載入講師 + 課程
    * - 會更新 state.lecturers / state.allCourses

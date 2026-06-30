@@ -70,6 +70,34 @@
       return;
     }
 
+    const inactiveSameName = state.lecturers.find(l => {
+      return parseInt(l.is_active, 10) === 0 && String(l.name || '').trim() === name;
+    });
+    if (inactiveSameName) {
+      const ok = w.confirm(`已有停用講師「${name}」，是否恢復此講師？`);
+      if (!ok) {
+        m.error.textContent = '已取消新增講師';
+        m.error.style.display = 'block';
+        return;
+      }
+      try {
+        await ns.apiRestoreLecturer(inactiveSameName.id);
+        await ns.fetchAll();
+        ns.buildLecturerFilter();
+        if (state.currentLecturerTargetSelect) {
+          ns.rebuildLecturerSelect(state.currentLecturerTargetSelect, inactiveSameName.code);
+          state.currentLecturerTargetSelect.value = inactiveSameName.code;
+        }
+        ns.applyFilters();
+        ns.closeLecturerModal();
+        w.alert('已恢復講師');
+      } catch (e) {
+        m.error.textContent = e.message || '恢復講師失敗';
+        m.error.style.display = 'block';
+      }
+      return;
+    }
+
     let sortVal = null;
     if (sortStr !== '') {
       sortVal = parseInt(sortStr, 10);
@@ -128,7 +156,7 @@
 
         // 若有目標 select（課程編輯中），重建並回填
         if (state.currentLecturerTargetSelect) {
-          ns.rebuildLecturerSelect(state.currentLecturerTargetSelect);
+          ns.rebuildLecturerSelect(state.currentLecturerTargetSelect, json.lecturer.code);
           state.currentLecturerTargetSelect.value = json.lecturer.code;
         }
 

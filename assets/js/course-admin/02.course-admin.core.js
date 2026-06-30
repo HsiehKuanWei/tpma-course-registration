@@ -15,7 +15,7 @@
   /**
    * 共享狀態：其他模組都從這裡讀寫
    */
-  const state = ns.state = ns.state || {
+  const state = ns.state = Object.assign({
     apiBase: '',
     nonce: '',
     formUrl: '',
@@ -23,7 +23,10 @@
     lecturers: [],
     currentLecturerTargetSelect: null,
     sort: { field: '', dir: 'asc' }
-  };
+  }, ns.state || {});
+  if (!state.sort || typeof state.sort !== 'object') state.sort = { field: '', dir: 'asc' };
+  if (!Array.isArray(state.allCourses)) state.allCourses = [];
+  if (!Array.isArray(state.lecturers)) state.lecturers = [];
 
   /**
    * DOM 快取：cacheDom() 後把常用節點放這裡

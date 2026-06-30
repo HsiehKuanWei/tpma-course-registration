@@ -63,6 +63,32 @@
       return;
     }
 
+    if (!id) {
+      const inactiveSameCourse = state.allCourses.find(c => {
+        return parseInt(c.is_active, 10) === 0
+          && String(c.course_name || '').trim() === course_name
+          && String(c.lecturer_code || '') === String(lecturer_code || '');
+      });
+      if (inactiveSameCourse) {
+        const lecturerText = util.lecturerLabelByCode(lecturer_code) || lecturer_code;
+        const ok = w.confirm(`已有停用課程「${course_name}」（講師：${lecturerText}），是否恢復此課程？`);
+        if (!ok) return;
+        try {
+          await ns.apiRestoreCourse(inactiveSameCourse.id);
+          await ns.fetchAll();
+          ns.buildLecturerFilter();
+          ns.applyFilters();
+          w.alert('已恢復課程');
+        } catch (e) {
+          if (saveError) {
+            saveError.textContent = e.message || '恢復課程失敗';
+            saveError.style.display = 'block';
+          }
+        }
+        return;
+      }
+    }
+
     // 收集場次
     const sessions = [];
     div.querySelectorAll('.tpma-session-row').forEach(row => {
