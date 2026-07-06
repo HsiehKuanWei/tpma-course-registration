@@ -459,6 +459,7 @@ class TPMA_CR_Woo_Shared
                     'reg_no'               => $candidate,
                     'created_at'           => current_time('mysql'),
                     'course_id'            => $course_id,
+                    'session_id'           => $session_id,
                     'class_date'           => $class_date,
 
                     'student_name'         => sanitize_text_field($learner['student_name'] ?? ''),

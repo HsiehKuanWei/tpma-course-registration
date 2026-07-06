@@ -127,6 +127,9 @@ R.isClassCompleted = function isClassCompleted(ctx, row){
 
 R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
   const icons = [];
+  if (!row.session_id) {
+    icons.push('<span class="tpma-status-pill tpma-status-pill-g1-pending" title="此舊報名尚未綁定場次">待指定場次</span>');
+  }
   const pCode = row.payment_status || '';
   const pLabel = L.paymentStatusLabel(pCode);
   const hideStatusByPayment = (
@@ -256,6 +259,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField('電話', row.phone);
   appendField('收件人', row.receiver);
   appendField('報名時間', U.trimToMinute(row.created_at));
+  appendField('場次關聯', row.session_id ? ('#' + row.session_id) : '待指定場次');
   appendField('報名狀態', L.statusLabel(row.status));
   appendField('付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
   appendField('收據方式 / 狀態', [L.receiptTypeLabel(row.receipt_type), L.receiptStatusLabel(row.receipt_status)].filter(Boolean).join(' / '));
@@ -361,11 +365,12 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
         const sessionValue = String(s.session_datetime);
         const opt = document.createElement('option');
         opt.value = sessionValue;
+        opt.dataset.sessionId = s.id || '';
 
         const label = durationMinutes ? U.formatSessionDisplay(sessionValue, durationMinutes) : sessionValue;
         opt.textContent = label;
 
-        if (sessionValue === compareValue || sessionValue.substring(0,16) === compareValue.substring(0,16)) opt.selected = true;
+        if ((row.session_id && String(s.id) === String(row.session_id)) || sessionValue === compareValue || sessionValue.substring(0,16) === compareValue.substring(0,16)) opt.selected = true;
 
         dateSel.appendChild(opt);
         has=true;
@@ -605,6 +610,10 @@ R.saveDetail = async function saveDetail(ctx, container, id){
     if (f === 'remit_amount' && v !== '') v = String(parseInt(v.replace(/,/g,''), 10) || 0);
     payload[f] = v;
   });
+  const sessionSelect = container.querySelector('[data-field="class_date"]');
+  if (sessionSelect && sessionSelect.selectedOptions && sessionSelect.selectedOptions[0]) {
+    payload.session_id = parseInt(sessionSelect.selectedOptions[0].dataset.sessionId || '0', 10) || 0;
+  }
   if (!payload.id) { alert('找不到這筆資料的 ID'); return; }
 
   try{

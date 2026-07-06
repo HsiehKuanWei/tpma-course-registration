@@ -193,6 +193,10 @@ ns.renderCourses = function renderCourses(list){
           + sessionLabelHtml
           + (s.is_active ? '' : '（已停用）')
           + `<span class="tpma-session-override-badge${visibilityClass}">${util.esc(visibilityLabel)}</span>`
+          + `<span class="tpma-session-tutor-status">${s.tutor_meet_post_id ? 'Meet 已連結' : 'Meet 未建立'}</span>`
+          + (s.recording_available_from && s.recording_available_until
+            ? `<span class="tpma-session-recording-status">錄播：${util.esc(s.recording_available_from)} ～ ${util.esc(s.recording_available_until)}</span>`
+            : '')
           + '</li>';
       });
       sessionsHtml += '</ul>';
@@ -304,13 +308,31 @@ ns.renderCourses = function renderCourses(list){
     }
     const row = document.createElement('div');
     row.className = 'tpma-session-row';
+    row.dataset.sessionId = session.id || '';
+    row.dataset.isActive = parseInt(session.is_active, 10) === 0 ? '0' : '1';
+    row.dataset.meetLinked = session.tutor_meet_post_id ? '1' : '0';
+    const recordingFrom = (session.recording_available_from || '').replace(' ', 'T').slice(0, 16);
+    const recordingUntil = (session.recording_available_until || '').replace(' ', 'T').slice(0, 16);
     row.innerHTML = `
       <input type="datetime-local" value="${val}">
+      ${row.dataset.isActive === '0' ? '<span class="tpma-session-inactive-label">已停用場次</span>' : ''}
       <select class="tpma-session-visibility">
         <option value="" ${visibility === '' ? 'selected' : ''}>自動判斷</option>
         <option value="force_show" ${visibility === 'force_show' ? 'selected' : ''}>強制顯示</option>
         <option value="force_hide" ${visibility === 'force_hide' ? 'selected' : ''}>強制隱藏</option>
       </select>
+      <label class="tpma-session-recording-field">錄播開始
+        <input type="datetime-local" class="tpma-recording-from" value="${util.esc(recordingFrom)}">
+      </label>
+      <label class="tpma-session-recording-field">錄播截止
+        <input type="datetime-local" class="tpma-recording-until" value="${util.esc(recordingUntil)}">
+      </label>
+      <div class="tpma-session-tutor-actions" data-session-id="${util.esc(session.id || '')}">
+        <span class="tpma-session-tutor-status">${session.tutor_meet_post_id ? 'Meet 已連結' : 'Meet 未建立'}</span>
+        <button type="button" class="tpma-btn tpma-session-prepare" ${session.id ? '' : 'disabled'}>準備場次內容</button>
+        <button type="button" class="tpma-btn tpma-session-meet" ${session.id ? '' : 'disabled'} ${session.tutor_meet_post_id ? 'hidden' : ''}>建立／連結 Meet</button>
+        <a class="tpma-btn tpma-session-tutor-edit${session.tutor_topic_edit_url ? '' : ' is-disabled'}" href="${util.esc(session.tutor_topic_edit_url || '#')}" target="_blank" rel="noopener noreferrer">Tutor 場次內容</a>
+      </div>
       <a href="#" class="tpma-session-reg-link" target="_blank" rel="noopener noreferrer">開啟報名表</a>
       <button type="button" class="tpma-btn tpma-session-remove">移除</button>
     `;
@@ -329,6 +351,57 @@ ns.renderCourses = function renderCourses(list){
       }
     };
     updateRegLink();
+    const prepareBtn = row.querySelector('.tpma-session-prepare');
+    const meetBtn = row.querySelector('.tpma-session-meet');
+    const tutorLink = row.querySelector('.tpma-session-tutor-edit');
+    const tutorStatus = row.querySelector('.tpma-session-tutor-status');
+    if (prepareBtn && session.id) {
+      prepareBtn.onclick = async () => {
+        prepareBtn.disabled = true;
+        try {
+          const result = await ns.apiPrepareTutorSession(session.id);
+          if (tutorLink && result.edit_url) {
+            tutorLink.href = result.edit_url;
+            tutorLink.classList.remove('is-disabled');
+          }
+          if (tutorStatus && row.dataset.meetLinked !== '1') tutorStatus.textContent = 'Tutor 場次內容已準備';
+        } catch (e) {
+          w.alert(e.message || '無法準備 Tutor 場次內容');
+        } finally {
+          prepareBtn.disabled = false;
+        }
+      };
+    }
+    if (meetBtn && session.id) {
+      meetBtn.onclick = async () => {
+        meetBtn.disabled = true;
+        try {
+          const cardDiv = container.closest('.tpma-course-item');
+          const courseId = cardDiv?.dataset?.id || '';
+          const status = await ns.apiGetTutorSessionStatus(courseId);
+          const current = (status.sessions || []).find(item => parseInt(item.id, 10) === parseInt(session.id, 10));
+          let meetId = 0;
+          if (current && Array.isArray(current.candidates) && current.candidates.length > 1) {
+            const choices = current.candidates.map(item => `${item.id}: ${item.title}`).join('\n');
+            meetId = parseInt(w.prompt(`找到多筆同時間 Meet，請輸入要連結的 ID：\n${choices}`, current.candidates[0].id), 10) || 0;
+            if (!meetId) return;
+          }
+          const result = await ns.apiCreateOrLinkMeet(session.id, meetId);
+          row.dataset.meetLinked = '1';
+          if (tutorStatus) tutorStatus.textContent = 'Meet 已連結';
+          meetBtn.hidden = true;
+          if (tutorLink && result.topic_edit_url) {
+            tutorLink.href = result.topic_edit_url;
+            tutorLink.classList.remove('is-disabled');
+          }
+          if (result.meet_url) w.alert('Meet 已建立／連結：' + result.meet_url);
+        } catch (e) {
+          w.alert(e.message || 'Meet 建立／連結失敗');
+        } finally {
+          meetBtn.disabled = false;
+        }
+      };
+    }
     row.querySelector('.tpma-session-remove').onclick = () => row.remove();
     container.appendChild(row);
   };
@@ -349,6 +422,7 @@ ns.renderCourses = function renderCourses(list){
     const c = div._data;
     const sessions = c._all_sessions || c.sessions || [];
     const isClosed = parseInt(c.is_active, 10) === 0;
+    const tutorOwnsContent = !!c.tutor_enabled;
 
     div.innerHTML = `
       <div class="tpma-reg-detail-container">
@@ -398,13 +472,19 @@ ns.renderCourses = function renderCourses(list){
         </div>
 
         <div class="tpma-reg-detail-section edit-mode" id="section-course-content">
+          ${tutorOwnsContent ? `
+            <div class="tpma-detail-field col-span-full tpma-tutor-content-notice">
+              <strong>內容由 Tutor LMS 管理。</strong>
+              ${c.tutor_content_sync_error ? `<p class="tpma-error">${util.esc(c.tutor_content_sync_error)}</p>` : ''}
+              ${c.tutor_edit_url ? `<a class="tpma-btn" href="${util.esc(c.tutor_edit_url)}" target="_blank" rel="noopener noreferrer">前往 Tutor 編輯課程內容</a>` : '<span>請先儲存課程建立 Tutor 課程。</span>'}
+            </div>` : ''}
           <div class="tpma-detail-field col-span-full">
             <label>課程簡介</label>
-            <textarea rows="3" data-field="intro">${util.esc(c.intro || '')}</textarea>
+            <textarea rows="3" data-field="intro" ${tutorOwnsContent ? 'readonly' : ''}>${util.esc(c.intro || '')}</textarea>
           </div>
           <div class="tpma-detail-field col-span-full">
             <label>課程大綱（Markdown）</label>
-            <textarea rows="5" data-field="outline">${util.esc(c.outline || '')}</textarea>
+            <textarea rows="5" data-field="outline" ${tutorOwnsContent ? 'readonly' : ''}>${util.esc(c.outline || '')}</textarea>
           </div>
         </div>
 

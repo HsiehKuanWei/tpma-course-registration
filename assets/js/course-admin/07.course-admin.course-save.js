@@ -94,11 +94,17 @@
     div.querySelectorAll('.tpma-session-row').forEach(row => {
       const input = row.querySelector('input[type="datetime-local"]');
       const visibilityEl = row.querySelector('.tpma-session-visibility');
+      const recordingFromEl = row.querySelector('.tpma-recording-from');
+      const recordingUntilEl = row.querySelector('.tpma-recording-until');
       const v = input ? input.value.trim() : '';
       if (v) {
         sessions.push({
+          id: parseInt(row.dataset.sessionId || '0', 10) || 0,
+          is_active: parseInt(row.dataset.isActive || '1', 10) === 0 ? 0 : 1,
           datetime: v,
-          visibility_override: visibilityEl ? visibilityEl.value : ''
+          visibility_override: visibilityEl ? visibilityEl.value : '',
+          recording_available_from: recordingFromEl ? recordingFromEl.value.trim() : '',
+          recording_available_until: recordingUntilEl ? recordingUntilEl.value.trim() : ''
         });
       }
     });

@@ -118,6 +118,11 @@ S.findSessionDatetimeForRow = function findSessionDatetimeForRow(ctx, row){
   const course = courses.find(function(c){ return String(c.id) === String(row.course_id); });
   if (!course || !Array.isArray(course.sessions) || !course.sessions.length) return null;
 
+  if (row.session_id) {
+    const linked = course.sessions.find(function(s){ return String(s.id) === String(row.session_id); });
+    if (linked && linked.session_datetime) return linked.session_datetime;
+  }
+
   const dateOnly = String(row.class_date).substring(0,10);
   const sameDay = course.sessions.find(function(s){
     return s.session_datetime && String(s.session_datetime).substring(0,10) === dateOnly;

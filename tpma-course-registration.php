@@ -6,7 +6,7 @@ Plugin Name: TPMA Course & Registration
 
 Description: 課程資料庫與報名資料庫，提供外部表單、前端管理介面與匯入工具。
 
-Version: 1.5.0
+Version: 1.8.1
 
 Author: TPMA
 
@@ -30,7 +30,7 @@ if (!defined('ABSPATH')) {
 
 if (!defined('TPMA_CR_VERSION')) {
 
-    define('TPMA_CR_VERSION', '1.5.0');
+    define('TPMA_CR_VERSION', '1.8.1');
 
 }
 
@@ -68,6 +68,7 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-woo-shared.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-admin-woo-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-thankyou-view.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-special-product.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-tutor-bridge.php';
 // WooCommerce 整合已移至獨立插件 tpma-woo-fields，這裡不再載入舊版：
 // require_once TPMA_CR_PATH . 'includes/class-tpma-woo-service.php';
 // require_once TPMA_CR_PATH . 'includes/class-tpma-woocommerce-integration.php';
@@ -121,6 +122,11 @@ add_action('init', function () {
 });
 
 add_action('tpma_daily_cleanup', array('TPMA_CR_DB', 'cleanup_old_sessions'));
+add_action('tpma_daily_cleanup', function () {
+    if (class_exists('TPMA_CR_DB')) {
+        TPMA_CR_DB::backfill_registration_session_ids(500);
+    }
+});
 
 
 
@@ -296,5 +302,6 @@ add_action('rest_api_init', function () {
 add_action('plugins_loaded', function(){
     if (class_exists('TPMA_CR_DB')) {
         TPMA_CR_DB::ensure_schema_current();
+        TPMA_CR_DB::backfill_registration_session_ids(100);
     }
 });

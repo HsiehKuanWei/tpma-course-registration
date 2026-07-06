@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
-    const SCHEMA_VERSION = '1.5.2';
+    const SCHEMA_VERSION = '1.6.0';
 
     private static $table_columns_cache = array();
 
@@ -151,6 +151,12 @@ class TPMA_CR_DB
         if (empty($col)) {
             $wpdb->query("ALTER TABLE {$regs_table} ADD COLUMN contact_emails TEXT DEFAULT NULL AFTER contact_email");
         }
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$regs_table} LIKE 'session_id'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$regs_table} ADD COLUMN session_id BIGINT UNSIGNED DEFAULT NULL AFTER course_id");
+            delete_option('tpma_cr_session_backfill_cursor');
+            delete_option('tpma_cr_session_backfill_complete');
+        }
 
         // ── lecturers: wp_user_id ────────────────────────────────
         $lecturers_table = self::table('lecturers');
@@ -175,6 +181,25 @@ class TPMA_CR_DB
         if (empty($col)) {
             $wpdb->query("ALTER TABLE {$sessions_table} ADD COLUMN visibility_override VARCHAR(20) NOT NULL DEFAULT ''");
         }
+        foreach (array(
+            'tutor_topic_id'           => 'BIGINT UNSIGNED DEFAULT NULL',
+            'tutor_meet_post_id'       => 'BIGINT UNSIGNED DEFAULT NULL',
+            'recording_available_from' => 'DATETIME DEFAULT NULL',
+            'recording_available_until'=> 'DATETIME DEFAULT NULL',
+        ) as $column => $definition) {
+            $col = $wpdb->get_results("SHOW COLUMNS FROM {$sessions_table} LIKE '{$column}'");
+            if (empty($col)) {
+                $wpdb->query("ALTER TABLE {$sessions_table} ADD COLUMN {$column} {$definition}");
+            }
+        }
+        $session_index = $wpdb->get_var("SHOW INDEX FROM {$sessions_table} WHERE Key_name = 'course_datetime_idx'");
+        if (!$session_index) {
+            $wpdb->query("ALTER TABLE {$sessions_table} ADD KEY course_datetime_idx (course_id, session_datetime)");
+        }
+        $reg_session_index = $wpdb->get_var("SHOW INDEX FROM {$regs_table} WHERE Key_name = 'session_id_idx'");
+        if (!$reg_session_index) {
+            $wpdb->query("ALTER TABLE {$regs_table} ADD KEY session_id_idx (session_id)");
+        }
 
         // ── magic_tokens table ───────────────────────────────────
         $tokens_table = self::table('magic_tokens');
@@ -194,6 +219,81 @@ class TPMA_CR_DB
                 KEY user_reg_idx (wp_user_id, registration_id)
             ) {$charset_collate};"
         );
+    }
+
+    /**
+     * Incrementally attach legacy registrations to stable session IDs.
+     * Woo order meta wins; course/date matching is used only when unique.
+     */
+    public static function backfill_registration_session_ids(int $limit = 100): array {
+        if ((bool) get_option('tpma_cr_session_backfill_complete', false)) {
+            return array('processed' => 0, 'updated' => 0, 'complete' => true);
+        }
+
+        global $wpdb;
+        $regs_table     = self::table('regs');
+        $sessions_table = self::table('sessions');
+        $cursor          = max(0, (int) get_option('tpma_cr_session_backfill_cursor', 0));
+        $limit           = max(1, min(500, $limit));
+        $rows = $wpdb->get_results(
+            $wpdb->prepare(
+                "SELECT id, course_id, class_date, woocommerce_order_id
+                 FROM {$regs_table}
+                 WHERE id > %d AND session_id IS NULL
+                 ORDER BY id ASC LIMIT %d",
+                $cursor,
+                $limit
+            ),
+            ARRAY_A
+        );
+
+        $updated = 0;
+        foreach ((array) $rows as $row) {
+            $reg_id    = (int) ($row['id'] ?? 0);
+            $course_id = (int) ($row['course_id'] ?? 0);
+            $session_id = 0;
+
+            $order_id = (int) ($row['woocommerce_order_id'] ?? 0);
+            if ($order_id > 0 && function_exists('wc_get_order')) {
+                $order = wc_get_order($order_id);
+                $candidate = $order ? (int) $order->get_meta('_tpma_session_id', true) : 0;
+                if ($candidate > 0) {
+                    $session_id = (int) $wpdb->get_var($wpdb->prepare(
+                        "SELECT id FROM {$sessions_table} WHERE id = %d AND course_id = %d",
+                        $candidate,
+                        $course_id
+                    ));
+                }
+            }
+
+            if ($session_id <= 0 && $course_id > 0 && !empty($row['class_date'])) {
+                $matches = $wpdb->get_col($wpdb->prepare(
+                    "SELECT id FROM {$sessions_table}
+                     WHERE course_id = %d AND DATE(session_datetime) = %s
+                     ORDER BY id ASC LIMIT 2",
+                    $course_id,
+                    (string) $row['class_date']
+                ));
+                if (count((array) $matches) === 1) {
+                    $session_id = (int) $matches[0];
+                }
+            }
+
+            if ($session_id > 0) {
+                $ok = $wpdb->update($regs_table, array('session_id' => $session_id), array('id' => $reg_id), array('%d'), array('%d'));
+                if ($ok !== false) {
+                    $updated++;
+                }
+            }
+            $cursor = max($cursor, $reg_id);
+        }
+
+        update_option('tpma_cr_session_backfill_cursor', $cursor, false);
+        $complete = count((array) $rows) < $limit;
+        if ($complete) {
+            update_option('tpma_cr_session_backfill_complete', 1, false);
+        }
+        return array('processed' => count((array) $rows), 'updated' => $updated, 'complete' => $complete);
     }
 
     public static function get_table_columns($key): array
@@ -323,6 +423,7 @@ $charset_collate = $wpdb->get_charset_collate();
 			reg_no VARCHAR(30) NOT NULL,
 			created_at DATETIME NOT NULL,
 			course_id BIGINT UNSIGNED NOT NULL,
+			session_id BIGINT UNSIGNED DEFAULT NULL,
 			class_date DATE DEFAULT NULL,
 			student_name VARCHAR(255) NOT NULL,
 			department VARCHAR(255) DEFAULT NULL,
@@ -351,7 +452,8 @@ $charset_collate = $wpdb->get_charset_collate();
 			is_virtual_user TINYINT(1) NOT NULL DEFAULT 0,
 			woocommerce_order_id BIGINT UNSIGNED DEFAULT NULL,
 			payment_status VARCHAR(50) DEFAULT NULL,
-			PRIMARY KEY (id)
+			PRIMARY KEY (id),
+			KEY session_id_idx (session_id)
 		) {$charset_collate};";
 
 
@@ -363,8 +465,13 @@ $charset_collate = $wpdb->get_charset_collate();
             session_datetime DATETIME NOT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             visibility_override VARCHAR(20) NOT NULL DEFAULT '',
+            tutor_topic_id BIGINT UNSIGNED DEFAULT NULL,
+            tutor_meet_post_id BIGINT UNSIGNED DEFAULT NULL,
+            recording_available_from DATETIME DEFAULT NULL,
+            recording_available_until DATETIME DEFAULT NULL,
             created_at DATETIME NOT NULL,
-            PRIMARY KEY (id)
+            PRIMARY KEY (id),
+            KEY course_datetime_idx (course_id, session_datetime)
         ) {$charset_collate};";
 
 

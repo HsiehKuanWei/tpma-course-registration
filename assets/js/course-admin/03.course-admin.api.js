@@ -77,6 +77,22 @@
     }, state.nonce);
   };
 
+  ns.apiGetTutorSessionStatus = async function apiGetTutorSessionStatus(courseId) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/tutor/session/status?course_id=' + encodeURIComponent(courseId), { method: 'GET' }, state.nonce);
+  };
+
+  ns.apiPrepareTutorSession = async function apiPrepareTutorSession(sessionId) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/tutor/session/prepare', {
+      method: 'POST', body: JSON.stringify({ session_id: sessionId })
+    }, state.nonce);
+  };
+
+  ns.apiCreateOrLinkMeet = async function apiCreateOrLinkMeet(sessionId, meetPostId) {
+    return await PublicAPI.fetchJson(state.apiBase + '/admin/tutor/session/meet', {
+      method: 'POST', body: JSON.stringify({ session_id: sessionId, meet_post_id: meetPostId || 0 })
+    }, state.nonce);
+  };
+
   ns.apiRemoveLecturer = async function apiRemoveLecturer(id) {
     return await PublicAPI.fetchJson(state.apiBase + '/admin/lecturer/remove', {
       method: 'POST',

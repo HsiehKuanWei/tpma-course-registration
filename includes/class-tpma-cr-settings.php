@@ -125,10 +125,11 @@ class TPMA_CR_Settings {
         self::render_product_select_row('報名商品', 'tpma_cr_wc_product_id', self::get_registration_product_id(), '這是實際加入購物車與建立報名訂單時使用的 Woo 商品。若你的前台特殊流程與實際建單商品是同一個，這裡可選和「特殊商品」相同的值。');
         self::render_role_select_row('虛擬會員角色', 'tpma_cr_virtual_user_role', self::get_virtual_user_role(), '當報名資料需要建立虛擬會員帳號時，系統會把新帳號套用成這個 WordPress 角色。建議使用專門給報名流程的角色，避免與一般前台會員混用。');
         echo '</table>';
-        submit_button('儲存設定');
-        echo '</form>';
 
         self::render_tutor_settings_section();
+
+        submit_button('儲存設定');
+        echo '</form>';
 
         echo '</div>';
     }
@@ -334,6 +335,7 @@ class TPMA_CR_Settings {
     }
 
     public static function save_tutor_settings(): void {
+        $was_enabled = (bool)(int)get_option(self::OPTION_TUTOR_ENABLED, 1);
         $enabled     = isset($_POST['tpma_cr_tutor_enabled']) ? 1 : 0;
         $instructor  = absint(wp_unslash($_POST['tpma_cr_tutor_default_instructor'] ?? 0));
         $extra_days  = max(1, absint(wp_unslash($_POST['tpma_cr_magic_link_extra_days'] ?? 15)));
@@ -341,6 +343,13 @@ class TPMA_CR_Settings {
         update_option(self::OPTION_TUTOR_ENABLED,            $enabled,    false);
         update_option(self::OPTION_TUTOR_DEFAULT_INSTRUCTOR, $instructor, false);
         update_option(self::OPTION_MAGIC_LINK_EXTRA_DAYS,    $extra_days, false);
+
+        if (class_exists('TPMA_Tutor_Bridge')) {
+            TPMA_Tutor_Bridge::refresh_active_state();
+            if (!$was_enabled && $enabled) {
+                TPMA_Tutor_Bridge::push_all_course_content_from_tpma();
+            }
+        }
     }
 
     public static function render_tutor_settings_section(): void {
