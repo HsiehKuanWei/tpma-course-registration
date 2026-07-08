@@ -608,7 +608,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
 
   actionsDiv.querySelector(`#tpma-btn-save-detail-${row.id}`).addEventListener('click', async function(){
     if (statusSel && statusSel.value === 'postpay' && row.status !== 'postpay') {
-      if (!w.confirm('課後付款會套用至同一 Woo 訂單的全部學員，並將訂單維持為 on-hold。確定繼續？')) return;
+      if (!global.confirm('課後付款會套用至同一 Woo 訂單的全部學員，並將訂單維持為 on-hold。確定繼續？')) return;
     }
     await R.saveDetail(ctx, container, row.id);
   });
@@ -617,14 +617,14 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   });
   const portalBtn = actionsDiv.querySelector(`#tpma-btn-portal-${row.id}`);
   if (portalBtn) portalBtn.addEventListener('click', async function(){
-    if (!w.confirm('重發會讓此訂單舊的共用入口立即失效。確定產生新入口？')) return;
+    if (!global.confirm('重發會讓此訂單舊的共用入口立即失效。確定產生新入口？')) return;
     try {
       const result = await API.regeneratePortal(ctx, row.id);
       const url = result?.urls?.portal || result?.portal || '';
       if (!url) throw new Error('未取得共用入口');
       await navigator.clipboard.writeText(url);
-      w.alert('新的訂單共用入口已複製。');
-    } catch (e) { w.alert(e.message || '無法產生共用入口'); }
+      global.alert('新的訂單共用入口已複製。');
+    } catch (e) { global.alert(e.message || '無法產生共用入口'); }
   });
 };
 

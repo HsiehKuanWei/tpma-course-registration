@@ -117,6 +117,11 @@
 
     const durationHours = parseFloat(getVal('duration_hours') || '3') || 3;
     const duration_minutes = Math.round(durationHours * 60);
+    const tutor_topic_resources = {};
+    div.querySelectorAll('.tpma-topic-resource-select').forEach(select => {
+      const topicId = parseInt(select.dataset.topicId || '0', 10);
+      if (topicId > 0) tutor_topic_resources[topicId] = select.value;
+    });
 
     // 組合 payload（與後端 API 對接）
     const payload = {
@@ -131,7 +136,8 @@
       outline: getVal('outline'),
       duration_minutes: duration_minutes,
       is_active: is_active,
-      sessions: sessions
+      sessions: sessions,
+      tutor_topic_resources: tutor_topic_resources
     };
 
     try {
@@ -146,7 +152,16 @@
         return;
       }
 
-      w.alert('已儲存課程 ' + (json.course_code || payload.course_code || ''));
+      const syncWarnings = Array.isArray(json.sync_warnings) ? json.sync_warnings : [];
+      if (json.partial_success && syncWarnings.length) {
+        const warningText = syncWarnings.map(item => {
+          const prefix = item.session_id ? `場次 ${item.session_id}：` : '';
+          return prefix + (item.message || 'Tutor／Meet 同步失敗');
+        }).join('\n');
+        w.alert('課程與場次已儲存，但外部資源同步未完成：\n' + warningText + '\n\n再次儲存會自動重試。');
+      } else {
+        w.alert('已儲存課程 ' + (json.course_code || payload.course_code || ''));
+      }
 
       // 重新載入資料並刷新畫面
       await ns.fetchAll();
@@ -154,7 +169,7 @@
       ns.applyFilters();
     } catch (e) {
       if (saveError) {
-        saveError.textContent = '儲存失敗，請稍後再試';
+        saveError.textContent = e.message || '儲存失敗，請稍後再試';
         saveError.style.display = 'block';
       }
     }

@@ -20,11 +20,16 @@ if (!defined('ABSPATH')) {
  */
 class TPMA_Tutor_Bridge {
 
+    public const MEET_SETTINGS_SCOPE = 'https://www.googleapis.com/auth/meetings.space.settings';
+
     /** @var bool|null Cached detection result. */
     private static $tutor_active = null;
 
     /** @var array<int,array> Per-request magic URL cache keyed by reg_id. */
     private static $token_url_cache = [];
+
+    /** @var array<int,array> Per-request cached topic resource lookups keyed by tutor course ID. */
+    private static $course_topic_resource_cache = [];
 
     /** @var bool Prevent save_post recursion during bridge writes. */
     private static $syncing_course = false;
@@ -419,12 +424,13 @@ class TPMA_Tutor_Bridge {
         ), ARRAY_A);
         if (!$session || empty($session['tutor_course_id'])) return 0;
         $topic_id = (int) ($session['tutor_topic_id'] ?? 0);
-        if ($topic_id > 0 && get_post_type($topic_id) === 'topics') {
-            update_post_meta($topic_id, '_tpma_session_id', $session_id);
-            return $topic_id;
-        }
         $session_dt = new DateTime((string) $session['session_datetime'], wp_timezone());
         $title = $session_dt->format('Y/m/d H:i') . '｜' . (string) $session['course_name'];
+        if ($topic_id > 0 && get_post_type($topic_id) === 'topics' && get_post_status($topic_id) !== 'trash') {
+            update_post_meta($topic_id, '_tpma_session_id', $session_id);
+            wp_update_post(array('ID' => $topic_id, 'post_title' => $title));
+            return $topic_id;
+        }
         $topic_id = wp_insert_post(array(
             'post_type' => 'topics', 'post_parent' => (int) $session['tutor_course_id'],
             'post_title' => $title, 'post_status' => 'publish',
@@ -463,6 +469,83 @@ class TPMA_Tutor_Bridge {
         }
         unset($row);
         return (array) $rows;
+    }
+
+    public static function get_course_topic_resources(int $tutor_course_id): array {
+        if ($tutor_course_id <= 0) return array();
+        if (isset(self::$course_topic_resource_cache[$tutor_course_id])) {
+            return self::$course_topic_resource_cache[$tutor_course_id];
+        }
+
+        global $wpdb;
+        $topic_ids = get_posts(array(
+            'post_type'   => 'topics',
+            'post_parent' => $tutor_course_id,
+            'post_status' => array('publish','draft','private'),
+            'numberposts' => -1,
+            'fields'      => 'ids',
+            'orderby'     => 'menu_order',
+            'order'       => 'ASC',
+        ));
+
+        $out = array();
+        foreach ((array) $topic_ids as $topic_id) {
+            if ((int) get_post_meta($topic_id, '_tpma_session_id', true) > 0) {
+                continue;
+            }
+
+            $type = sanitize_key((string) get_post_meta($topic_id, '_tpma_resource_type', true));
+            if (!in_array($type, array('general','recording','quiz'), true)) {
+                $has_quiz = (int) $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(1) FROM {$wpdb->posts} WHERE post_parent=%d AND post_type=%s AND post_status<>'trash'",
+                    $topic_id,
+                    function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz'
+                ));
+                $type = $has_quiz > 0 ? 'quiz' : 'general';
+            }
+
+            $out[] = array(
+                'topic_id'      => (int) $topic_id,
+                'title'         => (string) get_post_field('post_title', $topic_id),
+                'resource_type' => $type,
+            );
+        }
+
+        self::$course_topic_resource_cache[$tutor_course_id] = $out;
+        return $out;
+    }
+
+    public static function save_course_topic_resources(int $tutor_course_id, array $resources): void {
+        if ($tutor_course_id <= 0) return;
+        foreach ($resources as $topic_id => $type) {
+            $topic_id = absint($topic_id);
+            $type = sanitize_key((string) $type);
+            if ($topic_id <= 0 || !in_array($type, array('general','recording','quiz'), true)) continue;
+            if (get_post_type($topic_id) !== 'topics' || (int) get_post_field('post_parent', $topic_id) !== $tutor_course_id) continue;
+            if ((int) get_post_meta($topic_id, '_tpma_session_id', true) > 0) continue;
+            update_post_meta($topic_id, '_tpma_resource_type', $type);
+        }
+        self::clear_course_topic_resource_cache($tutor_course_id);
+    }
+
+    private static function get_topic_resource_type(int $topic_id): string {
+        $type = sanitize_key((string) get_post_meta($topic_id, '_tpma_resource_type', true));
+        if (in_array($type, array('general','recording','quiz'), true)) {
+            return $type;
+        }
+
+        global $wpdb;
+        $has_quiz = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(1) FROM {$wpdb->posts} WHERE post_parent=%d AND post_type=%s AND post_status<>'trash'",
+            $topic_id,
+            function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz'
+        ));
+
+        return $has_quiz > 0 ? 'quiz' : 'general';
+    }
+
+    private static function clear_course_topic_resource_cache(int $tutor_course_id): void {
+        unset(self::$course_topic_resource_cache[$tutor_course_id]);
     }
 
     private static function find_meet_candidates(int $session_id): array {
@@ -522,6 +605,11 @@ class TPMA_Tutor_Bridge {
             if ($meet_course_id !== (int) $session['tutor_course_id'] || ($bound_session > 0 && $bound_session !== $session_id)) {
                 return new WP_Error('meet_course_mismatch', 'Meet 不屬於此課程或已連結其他場次', array('status' => 409));
             }
+            $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
+            $meet_url = (string) get_post_meta($meet_post_id, 'tutor-google-meet-link', true);
+            if (!class_exists($client_class)) return new WP_Error('meet_unavailable', 'Tutor Pro Google Meet 模組未啟用', array('status' => 503));
+            $open_result = self::configure_meet_space_open($meet_url, new $client_class());
+            if (is_wp_error($open_result)) return $open_result;
             wp_update_post(array('ID' => $meet_post_id, 'post_parent' => $topic_id));
         } else {
             $meet_post_id = self::create_google_meet_for_session($session, $topic_id);
@@ -563,6 +651,25 @@ class TPMA_Tutor_Bridge {
         } catch (Throwable $e) {
             return new WP_Error('meet_create_failed', $e->getMessage(), array('status' => 502));
         }
+        $ready_event = self::wait_for_calendar_conference($client, $created);
+        if (is_wp_error($ready_event)) {
+            try {
+                $client->service->events->delete($client->current_calendar, $created->id, array('sendUpdates' => 'none'));
+            } catch (Throwable $cleanup_error) {
+                error_log('TPMA Tutor Bridge: failed to clean pending Google event: ' . $cleanup_error->getMessage());
+            }
+            return $ready_event;
+        }
+        $created = $ready_event;
+        $open_result = self::configure_meet_space_open((string) $created->hangoutLink, $client);
+        if (is_wp_error($open_result)) {
+            try {
+                $client->service->events->delete($client->current_calendar, $created->id, array('sendUpdates' => 'none'));
+            } catch (Throwable $cleanup_error) {
+                error_log('TPMA Tutor Bridge: failed to clean Google event after Meet access error: ' . $cleanup_error->getMessage());
+            }
+            return $open_result;
+        }
         $details = array(
             'id' => $created->id,
             'kind' => $created->kind,
@@ -602,6 +709,278 @@ class TPMA_Tutor_Bridge {
         return (int) $post_id;
     }
 
+    private static function wait_for_calendar_conference($client, $event) {
+        for ($attempt = 1; $attempt <= 5; $attempt++) {
+            $conference = method_exists($event, 'getConferenceData') ? $event->getConferenceData() : null;
+            $request = $conference && method_exists($conference, 'getCreateRequest') ? $conference->getCreateRequest() : null;
+            $status_obj = $request && method_exists($request, 'getStatus') ? $request->getStatus() : null;
+            $status = $status_obj && method_exists($status_obj, 'getStatusCode')
+                ? strtolower((string) $status_obj->getStatusCode())
+                : '';
+            $meet_url = method_exists($event, 'getHangoutLink') ? (string) $event->getHangoutLink() : (string) ($event->hangoutLink ?? '');
+
+            if ($status === 'success' || ($status === '' && $meet_url !== '')) return $event;
+            if ($status === 'failure') {
+                return new WP_Error('conference_create_failed', 'Google Calendar 無法完成 Meet 會議空間建立。', array('status' => 502));
+            }
+            if ($attempt === 5) break;
+            sleep(1);
+            try {
+                $event = $client->service->events->get(
+                    $client->current_calendar,
+                    $event->id
+                );
+            } catch (Throwable $e) {
+                return new WP_Error('conference_status_failed', '無法確認 Meet 建立狀態：' . $e->getMessage(), array('status' => 502));
+            }
+        }
+        return new WP_Error('conference_create_timeout', 'Google Calendar 尚未完成 Meet 會議空間建立，請稍後再試。', array('status' => 504));
+    }
+
+    private static function configure_meet_space_open(string $meet_url, $google_event) {
+        $path = trim((string) wp_parse_url($meet_url, PHP_URL_PATH), '/');
+        if (!preg_match('/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/', $path)) {
+            return new WP_Error('meet_code_missing', 'Google Meet 已建立，但無法辨識會議代碼。', array('status' => 502));
+        }
+        if (empty($google_event->client)) {
+            return new WP_Error('meet_client_missing', '無法取得 Google Meet 授權用戶端。', array('status' => 503));
+        }
+
+        $google_event->client->addScope(self::MEET_SETTINGS_SCOPE);
+        if (method_exists($google_event, 'assign_token_to_client')) {
+            $google_event->assign_token_to_client();
+        }
+        $token = $google_event->client->getAccessToken();
+        $access_token = is_array($token) ? (string) ($token['access_token'] ?? '') : '';
+        if ($access_token === '') {
+            return new WP_Error('meet_settings_scope_required', 'Google Meet 開放權限尚未授權，請至「設定 → TPMA Course Registration IDs」執行授權。', array('status' => 403));
+        }
+
+        $space_name = self::resolve_meet_space_name($path, $access_token);
+        if (is_wp_error($space_name)) return $space_name;
+        $space_id = substr((string) $space_name, strlen('spaces/'));
+
+        for ($attempt = 1; $attempt <= 4; $attempt++) {
+            $response = wp_remote_request(
+                'https://meet.googleapis.com/v2/spaces/' . rawurlencode($space_id) . '?updateMask=config.accessType',
+                array(
+                    'method'  => 'PATCH',
+                    'timeout' => 15,
+                    'headers' => array('Authorization' => 'Bearer ' . $access_token, 'Content-Type' => 'application/json'),
+                    'body'    => wp_json_encode(array('config' => array('accessType' => 'OPEN'))),
+                )
+            );
+            if (is_wp_error($response)) {
+                return new WP_Error('meet_access_update_failed', 'Meet 開放權限設定失敗：' . $response->get_error_message(), array('status' => 502));
+            }
+            $status = (int) wp_remote_retrieve_response_code($response);
+            if ($status >= 200 && $status < 300) return true;
+            if ($attempt < 4 && self::is_transient_meet_space_error($response)) {
+                sleep($attempt);
+                continue;
+            }
+            return self::build_google_api_error($response, 'Meet 開放權限設定失敗');
+        }
+        return new WP_Error('meet_access_update_failed', 'Meet 開放權限設定失敗。', array('status' => 502));
+    }
+
+    private static function resolve_meet_space_name(string $meeting_code, string $access_token) {
+        for ($attempt = 1; $attempt <= 4; $attempt++) {
+            $response = wp_remote_request(
+                'https://meet.googleapis.com/v2/spaces/' . rawurlencode($meeting_code),
+                array(
+                    'method'  => 'GET',
+                    'timeout' => 15,
+                    'headers' => array('Authorization' => 'Bearer ' . $access_token, 'Accept' => 'application/json'),
+                )
+            );
+            if (is_wp_error($response)) {
+                return new WP_Error('meet_space_lookup_failed', 'Meet 會議空間查詢失敗：' . $response->get_error_message(), array('status' => 502));
+            }
+            $status = (int) wp_remote_retrieve_response_code($response);
+            if ($status >= 200 && $status < 300) {
+                $space = json_decode((string) wp_remote_retrieve_body($response), true);
+                $name = is_array($space) ? (string) ($space['name'] ?? '') : '';
+                if (preg_match('#^spaces/([A-Za-z0-9_-]+)$#', $name)) return $name;
+                return new WP_Error('meet_space_name_missing', 'Google Meet 已回傳會議空間，但缺少可更新的 Space ID。', array('status' => 502));
+            }
+            if ($attempt < 4 && self::is_transient_meet_space_error($response)) {
+                sleep($attempt);
+                continue;
+            }
+            return self::build_google_api_error($response, 'Meet 會議空間查詢失敗');
+        }
+        return new WP_Error('meet_space_lookup_failed', 'Meet 會議空間查詢失敗。', array('status' => 502));
+    }
+
+    private static function is_transient_meet_space_error($response): bool {
+        $status = (int) wp_remote_retrieve_response_code($response);
+        if ($status === 404) return true;
+        if ($status !== 403) return false;
+        $payload = json_decode((string) wp_remote_retrieve_body($response), true);
+        $error = is_array($payload['error'] ?? null) ? $payload['error'] : array();
+        $google_status = strtoupper((string) ($error['status'] ?? ''));
+        $message = strtolower((string) ($error['message'] ?? ''));
+        return $google_status === 'PERMISSION_DENIED'
+            && (strpos($message, 'resource space') !== false || strpos($message, 'might not exist') !== false);
+    }
+
+    private static function build_google_api_error($response, string $context): WP_Error {
+        $http_status = (int) wp_remote_retrieve_response_code($response);
+        $body = (string) wp_remote_retrieve_body($response);
+        $payload = json_decode($body, true);
+        $google_error = is_array($payload['error'] ?? null) ? $payload['error'] : array();
+        $google_status = sanitize_text_field((string) ($google_error['status'] ?? ''));
+        $google_message = sanitize_text_field((string) ($google_error['message'] ?? ''));
+        $reason = '';
+
+        $find_reason = static function ($value) use (&$find_reason): string {
+            if (!is_array($value)) return '';
+            if (!empty($value['reason']) && is_scalar($value['reason'])) {
+                return sanitize_text_field((string) $value['reason']);
+            }
+            foreach ($value as $child) {
+                $found = $find_reason($child);
+                if ($found !== '') return $found;
+            }
+            return '';
+        };
+        $reason = $find_reason($google_error['details'] ?? array());
+
+        if ($google_message === '' && $body !== '') {
+            $google_message = sanitize_text_field(substr($body, 0, 500));
+        }
+        $redact = static function (string $value): string {
+            $value = preg_replace('/(access[_-]?token|refresh[_-]?token|client[_-]?secret|authorization)\s*[:=]\s*[^\s,;]+/i', '$1=[已隱藏]', $value);
+            $value = preg_replace('/Bearer\s+[A-Za-z0-9._~+\/-]+/i', 'Bearer [已隱藏]', $value);
+            $value = preg_replace('/\btoken\s*[:=]\s*[^\s,;]+/i', 'token=[已隱藏]', $value);
+            return trim(substr((string) $value, 0, 500));
+        };
+        $google_message = $redact($google_message);
+
+        $diagnostics = array('HTTP ' . ($http_status ?: '未知'));
+        if ($google_status !== '') $diagnostics[] = $google_status;
+        if ($reason !== '') $diagnostics[] = $reason;
+
+        $reason_upper = strtoupper($reason);
+        if ($reason_upper === 'SERVICE_DISABLED') {
+            $guidance = '請至此 OAuth 憑證所屬的 Google Cloud 專案啟用 Google Meet API。';
+        } elseif ($reason_upper === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT' || $reason_upper === 'INSUFFICIENT_AUTHENTICATION_SCOPES' || $http_status === 401) {
+            $guidance = '請重新執行「授權 Meet 開放權限」，並確認已同意 meetings.space.settings 權限。';
+        } elseif ($http_status === 403) {
+            $guidance = '請確認 OAuth scope、Google Meet API 啟用狀態及 Google Workspace 管理政策。';
+        } else {
+            $guidance = '請依 Google 回傳內容檢查 API 與 OAuth 設定。';
+        }
+
+        $message = $context . '（' . implode(' / ', $diagnostics) . '）';
+        if ($google_message !== '') $message .= '：' . $google_message;
+        $message .= ' ' . $guidance;
+
+        return new WP_Error(
+            'meet_access_update_failed',
+            $message,
+            array(
+                'status'        => in_array($http_status, array(400, 401, 403, 404, 409, 429), true) ? $http_status : 502,
+                'google_status' => $google_status,
+                'google_reason' => $reason,
+            )
+        );
+    }
+
+    public static function sync_session_resources(int $session_id) {
+        if (!self::is_active()) return true;
+        global $wpdb;
+        $session = $wpdb->get_row($wpdb->prepare(
+            "SELECT is_active, delivery_mode, tutor_topic_id, tutor_meet_post_id FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
+            $session_id
+        ), ARRAY_A);
+        if (!$session || empty($session['is_active'])) return true;
+
+        $topic_id = self::prepare_session_topic($session_id);
+        if ($topic_id <= 0) return new WP_Error('topic_failed', '無法自動建立 Tutor 場次章節。', array('status' => 500));
+
+        $delivery_mode = (string) ($session['delivery_mode'] ?? 'live');
+        $meet_id = (int) ($session['tutor_meet_post_id'] ?? 0);
+        if ($delivery_mode === 'recorded') {
+            if ($meet_id > 0) {
+                $cleanup = self::cleanup_session_meet($session_id);
+                if (is_wp_error($cleanup)) return $cleanup;
+            }
+            return array('session_id' => $session_id, 'topic_id' => $topic_id, 'meet_post_id' => 0);
+        }
+
+        if ($meet_id > 0 && get_post_type($meet_id) === 'tutor-google-meet' && get_post_status($meet_id) !== 'trash') {
+            return array('session_id' => $session_id, 'topic_id' => $topic_id, 'meet_post_id' => $meet_id);
+        }
+        if ($meet_id > 0) {
+            $wpdb->update(TPMA_CR_DB::table('sessions'), array('tutor_meet_post_id' => 0), array('id' => $session_id), array('%d'), array('%d'));
+        }
+        return self::create_or_link_session_meet($session_id);
+    }
+
+    private static function cleanup_session_meet(int $session_id) {
+        global $wpdb;
+        $session = $wpdb->get_row($wpdb->prepare(
+            "SELECT tutor_meet_post_id FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
+            $session_id
+        ), ARRAY_A);
+        if (!$session) return true;
+        $meet_id  = (int) ($session['tutor_meet_post_id'] ?? 0);
+        if ($meet_id > 0) {
+            $details = json_decode((string) get_post_meta($meet_id, 'tutor-google-meet-event-details', true), true);
+            $event_id = (string) ($details['id'] ?? '');
+            if ($event_id !== '') {
+                $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
+                if (!class_exists($client_class)) return new WP_Error('meet_delete_unavailable', '無法移除 Google 日曆：Tutor Pro Google Meet 模組未啟用。', array('status' => 503));
+                $client = new $client_class();
+                if (!method_exists($client, 'is_app_permitted') || !$client->is_app_permitted() || empty($client->service)) {
+                    return new WP_Error('meet_delete_unauthorized', '無法移除 Google 日曆：目前管理員的 Google 授權無效。', array('status' => 503));
+                }
+                try {
+                    $client->service->events->delete($client->current_calendar, $event_id, array('sendUpdates' => 'none'));
+                } catch (Throwable $e) {
+                    if ((int) $e->getCode() !== 404) {
+                        return new WP_Error('meet_delete_failed', 'Google 日曆事件移除失敗：' . $e->getMessage(), array('status' => 502));
+                    }
+                }
+            }
+        }
+
+        if ($meet_id > 0 && get_post_status($meet_id) !== 'trash') wp_trash_post($meet_id);
+        $wpdb->update(TPMA_CR_DB::table('sessions'), array('tutor_meet_post_id' => 0), array('id' => $session_id), array('%d'), array('%d'));
+        return true;
+    }
+
+    public static function cleanup_session_resources(int $session_id) {
+        global $wpdb;
+        $session = $wpdb->get_row($wpdb->prepare(
+            "SELECT tutor_topic_id FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
+            $session_id
+        ), ARRAY_A);
+        if (!$session) return true;
+
+        $topic_id = (int) ($session['tutor_topic_id'] ?? 0);
+        $meet_cleanup = self::cleanup_session_meet($session_id);
+        if (is_wp_error($meet_cleanup)) return $meet_cleanup;
+
+        if ($topic_id > 0) {
+            $children = get_posts(array('post_type' => 'any', 'post_parent' => $topic_id, 'post_status' => 'any', 'numberposts' => -1, 'fields' => 'ids'));
+            foreach ((array) $children as $child_id) {
+                if (get_post_status($child_id) !== 'trash') wp_trash_post((int) $child_id);
+            }
+            if (get_post_status($topic_id) !== 'trash') wp_trash_post($topic_id);
+        }
+        $wpdb->update(
+            TPMA_CR_DB::table('sessions'),
+            array('tutor_topic_id' => 0, 'tutor_meet_post_id' => 0),
+            array('id' => $session_id),
+            array('%d', '%d'),
+            array('%d')
+        );
+        return true;
+    }
+
     public static function sync_session_meet_time(int $session_id, string $new_datetime, int $duration_minutes) {
         global $wpdb;
         $session = $wpdb->get_row($wpdb->prepare(
@@ -638,9 +1017,11 @@ class TPMA_Tutor_Bridge {
         }
         $details['start_datetime'] = $start->format('Y-m-d H:i:s');
         $details['end_datetime'] = $end->format('Y-m-d H:i:s');
+        $meet_title = (string) $session['course_name'] . '｜' . $start->format('Y/m/d H:i');
         update_post_meta($meet_id, 'tutor-google-meet-start-datetime', $details['start_datetime']);
         update_post_meta($meet_id, 'tutor-google-meet-end-datetime', $details['end_datetime']);
         update_post_meta($meet_id, 'tutor-google-meet-event-details', wp_json_encode($details));
+        wp_update_post(array('ID' => $meet_id, 'post_title' => $meet_title));
         if ($topic_id > 0) wp_update_post(array('ID' => $topic_id, 'post_title' => $topic_title));
         return true;
     }
@@ -702,7 +1083,7 @@ class TPMA_Tutor_Bridge {
         if (is_admin() && !wp_doing_ajax()) return $args;
         $topic_id = (int) ($args['post_parent'] ?? 0);
         $session_id = $topic_id > 0 ? (int) get_post_meta($topic_id, '_tpma_session_id', true) : 0;
-        if ($session_id <= 0) return $args;
+        if ($session_id <= 0) return self::hide_closed_shared_quiz_contents($args, $topic_id);
         if (!self::user_can_access_session($session_id)) {
             $args['post__in'] = array(0);
             return $args;
@@ -712,7 +1093,32 @@ class TPMA_Tutor_Bridge {
             $lesson_ids = get_posts(array('post_type' => function_exists('tutor') ? tutor()->lesson_post_type : 'tutor_lesson', 'post_parent' => $topic_id, 'post_status' => 'publish', 'numberposts' => -1, 'fields' => 'ids'));
             $args['post__not_in'] = array_values(array_unique(array_merge((array) ($args['post__not_in'] ?? array()), array_map('intval', (array) $lesson_ids))));
         }
+        return self::hide_closed_shared_quiz_contents($args, $topic_id);
+    }
+
+    private static function hide_closed_shared_quiz_contents(array $args, int $topic_id): array {
+        if ($topic_id <= 0) return $args;
+        $course_id = (int) get_post_field('post_parent', $topic_id);
+        if ($course_id <= 0 || !(int) get_post_meta($course_id, '_tpma_course_id', true)) return $args;
+        $user_id = get_current_user_id();
+        if (($user_id > 0 && user_can($user_id, 'manage_options')) || (int) get_post_field('post_author', $course_id) === $user_id) return $args;
+        $resource = self::get_topic_resource_type($topic_id);
+        if ($resource === 'general') return $args;
+        if (class_exists('TPMA_Course_Access') && TPMA_Course_Access::current_user_can_resource($resource)) return $args;
+        $args['post__in'] = array(0);
         return $args;
+    }
+
+    private static function get_hidden_resource_topic_ids(int $course_id): array {
+        if ($course_id <= 0) return array();
+        $hidden = array();
+        foreach (self::get_course_topic_resources($course_id) as $topic) {
+            $resource = (string) $topic['resource_type'];
+            if ($resource !== 'general' && (!class_exists('TPMA_Course_Access') || !TPMA_Course_Access::current_user_can_resource($resource))) {
+                $hidden[] = (int) $topic['topic_id'];
+            }
+        }
+        return $hidden;
     }
 
     public static function exclude_session_recordings_from_progress(array $conditions, int $course_id): array {
@@ -728,6 +1134,7 @@ class TPMA_Tutor_Bridge {
         $user_id = get_current_user_id();
         if ($user_id > 0 && user_can($user_id, 'manage_options')) return;
         $course_id = (int) $query->get('post_parent');
+        if ($user_id > 0 && (int) get_post_field('post_author', $course_id) === $user_id) return;
         global $wpdb;
         $allowed = array();
         $selected = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
@@ -735,6 +1142,10 @@ class TPMA_Tutor_Bridge {
             $result = TPMA_Course_Access::evaluate_registration($selected, 'course');
             if (!empty($result['allowed'])) $allowed[] = (int)$result['registration']['session_id'];
         }
+        $query->set('post__not_in', array_values(array_unique(array_merge(
+            (array) $query->get('post__not_in'),
+            self::get_hidden_resource_topic_ids($course_id)
+        ))));
         $meta_query = (array) $query->get('meta_query');
         $meta_query[] = array(
             'relation' => 'OR',
@@ -765,10 +1176,11 @@ class TPMA_Tutor_Bridge {
         if ($session_id <= 0 && $post_type === $lesson_type) {
             $topic_id = (int)get_post_field('post_parent', $post_id);
             $tutor_course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+            $resource = self::get_topic_resource_type($topic_id);
             $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
-            $result = $reg_id > 0 ? TPMA_Course_Access::evaluate_registration($reg_id, 'recording') : array('allowed'=>false);
+            $result = $reg_id > 0 ? TPMA_Course_Access::evaluate_registration($reg_id, $resource) : array('allowed'=>false);
             if (empty($result['allowed']) || (int)($result['registration']['tutor_course_id'] ?? 0) !== $tutor_course_id) {
-                wp_die('此錄播未開放給目前選擇的學員。', '無法存取錄播', array('response'=>403));
+                wp_die('此課程內容未開放給目前選擇的學員。', '無法存取課程內容', array('response'=>403));
             }
             return;
         }
@@ -785,10 +1197,11 @@ class TPMA_Tutor_Bridge {
         if ($session_id <= 0) {
             $topic_id = $post_id ? (int)get_post_field('post_parent', $post_id) : 0;
             $tutor_course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+            $resource = self::get_topic_resource_type($topic_id);
             $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
-            $result = $reg_id > 0 ? TPMA_Course_Access::evaluate_registration($reg_id, 'recording') : array('allowed'=>false);
+            $result = $reg_id > 0 ? TPMA_Course_Access::evaluate_registration($reg_id, $resource) : array('allowed'=>false);
             return !empty($result['allowed']) && (int)($result['registration']['tutor_course_id'] ?? 0) === $tutor_course_id
-                ? $html : '<div class="tutor-alert tutor-warning">此錄播未開放給目前選擇的學員。</div>';
+                ? $html : '<div class="tutor-alert tutor-warning">此課程內容目前未開放給您。</div>';
         }
         $allowed = self::user_can_manage_session($session_id)
             || (class_exists('TPMA_Course_Access') && TPMA_Course_Access::current_user_can_resource('recording', $session_id));
@@ -1490,21 +1903,7 @@ class TPMA_Tutor_Bridge {
         }
         $urls = self::$token_url_cache[$reg_id];
 
-        $context['magic_link_course']      = $urls['course']      ?? '';
-        $context['magic_link_quiz']        = $urls['quiz']        ?? '';
-        $context['magic_link_certificate'] = $urls['certificate'] ?? '';
-        $context['magic_link_meet']        = $urls['meet']        ?? '';
         $context['magic_link_portal']      = $urls['portal']      ?? ($urls['course'] ?? '');
-
-        // Extra Tutor context
-        $tpma_course_id = (int)($context['course_id'] ?? 0);
-        if ($tpma_course_id) {
-            $tutor_course_id = self::get_tutor_course_id($tpma_course_id);
-            if ($tutor_course_id) {
-                $context['tutor_course_url'] = get_permalink($tutor_course_id) ?: '';
-                $context['google_meet_url'] = $urls['meet'] ?? '';
-            }
-        }
 
         return $context;
     }

@@ -60,6 +60,14 @@
     return `${info.date}${wd} ${range}`;
   };
 
+  util.formatSessionHeading = function formatSessionHeading(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+    if (!match) return '尚未設定日期';
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    return `${match[1]}/${match[2]}/${match[3]}（${weekdays[date.getDay()]}） ${match[4]}:${match[5]}`;
+  };
+
   util.getSessionVisibilityLabel = function getSessionVisibilityLabel(mode) {
     if (mode === 'force_show') return '強制顯示';
     if (mode === 'force_hide') return '強制隱藏';

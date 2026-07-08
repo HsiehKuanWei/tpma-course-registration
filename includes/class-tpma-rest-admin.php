@@ -807,6 +807,9 @@ public static function admin_update_reg($request)
             $tutor_id = (int) ($c['tutor_course_id'] ?? 0);
             $c['tutor_enabled'] = class_exists('TPMA_Tutor_Bridge') && TPMA_Tutor_Bridge::is_active();
             $c['tutor_edit_url'] = $tutor_id > 0 ? admin_url('post.php?post=' . $tutor_id . '&action=edit') : '';
+            $c['tutor_topic_resources'] = $tutor_id > 0 && class_exists('TPMA_Tutor_Bridge')
+                ? TPMA_Tutor_Bridge::get_course_topic_resources($tutor_id)
+                : array();
             $c['tutor_content_sync_error'] = $tutor_id > 0
                 ? (string) get_post_meta($tutor_id, '_tpma_content_sync_error', true)
                 : '';
@@ -1057,7 +1060,8 @@ public static function admin_update_reg($request)
 
             if ($session_id > 0 && isset($existing_sessions[$session_id])) {
                 $old = $existing_sessions[$session_id];
-                if (((string) $old->session_datetime !== $dt || ($old_duration > 0 && $old_duration !== $duration)) && class_exists('TPMA_Tutor_Bridge')) {
+                $switching_to_recorded = $delivery_mode === 'recorded' && !empty($old->tutor_meet_post_id);
+                if (!$switching_to_recorded && ((string) $old->session_datetime !== $dt || ($old_duration > 0 && $old_duration !== $duration)) && class_exists('TPMA_Tutor_Bridge')) {
                     $sync = TPMA_Tutor_Bridge::sync_session_meet_time($session_id, $dt, $duration);
                     if (is_wp_error($sync)) {
                         foreach (array_reverse($synced_meet_times) as $rollback) {
@@ -1083,20 +1087,37 @@ public static function admin_update_reg($request)
         foreach ((array) $existing_sessions as $existing_id => $existing) {
             $existing_id = (int) $existing_id;
             if (in_array($existing_id, $kept_session_ids, true)) continue;
+            if (class_exists('TPMA_Tutor_Bridge')) {
+                $cleanup = TPMA_Tutor_Bridge::cleanup_session_resources($existing_id);
+                if (is_wp_error($cleanup)) return $cleanup;
+            }
             $has_regs = (int) $wpdb->get_var($wpdb->prepare(
                 "SELECT COUNT(1) FROM " . TPMA_CR_DB::table('regs') . " WHERE session_id = %d",
                 $existing_id
             ));
-            if ($has_regs > 0 || !empty($existing->tutor_topic_id) || !empty($existing->tutor_meet_post_id)) {
+            if ($has_regs > 0) {
                 $wpdb->update($sessions_table, array('is_active' => 0), array('id' => $existing_id), array('%d'), array('%d'));
             } else {
                 $wpdb->delete($sessions_table, array('id' => $existing_id), array('%d'));
             }
         }
 
-        // ── Tutor LMS sync (fire-and-forget; doesn't affect the REST response) ──
+        // ── Tutor LMS course + session resource reconciliation ──
+        $sync_warnings = array();
         if (class_exists('TPMA_Tutor_Bridge')) {
-            TPMA_Tutor_Bridge::sync_course($course_id);
+            $tutor_course_id = (int) TPMA_Tutor_Bridge::sync_course($course_id);
+            if ($tutor_course_id > 0 && !empty($d['tutor_topic_resources']) && is_array($d['tutor_topic_resources'])) {
+                TPMA_Tutor_Bridge::save_course_topic_resources($tutor_course_id, $d['tutor_topic_resources']);
+            }
+            foreach ($kept_session_ids as $kept_session_id) {
+                $resource_sync = TPMA_Tutor_Bridge::sync_session_resources($kept_session_id);
+                if (is_wp_error($resource_sync)) {
+                    $sync_warnings[] = array(
+                        'session_id' => (int) $kept_session_id,
+                        'message'    => $resource_sync->get_error_message(),
+                    );
+                }
+            }
         }
 
         return rest_ensure_response(array(
@@ -1104,6 +1125,8 @@ public static function admin_update_reg($request)
             'id'               => $course_id,
             'course_code'      => $course_code,
             'is_active'        => $is_active,
+            'partial_success'  => !empty($sync_warnings),
+            'sync_warnings'    => $sync_warnings,
             'tutor_course_id'  => class_exists('TPMA_Tutor_Bridge')
                 ? TPMA_Tutor_Bridge::get_tutor_course_id($course_id)
                 : 0,

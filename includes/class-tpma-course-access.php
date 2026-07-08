@@ -208,15 +208,17 @@ class TPMA_Course_Access {
         if (!$order) return;
         global $wpdb;
         $regs = $wpdb->get_results($wpdb->prepare("SELECT * FROM " . TPMA_CR_DB::table('regs') . " WHERE woocommerce_order_id=%d AND COALESCE(status,'')<>'cancelled' ORDER BY id", $order_id), ARRAY_A);
-        $seen = array();
+        $groups = array();
         foreach ((array)$regs as $reg) {
             $result = self::evaluate_registration((int)$reg['id'], 'course');
             if (empty($result['allowed'])) continue;
             $event = ($result['mode'] ?? 'live') === 'recorded' ? 'recorded_course_opened' : 'pre_class_reminder';
             $key = $event . ':' . (int)$reg['session_id'];
-            if (isset($seen[$key])) continue;
-            $seen[$key] = true;
-            TPMA_CR_Mail_Dispatcher::send_course_access_event($event, $order, $reg);
+            if (!isset($groups[$key])) $groups[$key] = array('event' => $event, 'regs' => array());
+            $groups[$key]['regs'][] = $reg;
+        }
+        foreach ($groups as $group) {
+            TPMA_CR_Mail_Dispatcher::send_course_access_event_for_regs($group['event'], $order, $group['regs']);
         }
     }
 

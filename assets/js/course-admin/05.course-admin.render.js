@@ -333,8 +333,7 @@ ns.renderCourses = function renderCourses(list){
     row.innerHTML = `
       <summary class="tpma-session-summary">
         <span class="tpma-session-summary-main">
-          <strong class="tpma-session-index">場次</strong>
-          <span class="tpma-session-summary-date">尚未設定日期</span>
+          <strong class="tpma-session-summary-date">尚未設定日期</strong>
         </span>
         <span class="tpma-session-summary-badges">
           <span class="tpma-session-badge tpma-session-visibility-badge"></span>
@@ -379,7 +378,7 @@ ns.renderCourses = function renderCourses(list){
             <span class="tpma-session-tutor-status">${session.tutor_meet_post_id ? 'Meet 已連結' : (session.tutor_topic_edit_url ? '場次內容已準備' : '場次內容尚未準備')}</span>
           </div>
           <div class="tpma-session-tutor-actions">
-            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-prepare" ${session.id ? '' : 'disabled'}>準備場次內容</button>
+            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-prepare" ${session.id ? '' : 'disabled'}>建立 Tutor 場次章節</button>
             <button type="button" class="tpma-btn tpma-btn-outline tpma-session-meet" ${session.id ? '' : 'disabled'} ${session.tutor_meet_post_id ? 'hidden' : ''}>建立／連結 Meet</button>
             <a class="tpma-btn tpma-btn-outline tpma-session-tutor-edit${session.tutor_topic_edit_url ? '' : ' is-disabled'}" href="${util.esc(session.tutor_topic_edit_url || '#')}" target="_blank" rel="noopener noreferrer" aria-disabled="${session.tutor_topic_edit_url ? 'false' : 'true'}">編輯 Tutor 場次</a>
           </div>
@@ -398,15 +397,16 @@ ns.renderCourses = function renderCourses(list){
       const visibilityBadge = row.querySelector('.tpma-session-visibility-badge');
       const dateValue = dateInput ? dateInput.value : '';
       if (dateLabel) {
-        dateLabel.textContent = dateValue
-          ? dateValue.replace('T', ' ').replace(/-/g, '/')
-          : '尚未設定日期';
+        dateLabel.textContent = util.formatSessionHeading(dateValue);
       }
       if (visibilityBadge) {
         visibilityBadge.textContent = util.getSessionVisibilityLabel(visibilitySelect ? visibilitySelect.value : '');
       }
     };
-    if (dateInput) dateInput.addEventListener('change', updateSummary);
+    if (dateInput) dateInput.addEventListener('change', () => {
+      updateSummary();
+      ns.sortSessionRows(container);
+    });
     if (visibilitySelect) visibilitySelect.addEventListener('change', updateSummary);
     updateSummary();
     const updateModeFields = () => {
@@ -500,16 +500,24 @@ ns.renderCourses = function renderCourses(list){
     }
     row.querySelector('.tpma-session-remove').onclick = () => {
       row.remove();
-      Array.from(container.querySelectorAll('.tpma-session-row')).forEach((item, index) => {
-        const label = item.querySelector('.tpma-session-index');
-        if (label) label.textContent = `場次 ${index + 1}`;
-      });
     };
     container.appendChild(row);
-    Array.from(container.querySelectorAll('.tpma-session-row')).forEach((item, index) => {
-      const label = item.querySelector('.tpma-session-index');
-      if (label) label.textContent = `場次 ${index + 1}`;
+    ns.sortSessionRows(container);
+    return row;
+  };
+
+  ns.sortSessionRows = function sortSessionRows(container) {
+    if (!container) return;
+    const rows = Array.from(container.querySelectorAll(':scope > .tpma-session-row'));
+    rows.sort((a, b) => {
+      const aValue = a.querySelector('.tpma-session-date-field input')?.value || '';
+      const bValue = b.querySelector('.tpma-session-date-field input')?.value || '';
+      if (!aValue && !bValue) return 0;
+      if (!aValue) return 1;
+      if (!bValue) return -1;
+      return aValue.localeCompare(bValue);
     });
+    rows.forEach(row => container.appendChild(row));
   };
 
   /**
@@ -532,6 +540,20 @@ ns.renderCourses = function renderCourses(list){
     const fieldSuffix = String(c.id || 'new').replace(/[^a-zA-Z0-9_-]/g, '');
     const tutorIntroHtml = c.intro_rendered || '';
     const tutorOutlineHtml = c.outline_rendered || '';
+    const topicResources = Array.isArray(c.tutor_topic_resources) ? c.tutor_topic_resources : [];
+    const topicResourcesHtml = topicResources.length
+      ? topicResources.map(topic => {
+          const type = ['general', 'recording', 'quiz'].includes(topic.resource_type) ? topic.resource_type : 'general';
+          return `<label class="tpma-topic-resource-row">
+            <span>${util.esc(topic.title || `Topic ${topic.topic_id}`)}</span>
+            <select class="tpma-topic-resource-select" data-topic-id="${parseInt(topic.topic_id, 10) || 0}">
+              <option value="general" ${type === 'general' ? 'selected' : ''}>一般內容（直播／錄播皆可）</option>
+              <option value="recording" ${type === 'recording' ? 'selected' : ''}>正式錄播（僅錄播權限）</option>
+              <option value="quiz" ${type === 'quiz' ? 'selected' : ''}>測驗（依測驗時窗）</option>
+            </select>
+          </label>`;
+        }).join('')
+      : '<p class="tpma-empty-content">尚無可設定的 Tutor 章節；場次章節由系統自動管理。</p>';
 
     div.innerHTML = `
       <div class="tpma-reg-detail-container tpma-course-edit-container">
@@ -622,6 +644,14 @@ ns.renderCourses = function renderCourses(list){
             </div>`}
         </div>
 
+        ${tutorOwnsContent ? `<div class="tpma-reg-detail-section edit-mode" id="section-topic-resources">
+          <div class="tpma-section-heading col-span-full">
+            <h3>Tutor 章節權限</h3>
+            <p>含影片的章節預設仍是一般內容；只有明確指定「正式錄播」才會對直播學員隱藏。</p>
+          </div>
+          <div class="tpma-topic-resource-list col-span-full">${topicResourcesHtml}</div>
+        </div>` : ''}
+
         <div class="tpma-reg-detail-section edit-mode" id="section-course-sessions">
           <div class="tpma-detail-field col-span-full">
             <div class="tpma-section-heading">
@@ -629,6 +659,10 @@ ns.renderCourses = function renderCourses(list){
               <p>展開個別卡片設定錄播、Tutor 與報名操作。</p>
             </div>
             <div class="tpma-course-dates" data-field="sessions"></div>
+            <button type="button" class="tpma-session-add" aria-label="新增場次">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+              <span>新增場次</span>
+            </button>
             <div class="tpma-bulk tpma-bulk-session-entry mt-4">
               <label for="tpma-course-bulk-${fieldSuffix}">批次新增場次</label>
               <p>每行輸入一筆，格式為 YYYY-MM-DD HH:MM。</p>
@@ -665,6 +699,20 @@ ns.renderCourses = function renderCourses(list){
       } else {
         ns.addSessionRow(datesWrap, { session_datetime: '', visibility_override: '' });
       }
+    }
+
+    const addSessionBtn = div.querySelector('.tpma-session-add');
+    if (addSessionBtn && datesWrap) {
+      addSessionBtn.onclick = () => {
+        const row = ns.addSessionRow(datesWrap, {
+          session_datetime: '',
+          delivery_mode: 'live',
+          visibility_override: '',
+          is_active: 1
+        });
+        const dateInput = row?.querySelector('.tpma-session-date-field input');
+        if (dateInput) dateInput.focus();
+      };
     }
 
     // 4) 批次貼上場次

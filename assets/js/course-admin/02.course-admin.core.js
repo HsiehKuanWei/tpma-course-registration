@@ -15,7 +15,8 @@
   /**
    * 共享狀態：其他模組都從這裡讀寫
    */
-  const state = ns.state = Object.assign({
+  const state = ns.state = ns.state || {};
+  Object.assign(state, {
     apiBase: '',
     nonce: '',
     formUrl: '',
@@ -23,7 +24,7 @@
     lecturers: [],
     currentLecturerTargetSelect: null,
     sort: { field: '', dir: 'asc' }
-  }, ns.state || {});
+  }, state);
   if (!state.sort || typeof state.sort !== 'object') state.sort = { field: '', dir: 'asc' };
   if (!Array.isArray(state.allCourses)) state.allCourses = [];
   if (!Array.isArray(state.lecturers)) state.lecturers = [];

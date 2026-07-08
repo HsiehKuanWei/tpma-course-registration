@@ -339,6 +339,41 @@
   font-weight:700;
 }
 .tpma-bulk-session-entry textarea{margin-top:10px;}
+.tpma-session-add{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  min-height:48px;
+  margin-top:12px;
+  padding:10px 16px;
+  gap:8px;
+  border:1px dashed #8fb4bd;
+  border-radius:9px;
+  background:#f5fafb;
+  color:#0f6371;
+  font:inherit;
+  font-weight:700;
+  cursor:pointer;
+  transition:border-color .2s ease,background-color .2s ease,color .2s ease;
+}
+.tpma-session-add:hover{border-color:#0f6c7b;background:#eaf6f7;color:#0b5360;}
+.tpma-session-add:focus-visible{outline:3px solid rgba(15,108,123,.2);outline-offset:2px;}
+.tpma-topic-resource-list{display:flex;flex-direction:column;gap:10px;}
+.tpma-topic-resource-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(260px,.8fr);
+  align-items:center;
+  gap:16px;
+  padding:12px 14px;
+  border:1px solid #d8e5e9;
+  border-radius:8px;
+  background:#f8fbfd;
+  color:#27364a;
+  font-weight:600;
+}
+.tpma-topic-resource-select{width:100%;min-height:42px;border:1px solid #c7d3df;border-radius:7px;background:#fff;padding:8px 10px;}
+.tpma-topic-resource-select:focus{border-color:#0f6c7b;outline:3px solid rgba(15,108,123,.16);outline-offset:1px;}
 
 /* 編輯頁固定操作列 */
 .tpma-reg-detail-actions.tpma-course-edit-actions{
@@ -403,6 +438,7 @@
     grid-template-columns:1fr !important;
   }
   .tpma-session-fields{grid-template-columns:1fr;}
+  .tpma-topic-resource-row{grid-template-columns:1fr;gap:8px;}
   .tpma-session-summary{
     align-items:flex-start;
     flex-direction:column;

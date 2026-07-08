@@ -6,7 +6,7 @@ Plugin Name: TPMA Course & Registration
 
 Description: 課程資料庫與報名資料庫，提供外部表單、前端管理介面與匯入工具。
 
-Version: 1.9.0
+Version: 1.9.1
 
 Author: TPMA
 
@@ -30,7 +30,7 @@ if (!defined('ABSPATH')) {
 
 if (!defined('TPMA_CR_VERSION')) {
 
-    define('TPMA_CR_VERSION', '1.9.0');
+    define('TPMA_CR_VERSION', '1.9.1');
 
 }
 

@@ -789,10 +789,6 @@ class TPMA_CR_Mail_Dispatcher
             }
         }
         $remit_account = (string) $order->get_meta('_tpma_remit_account', true);
-        $order_public_url = method_exists($order, 'get_checkout_order_received_url')
-            ? $order->get_checkout_order_received_url()
-            : '';
-
         $context = array_merge(
             array(
                 // draft / registration
@@ -852,8 +848,6 @@ class TPMA_CR_Mail_Dispatcher
                 'shipping_address'      => $shipping_address,
                 'order_address'         => $order_address,
 
-                // 你要的「訂單查詢連結」（order-received/?key=...）
-                'order_public_url'      => $order_public_url,
             )
         );
 
@@ -890,9 +884,7 @@ class TPMA_CR_Mail_Dispatcher
         // remit_amount：訂單總額
         $context['remit_amount'] = $remit_amount;
 
-        // Allow Tutor Bridge (or any extension) to inject magic link URLs and additional vars.
-        // Bridge hooks into this filter to provide: magic_link_course, magic_link_quiz,
-        // magic_link_certificate, magic_link_meet, google_meet_url, tutor_course_url.
+        // Allow Tutor Bridge and Woo integrations to inject their owned URLs.
         return apply_filters('tpma_cr_mail_context', $context, $order, !empty($learner) ? $learner : null);
     }
 
@@ -980,8 +972,6 @@ class TPMA_CR_Mail_Dispatcher
             'learners_list' => '學員清單（純文字、可換行）',
             'learners_count' => '學員數',
 
-            // 連結
-            'order_public_url' => '訂單查詢連結',
         );
 
         return apply_filters('tpma_mailer_available_vars', $vars);
@@ -1387,7 +1377,6 @@ class TPMA_CR_Mail_Dispatcher
         $ctx   = self::build_context($order, is_array($draft) ? $draft : array(), array());
         $ctx['remit_date']    = $remit_date;
         $ctx['remit_account'] = $remit_account;
-        $ctx['admin_link']    = admin_url('post.php?post=' . $order->get_id() . '&action=edit');
 
         $route_context = array(
             'event_key'   => 'admin_remit_report',
@@ -1524,34 +1513,43 @@ class TPMA_CR_Mail_Dispatcher
     }
 
     public static function send_course_access_event(string $event_key, WC_Order $order, array $reg): void {
+        self::send_course_access_event_for_regs($event_key, $order, array($reg));
+    }
+
+    public static function send_course_access_event_for_regs(string $event_key, WC_Order $order, array $regs): void {
         if (!class_exists('TPMA_Mailer')) {
             return;
         }
 
+        $regs = array_values(array_filter($regs, 'is_array'));
+        if (empty($regs)) return;
+        $first_reg = $regs[0];
+
         $draft = self::get_draft_from_order($order);
         $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
-
-        $learner_data = array(
-            'reg_id'       => $reg['id']           ?? '',
-            'reg_no'       => $reg['reg_no']        ?? '',
-            'student_name' => $reg['student_name']  ?? '',
-            'job_title'    => $reg['job_title']     ?? '',
-            'emails'       => $reg['emails']        ?? '',
-        );
-
-        $sent_key = '_tpma_access_event_' . sanitize_key($event_key) . '_' . (int)($reg['session_id'] ?? 0);
+        $sent_key = '_tpma_access_event_v2_' . sanitize_key($event_key) . '_' . (int)($first_reg['session_id'] ?? 0);
         if ($order->get_meta($sent_key, true) === 'yes') {
             return;
         }
 
+        $build_learner = static function (array $reg): array {
+            return array(
+                'reg_id'       => $reg['id'] ?? '',
+                'reg_no'       => $reg['reg_no'] ?? '',
+                'student_name' => $reg['student_name'] ?? '',
+                'job_title'    => $reg['job_title'] ?? '',
+                'emails'       => $reg['emails'] ?? '',
+            );
+        };
+        $first_learner = $build_learner($first_reg);
+        $first_ctx = self::build_context($order, $draft, $first_learner);
         $route_context = array(
             'event_key'      => $event_key,
             'order'          => $order,
             'draft'          => $draft,
-            'single_learner' => $learner_data,
+            'single_learner' => $first_learner,
+            'reg_context'    => $first_ctx,
         );
-        $ctx = self::build_context($order, $draft, $learner_data);
-        $route_context['reg_context'] = $ctx;
         $routes = function_exists('tpma_mailer_get_event_routes_for_event')
             ? tpma_mailer_get_event_routes_for_event($event_key, $route_context)
             : array();
@@ -1565,18 +1563,41 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         $sent = false;
+        $all_complete = true;
         foreach ($routes as $route) {
             $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
             $sources = self::extract_route_sources($route);
             if ($tpl === '') {
                 continue;
             }
-            $recipients = self::get_route_recipients($sources, $route_context);
-            if (self::send_route_with_copy_fallback($tpl, $recipients, $ctx)) {
-                $sent = true;
+
+            if (in_array('tpma_cr_learner', $sources, true)) {
+                foreach ($regs as $reg) {
+                    $learner = $build_learner($reg);
+                    $ctx = self::build_context($order, $draft, $learner);
+                    $learner_context = $route_context;
+                    $learner_context['single_learner'] = $learner;
+                    $learner_context['reg_context'] = $ctx;
+                    $recipients = self::get_route_recipients(array('tpma_cr_learner'), $learner_context);
+                    if (empty($recipients)) continue;
+                    if (self::send_template_to_recipients($tpl, $recipients, $ctx)) {
+                        $sent = true;
+                        self::send_route_copies_if_primary_sent($tpl, $recipients, $ctx);
+                    } else {
+                        $all_complete = false;
+                    }
+                }
             }
-            if (self::send_route_copies_if_primary_sent($tpl, $recipients, $ctx)) {
-                $sent = true;
+
+            $order_sources = array_values(array_diff($sources, array('tpma_cr_learner')));
+            if (!empty($order_sources)) {
+                $recipients = self::get_route_recipients($order_sources, $route_context);
+                if (self::send_route_with_copy_fallback($tpl, $recipients, $first_ctx)) {
+                    $sent = true;
+                    self::send_route_copies_if_primary_sent($tpl, $recipients, $first_ctx);
+                } elseif (!empty($recipients)) {
+                    $all_complete = false;
+                }
             }
         }
 
@@ -1587,8 +1608,10 @@ class TPMA_CR_Mail_Dispatcher
             return;
         }
 
-        $order->update_meta_data($sent_key, 'yes');
-        $order->save();
+        if ($all_complete) {
+            $order->update_meta_data($sent_key, 'yes');
+            $order->save();
+        }
     }
 
 }

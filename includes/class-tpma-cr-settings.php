@@ -14,7 +14,9 @@ class TPMA_CR_Settings {
 
         if (is_admin()) {
             add_action('admin_menu', array(__CLASS__, 'register_menu'));
+            add_action('admin_init', array(__CLASS__, 'handle_meet_settings_callback'), 1);
             add_action('admin_post_tpma_cr_save_settings', array(__CLASS__, 'handle_save'));
+            add_action('admin_post_tpma_cr_authorize_meet_settings', array(__CLASS__, 'handle_authorize_meet_settings'));
         }
     }
 
@@ -98,6 +100,102 @@ class TPMA_CR_Settings {
         self::save_tutor_settings();
 
         self::set_notice('TPMA Course Registration ID 設定已儲存。');
+        wp_safe_redirect(self::get_page_url());
+        exit;
+    }
+
+    public static function handle_authorize_meet_settings() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        check_admin_referer('tpma_cr_authorize_meet_settings');
+
+        $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
+        if (!class_exists($client_class) || !class_exists('TPMA_Tutor_Bridge')) {
+            self::set_notice('Tutor Pro Google Meet 模組未啟用。', 'error');
+            wp_safe_redirect(self::get_page_url());
+            exit;
+        }
+
+        try {
+            $google = new $client_class();
+            if (empty($google->client)) {
+                throw new Exception('無法建立 Google 授權用戶端。');
+            }
+            $google->client->addScope(TPMA_Tutor_Bridge::MEET_SETTINGS_SCOPE);
+            if (method_exists($google->client, 'setIncludeGrantedScopes')) {
+                $google->client->setIncludeGrantedScopes(true);
+            }
+            $state = wp_generate_password(48, false, false);
+            set_transient(self::get_meet_oauth_state_key(), $state, 10 * MINUTE_IN_SECONDS);
+            $google->client->setState($state);
+            wp_redirect($google->get_consent_screen_url());
+            exit;
+        } catch (Throwable $e) {
+            delete_transient(self::get_meet_oauth_state_key());
+            self::set_notice('無法開始 Meet 權限授權：' . $e->getMessage(), 'error');
+            wp_safe_redirect(self::get_page_url());
+            exit;
+        }
+    }
+
+    private static function get_meet_oauth_state_key(): string {
+        return 'tpma_cr_meet_oauth_state_' . get_current_user_id();
+    }
+
+    public static function handle_meet_settings_callback() {
+        if (!is_admin() || !current_user_can('manage_options')) return;
+        $page = sanitize_key(wp_unslash($_GET['page'] ?? ''));
+        $tab  = sanitize_key(wp_unslash($_GET['tab'] ?? ''));
+        if ($page !== 'google-meet' || $tab !== 'set-api') return;
+
+        $expected_state = (string) get_transient(self::get_meet_oauth_state_key());
+        if ($expected_state === '') return;
+
+        $returned_state = sanitize_text_field(wp_unslash($_GET['state'] ?? ''));
+        if ($returned_state === '' || !hash_equals($expected_state, $returned_state)) {
+            delete_transient(self::get_meet_oauth_state_key());
+            self::set_notice('Meet 權限授權失敗：OAuth state 驗證不符，請重新執行授權。', 'error');
+            wp_safe_redirect(self::get_page_url());
+            exit;
+        }
+        delete_transient(self::get_meet_oauth_state_key());
+
+        $oauth_error = sanitize_text_field(wp_unslash($_GET['error'] ?? ''));
+        if ($oauth_error !== '') {
+            self::set_notice('Meet 權限授權遭 Google 拒絕：' . $oauth_error, 'error');
+            wp_safe_redirect(self::get_page_url());
+            exit;
+        }
+        $code = sanitize_text_field(wp_unslash($_GET['code'] ?? ''));
+        if ($code === '') {
+            self::set_notice('Meet 權限授權失敗：Google 未回傳 authorization code。', 'error');
+            wp_safe_redirect(self::get_page_url());
+            exit;
+        }
+
+        $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
+        try {
+            if (!class_exists($client_class)) throw new Exception('Tutor Pro Google Meet 模組未啟用。');
+            $google = new $client_class();
+            if (empty($google->client)) throw new Exception('無法建立 Google 授權用戶端。');
+            $google->client->addScope(TPMA_Tutor_Bridge::MEET_SETTINGS_SCOPE);
+
+            $token_path = trailingslashit($google->upload_dir) . $google->username . '-token.json';
+            $before_hash = is_readable($token_path) ? (string) hash_file('sha256', $token_path) : '';
+            $google->save_token($code);
+            clearstatcache(true, $token_path);
+            $after_hash = is_readable($token_path) ? (string) hash_file('sha256', $token_path) : '';
+            $saved = $after_hash !== '' && ($before_hash === '' || !hash_equals($before_hash, $after_hash));
+            $token = $saved ? json_decode((string) file_get_contents($token_path), true) : array();
+            if (!$saved || !is_array($token) || empty($token['access_token']) || !empty($token['error'])) {
+                throw new Exception('Tutor 無法儲存新的 Google access token。');
+            }
+
+            self::set_notice('Google Meet 開放權限已重新授權，請回課程管理建立 Meet。');
+        } catch (Throwable $e) {
+            self::set_notice('Meet 權限授權失敗：' . $e->getMessage(), 'error');
+        }
         wp_safe_redirect(self::get_page_url());
         exit;
     }
@@ -382,6 +480,15 @@ class TPMA_CR_Settings {
         echo '<p class="description">停用後 TPMA 報名功能仍正常運作，僅關閉 Tutor 相關功能。</p>';
         echo '</td>';
         echo '</tr>';
+
+        echo '<tr><th scope="row">Google Meet 進入權限</th><td>';
+        $authorize_url = wp_nonce_url(
+            admin_url('admin-post.php?action=tpma_cr_authorize_meet_settings'),
+            'tpma_cr_authorize_meet_settings'
+        );
+        echo '<a class="button" href="' . esc_url($authorize_url) . '">授權 Meet 開放權限</a>';
+        echo '<p class="description">首次使用或 Google 授權失效時執行一次。TPMA 建立 Meet 後會將存取類型設為「開放」，讓持有連結者可直接加入；Google Workspace 管理政策仍可能限制此設定。</p>';
+        echo '</td></tr>';
 
         echo '<tr><th scope="row"><label for="tpma_cr_live_access_days_before">直播課前開放</label></th><td>';
         echo '<input type="number" min="1" max="90" class="small-text" id="tpma_cr_live_access_days_before" name="tpma_cr_live_access_days_before" value="' . esc_attr((string)$days_before) . '"> 天';
