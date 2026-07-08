@@ -57,12 +57,18 @@ class TPMA_Tutor_Bridge {
         add_action('tutor_quiz_attempt_ended', [__CLASS__, 'on_quiz_attempt_ended'], 20, 1);
         add_action('tutor_quiz/attempt_ended', [__CLASS__, 'on_quiz_attempt_ended'], 20, 1);
         add_action('tutor_quiz/start/before', [__CLASS__, 'guard_quiz_start'], 5, 2);
+        add_action('save_post_tutor_quiz', [__CLASS__, 'enforce_qualifying_quiz_settings'], 40, 3);
+        add_action('template_redirect', [__CLASS__, 'prepare_qualifying_quiz_request'], 4);
+        add_filter('tutor_single_quiz/top', [__CLASS__, 'filter_qualifying_quiz_top'], 99, 1);
+        add_filter('tutor_single_quiz/content', [__CLASS__, 'filter_qualifying_quiz_content'], 99, 1);
+        add_filter('tutor_course_completed_percent', [__CLASS__, 'force_completed_progress_after_pass'], 99, 4);
+        add_filter('tutor_course/single/complete_form', [__CLASS__, 'hide_tpma_complete_form_after_pass'], 99, 1);
+        add_filter('tutor_course/single/start/button', [__CLASS__, 'filter_course_start_button'], 99, 2);
 
         // Course completion gate: require quiz pass
         add_filter('tutor_user_can_complete_course', [__CLASS__, 'filter_course_completion'], 10, 3);
 
-        // Course completion → cert_ready status + certificate email
-        add_action('tutor_course_complete_after', [__CLASS__, 'on_course_completed'], 20, 2);
+        // Certificate issuance remains manual until the TPMA certificate workflow is finalized.
 
         // Tutor owns course description while integration is enabled.
         add_action('save_post_' . (function_exists('tutor') ? tutor()->course_post_type : 'courses'), [__CLASS__, 'on_tutor_course_saved'], 30, 3);
@@ -75,6 +81,7 @@ class TPMA_Tutor_Bridge {
         add_filter('tutor_lesson/single/video', [__CLASS__, 'protect_session_lesson_output'], 99, 1);
         add_filter('tutor_lesson/single/content', [__CLASS__, 'protect_session_lesson_output'], 99, 1);
         add_filter('tutor_lesson/single/attachments', [__CLASS__, 'protect_session_lesson_output'], 99, 1);
+        add_filter('tutor/single/next_previous_pagination', [__CLASS__, 'filter_next_previous_pagination'], 99, 1);
 
         // Inject magic link variables into mail context
         add_filter('tpma_cr_mail_context', [__CLASS__, 'inject_mail_context'], 10, 3);
@@ -486,6 +493,9 @@ class TPMA_Tutor_Bridge {
             'fields'      => 'ids',
             'orderby'     => 'menu_order',
             'order'       => 'ASC',
+            // This inventory query is called from our pre_get_posts callback.
+            // Do not run the same callback again or WP_Query recurses until OOM.
+            'tpma_skip_session_topic_filter' => true,
         ));
 
         $out = array();
@@ -524,6 +534,7 @@ class TPMA_Tutor_Bridge {
             if (get_post_type($topic_id) !== 'topics' || (int) get_post_field('post_parent', $topic_id) !== $tutor_course_id) continue;
             if ((int) get_post_meta($topic_id, '_tpma_session_id', true) > 0) continue;
             update_post_meta($topic_id, '_tpma_resource_type', $type);
+            if ($type === 'quiz') self::enforce_topic_quiz_settings($topic_id);
         }
         self::clear_course_topic_resource_cache($tutor_course_id);
     }
@@ -1129,6 +1140,7 @@ class TPMA_Tutor_Bridge {
 
     public static function filter_session_topics_query($query): void {
         if ((is_admin() && !wp_doing_ajax()) || !is_object($query)) return;
+        if ($query->get('tpma_skip_session_topic_filter')) return;
         $post_type = $query->get('post_type');
         if ($post_type !== 'topics' && !(is_array($post_type) && in_array('topics', $post_type, true))) return;
         $user_id = get_current_user_id();
@@ -1206,6 +1218,85 @@ class TPMA_Tutor_Bridge {
         $allowed = self::user_can_manage_session($session_id)
             || (class_exists('TPMA_Course_Access') && TPMA_Course_Access::current_user_can_resource('recording', $session_id));
         return $allowed ? $html : '<div class="tutor-alert tutor-warning">此錄播目前未開放給您的場次。</div>';
+    }
+
+    private static function current_user_can_access_tutor_content(int $post_id): bool {
+        if ($post_id <= 0) return true;
+        $user_id = get_current_user_id();
+        $post_type = get_post_type($post_id);
+        $lesson_type = function_exists('tutor') ? tutor()->lesson_post_type : 'tutor_lesson';
+        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
+        if (!in_array($post_type, array($lesson_type, $quiz_type, 'tutor-google-meet'), true)) return true;
+
+        $topic_id = (int)get_post_field('post_parent', $post_id);
+        $course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+        if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return true;
+        if (($user_id > 0 && user_can($user_id, 'manage_options')) || (int)get_post_field('post_author', $course_id) === $user_id) return true;
+
+        $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+        if ($reg_id <= 0) return false;
+        $session_id = self::get_content_session_id($post_id);
+        $resource = $post_type === $quiz_type ? 'quiz' : ($post_type === 'tutor-google-meet' ? 'meet' : 'recording');
+        if ($session_id <= 0) $resource = self::get_topic_resource_type($topic_id);
+        $result = TPMA_Course_Access::evaluate_registration($reg_id, $resource);
+        if (empty($result['allowed']) || (int)($result['registration']['tutor_course_id'] ?? 0) !== $course_id) return false;
+        return $session_id <= 0 || (int)($result['registration']['session_id'] ?? 0) === $session_id;
+    }
+
+    public static function filter_next_previous_pagination(string $html): string {
+        if ($html === '' || !class_exists('TPMA_Course_Access') || TPMA_Course_Access::current_registration_id() <= 0) return $html;
+        $current_id = (int)get_queried_object_id();
+        if ($current_id <= 0) $current_id = (int)get_the_ID();
+        $post_type = get_post_type($current_id);
+        $lesson_type = function_exists('tutor') ? tutor()->lesson_post_type : 'tutor_lesson';
+        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
+        if (!in_array($post_type, array($lesson_type, $quiz_type, 'tutor-google-meet'), true)) return $html;
+        $topic_id = (int)get_post_field('post_parent', $current_id);
+        $course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+        return $course_id > 0 && (int)get_post_meta($course_id, '_tpma_course_id', true) > 0 ? '' : $html;
+    }
+
+    private static function get_first_accessible_course_content(int $course_id): int {
+        if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return 0;
+        global $wpdb;
+        $lesson_type = function_exists('tutor') ? tutor()->lesson_post_type : 'tutor_lesson';
+        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
+        $content_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT content.ID FROM {$wpdb->posts} topic
+             JOIN {$wpdb->posts} content ON content.post_parent=topic.ID
+             WHERE topic.post_parent=%d AND topic.post_type='topics' AND topic.post_status<>'trash'
+               AND content.post_type IN (%s,%s,'tutor-google-meet') AND content.post_status='publish'
+             ORDER BY topic.menu_order ASC, topic.ID ASC, content.menu_order ASC, content.ID ASC",
+            $course_id,
+            $lesson_type,
+            $quiz_type
+        ));
+        foreach ((array)$content_ids as $content_id) {
+            if (self::current_user_can_access_tutor_content((int)$content_id)) return (int)$content_id;
+        }
+        return 0;
+    }
+
+    private static function disabled_course_button(string $label): string {
+        return '<button type="button" class="tutor-btn tutor-btn-primary tutor-btn-block" disabled aria-disabled="true">'
+            . esc_html($label) . '</button>';
+    }
+
+    public static function filter_course_start_button(string $html, int $course_id): string {
+        if ($html === '' || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return $html;
+        $user_id = get_current_user_id();
+        if (($user_id > 0 && user_can($user_id, 'manage_options')) || (int)get_post_field('post_author', $course_id) === $user_id) return $html;
+        if (!class_exists('TPMA_Course_Access') || TPMA_Course_Access::current_registration_id() <= 0) return $html;
+
+        $quiz_id = self::get_qualifying_quiz_for_course($course_id);
+        if ($quiz_id > 0 && self::current_registration_has_passed_quiz($quiz_id, $user_id)) {
+            return self::disabled_course_button('課程已完成');
+        }
+        $content_id = self::get_first_accessible_course_content($course_id);
+        if ($content_id <= 0) return self::disabled_course_button('目前沒有可開啟的課程內容');
+        $url = get_permalink($content_id);
+        if (!$url) return self::disabled_course_button('目前沒有可開啟的課程內容');
+        return (string)preg_replace('/\\bhref=(["\']).*?\\1/i', 'href="' . esc_url($url) . '"', $html, 1);
     }
 
     // ──────────────────────────────────────────────────────────
@@ -1635,6 +1726,123 @@ class TPMA_Tutor_Bridge {
     // Quiz result sync
     // ──────────────────────────────────────────────────────────
 
+    private static function is_qualifying_quiz(int $quiz_id): bool {
+        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
+        if ($quiz_id <= 0 || get_post_type($quiz_id) !== $quiz_type) return false;
+        $topic_id = (int)get_post_field('post_parent', $quiz_id);
+        if ($topic_id <= 0 || sanitize_key((string)get_post_meta($topic_id, '_tpma_resource_type', true)) !== 'quiz') return false;
+        $course_id = (int)get_post_field('post_parent', $topic_id);
+        return $course_id > 0 && (int)get_post_meta($course_id, '_tpma_course_id', true) > 0;
+    }
+
+    private static function enforce_topic_quiz_settings(int $topic_id): void {
+        if ($topic_id <= 0 || sanitize_key((string)get_post_meta($topic_id, '_tpma_resource_type', true)) !== 'quiz') return;
+        global $wpdb;
+        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
+        $quiz_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT ID FROM {$wpdb->posts} WHERE post_parent=%d AND post_type=%s AND post_status<>'trash'",
+            $topic_id,
+            $quiz_type
+        ));
+        foreach ((array)$quiz_ids as $quiz_id) self::set_quiz_unlimited_attempts((int)$quiz_id);
+    }
+
+    private static function set_quiz_unlimited_attempts(int $quiz_id): void {
+        if (!self::is_qualifying_quiz($quiz_id)) return;
+        $options = get_post_meta($quiz_id, 'tutor_quiz_option', true);
+        $options = is_array($options) ? $options : array();
+        if (isset($options['attempts_allowed'], $options['feedback_mode'])
+            && (int)$options['attempts_allowed'] === 0
+            && (string)$options['feedback_mode'] === 'retry') return;
+        $options['attempts_allowed'] = 0;
+        $options['feedback_mode'] = 'retry';
+        update_post_meta($quiz_id, 'tutor_quiz_option', $options);
+    }
+
+    public static function enforce_qualifying_quiz_settings($post_id, $post = null, $update = false): void {
+        $post_id = (int)$post_id;
+        if ($post_id <= 0 || wp_is_post_revision($post_id)) return;
+        self::set_quiz_unlimited_attempts($post_id);
+    }
+
+    public static function prepare_qualifying_quiz_request(): void {
+        if (!is_singular()) return;
+        $quiz_id = (int)get_queried_object_id();
+        if (self::is_qualifying_quiz($quiz_id)) self::set_quiz_unlimited_attempts($quiz_id);
+    }
+
+    public static function filter_qualifying_quiz_top(string $html): string {
+        $quiz_id = (int)get_the_ID();
+        if (!self::is_qualifying_quiz($quiz_id)) return $html;
+        $html = (string)preg_replace('#<button\\b(?=[^>]*\\bskip-quiz-btn\\b)[^>]*>.*?</button>#is', '', $html);
+        return '<style>.skip-quiz-btn,#tutor-quiz-skip-to-next{display:none!important}</style>' . $html;
+    }
+
+    private static function get_quiz_passing_grade(int $quiz_id): float {
+        $grade = function_exists('tutor_utils') ? (float)tutor_utils()->get_quiz_option($quiz_id, 'passing_grade', 0) : 0.0;
+        return $grade > 0 ? $grade : 80.0;
+    }
+
+    private static function get_registration_for_quiz(int $reg_id, int $quiz_id, int $user_id = 0): ?array {
+        if ($reg_id <= 0 || !self::is_qualifying_quiz($quiz_id)) return null;
+        $topic_id = (int)get_post_field('post_parent', $quiz_id);
+        $course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+        global $wpdb;
+        $sql = "SELECT r.*, c.tutor_course_id FROM " . TPMA_CR_DB::table('regs') . " r
+                JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+                WHERE r.id=%d AND c.tutor_course_id=%d";
+        $args = array($reg_id, $course_id);
+        if ($user_id > 0) {
+            $sql .= " AND r.wp_user_id=%d";
+            $args[] = $user_id;
+        }
+        $sql .= " LIMIT 1";
+        $row = $wpdb->get_row($wpdb->prepare($sql, $args), ARRAY_A);
+        return $row ?: null;
+    }
+
+    private static function get_registration_best_quiz_score(int $reg_id, int $quiz_id): float {
+        if ($reg_id <= 0 || $quiz_id <= 0) return 0.0;
+        global $wpdb;
+        $score = $wpdb->get_var($wpdb->prepare(
+            "SELECT MAX((a.earned_marks / NULLIF(a.total_marks, 0)) * 100)
+             FROM {$wpdb->prefix}tutor_quiz_attempts a
+             JOIN " . TPMA_CR_DB::table('quiz_contexts') . " qc ON qc.attempt_id=a.attempt_id
+             WHERE qc.registration_id=%d AND a.quiz_id=%d AND a.total_marks>0
+               AND COALESCE(a.attempt_status,'')<>'attempt_started'",
+            $reg_id,
+            $quiz_id
+        ));
+        return $score === null ? 0.0 : round((float)$score, 1);
+    }
+
+    private static function registration_has_passed_quiz(int $reg_id, int $quiz_id): bool {
+        return self::get_registration_best_quiz_score($reg_id, $quiz_id) >= self::get_quiz_passing_grade($quiz_id);
+    }
+
+    private static function current_registration_has_passed_quiz(int $quiz_id, int $user_id = 0): bool {
+        $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+        $user_id = $user_id > 0 ? $user_id : get_current_user_id();
+        return self::get_registration_for_quiz($reg_id, $quiz_id, $user_id) !== null
+            && self::registration_has_passed_quiz($reg_id, $quiz_id);
+    }
+
+    private static function get_qualifying_quiz_for_course(int $course_id): int {
+        if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return 0;
+        global $wpdb;
+        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
+        return (int)$wpdb->get_var($wpdb->prepare(
+            "SELECT q.ID FROM {$wpdb->posts} q
+             JOIN {$wpdb->posts} topic ON topic.ID=q.post_parent
+             JOIN {$wpdb->postmeta} resource ON resource.post_id=topic.ID
+                AND resource.meta_key='_tpma_resource_type' AND resource.meta_value='quiz'
+             WHERE q.post_type=%s AND q.post_status<>'trash' AND topic.post_parent=%d
+             ORDER BY topic.menu_order ASC, q.menu_order ASC, q.ID ASC LIMIT 1",
+            $quiz_type,
+            $course_id
+        ));
+    }
+
     /**
      * Hook: tutor_quiz_attempt_ended.
      * Writes the quiz score back to TPMA registrations.test_score.
@@ -1673,17 +1881,12 @@ class TPMA_Tutor_Bridge {
             return;
         }
 
-        $wp_user_id      = (int)($attempt['user_id'] ?? 0);
-        $tutor_course_id = (int)($attempt['course_id'] ?? 0);
-        $earned_marks    = (float)($attempt['earned_marks'] ?? 0);
-        $total_marks     = (float)($attempt['total_marks'] ?? 0);
+        $wp_user_id = (int)($attempt['user_id'] ?? 0);
+        $quiz_id = (int)($attempt['quiz_id'] ?? 0);
 
-        if (!$wp_user_id) {
+        if (!$wp_user_id || !self::is_qualifying_quiz($quiz_id)) {
             return;
         }
-
-        $score_pct = ($total_marks > 0) ? round(($earned_marks / $total_marks) * 100, 1) : 0.0;
-        $score_str = $score_pct . '%';
 
         $regs_table    = TPMA_CR_DB::table('regs');
 
@@ -1691,7 +1894,9 @@ class TPMA_Tutor_Bridge {
             "SELECT registration_id FROM " . TPMA_CR_DB::table('quiz_contexts') . " WHERE attempt_id=%d", $attempt_id
         )) : 0;
         if ($mapped_reg_id <= 0) return;
-        $wpdb->update($regs_table, array('test_score'=>$score_str), array('id'=>$mapped_reg_id), array('%s'), array('%d'));
+        if (self::get_registration_for_quiz($mapped_reg_id, $quiz_id, $wp_user_id) === null) return;
+        $best_score = self::get_registration_best_quiz_score($mapped_reg_id, $quiz_id);
+        $wpdb->update($regs_table, array('test_score'=>$best_score . '%'), array('id'=>$mapped_reg_id), array('%s'), array('%d'));
     }
 
     public static function guard_quiz_start($quiz_id, $user_id): void {
@@ -1699,9 +1904,45 @@ class TPMA_Tutor_Bridge {
         $course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
         if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return;
         if (user_can((int)$user_id, 'manage_options') || (int)get_post_field('post_author', $course_id) === (int)$user_id) return;
+        self::set_quiz_unlimited_attempts((int)$quiz_id);
         if (!class_exists('TPMA_Course_Access') || !TPMA_Course_Access::current_user_can_resource('quiz')) {
             wp_die('此測驗尚未開放，或目前學員沒有應考權限。', '無法開始測驗', array('response'=>403));
         }
+        if (self::current_registration_has_passed_quiz((int)$quiz_id, (int)$user_id)) {
+            wp_die('您已通過測驗並完成本課程，不可再次應考。', '課程已完成', array('response'=>403));
+        }
+    }
+
+    public static function force_completed_progress_after_pass($result, $course_id, $user_id, $get_stats) {
+        $quiz_id = self::get_qualifying_quiz_for_course((int)$course_id);
+        if ($quiz_id <= 0 || !self::current_registration_has_passed_quiz($quiz_id, (int)$user_id)) return $result;
+        return $get_stats
+            ? array('completed_percent'=>100, 'completed_count'=>1, 'total_count'=>1)
+            : 100;
+    }
+
+    public static function filter_qualifying_quiz_content(string $html): string {
+        $quiz_id = (int)get_the_ID();
+        if (!self::is_qualifying_quiz($quiz_id)) return $html;
+        self::set_quiz_unlimited_attempts($quiz_id);
+        if (!self::current_registration_has_passed_quiz($quiz_id)) return $html;
+        $html = (string)preg_replace('#<form\b[^>]*\bid=(["\'])tutor-start-quiz\1[^>]*>.*?</form>#is', '', $html);
+        if (strpos($html, 'tpma-course-completed-notice') === false) {
+            $notice = '<div class="tutor-alert tutor-success tpma-course-completed-notice" role="status"><strong>恭喜您已通過測驗，本課程已完成。</strong></div>';
+            $html = $notice . $html;
+        }
+        return $html;
+    }
+
+    public static function hide_tpma_complete_form_after_pass(string $html): string {
+        $post_id = (int)get_the_ID();
+        $course_type = function_exists('tutor') ? tutor()->course_post_type : 'courses';
+        $course_id = get_post_type($post_id) === $course_type
+            ? $post_id
+            : (int)get_post_field('post_parent', (int)get_post_field('post_parent', $post_id));
+        $quiz_id = self::get_qualifying_quiz_for_course($course_id);
+        $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+        return $quiz_id > 0 && self::get_registration_for_quiz($reg_id, $quiz_id, get_current_user_id()) !== null ? '' : $html;
     }
 
     // ──────────────────────────────────────────────────────────
@@ -1731,19 +1972,17 @@ class TPMA_Tutor_Bridge {
             return $can_complete;
         }
 
-        $selected_reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
-        $score = $selected_reg_id > 0 ? (string)$wpdb->get_var($wpdb->prepare(
-            "SELECT test_score FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d AND wp_user_id=%d", $selected_reg_id, (int)$user_id
-        )) : '';
-        $pass_pct = function_exists('tutor_utils') ? (float)tutor_utils()->get_option('pass_mark_percentage', 80) : 80.0;
-        if ($selected_reg_id <= 0 || (float)rtrim($score, '%') < ($pass_pct > 0 ? $pass_pct : 80.0)) {
+        $quiz_id = self::get_qualifying_quiz_for_course((int)$course_id);
+        if ($quiz_id <= 0 || !self::current_registration_has_passed_quiz($quiz_id, (int)$user_id)) {
             return new WP_Error(
                 'tpma_quiz_not_passed',
                 '您尚未通過課程測驗，請先完成測驗並達到及格標準，再申請發放證書。'
             );
         }
-
-        return $can_complete;
+        return new WP_Error(
+            'tpma_certificate_pending',
+            '您已完成本課程；證書功能尚未開放，請等待主辦單位後續通知。'
+        );
     }
 
     /**
