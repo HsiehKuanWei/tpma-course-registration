@@ -50,6 +50,8 @@ class TPMA_Tutor_Bridge {
 
         // Quiz result → update test_score
         add_action('tutor_quiz_attempt_ended', [__CLASS__, 'on_quiz_attempt_ended'], 20, 1);
+        add_action('tutor_quiz/attempt_ended', [__CLASS__, 'on_quiz_attempt_ended'], 20, 1);
+        add_action('tutor_quiz/start/before', [__CLASS__, 'guard_quiz_start'], 5, 2);
 
         // Course completion gate: require quiz pass
         add_filter('tutor_user_can_complete_course', [__CLASS__, 'filter_course_completion'], 10, 3);
@@ -448,7 +450,7 @@ class TPMA_Tutor_Bridge {
     public static function get_session_status(int $course_id): array {
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT id, session_datetime, tutor_topic_id, tutor_meet_post_id,
+            "SELECT id, session_datetime, delivery_mode, tutor_topic_id, tutor_meet_post_id,
                     recording_available_from, recording_available_until
              FROM " . TPMA_CR_DB::table('sessions') . " WHERE course_id = %d ORDER BY session_datetime",
             $course_id
@@ -502,6 +504,7 @@ class TPMA_Tutor_Bridge {
             $session_id
         ), ARRAY_A);
         if (!$session) return new WP_Error('not_found', '找不到場次', array('status' => 404));
+        if ((string)($session['delivery_mode'] ?? 'live') === 'recorded') return new WP_Error('recorded_has_no_meet', '錄播場次不可建立 Meet', array('status' => 400));
         $topic_id = self::prepare_session_topic($session_id);
         if (!$topic_id) return new WP_Error('topic_failed', '無法建立 Tutor 場次 Topic', array('status' => 500));
 
@@ -662,15 +665,13 @@ class TPMA_Tutor_Bridge {
         $user_id = $user_id > 0 ? $user_id : get_current_user_id();
         if ($session_id <= 0 || $user_id <= 0) return false;
         if (self::user_can_manage_session($session_id, $user_id)) return true;
-        global $wpdb;
-        return (bool) $wpdb->get_var($wpdb->prepare(
-            "SELECT 1 FROM " . TPMA_CR_DB::table('regs') . "
-             WHERE session_id = %d AND wp_user_id = %d
-             AND COALESCE(status,'') <> 'cancelled'
-             AND COALESCE(payment_status,'') NOT IN ('cancelled','wc-cancelled','refunded','wc-refunded') LIMIT 1",
-            $session_id,
-            $user_id
-        ));
+        if (!class_exists('TPMA_Course_Access')) return false;
+        $selected = TPMA_Course_Access::current_registration_id();
+        if ($selected > 0) {
+            $result = TPMA_Course_Access::evaluate_registration($selected, 'course');
+            return !empty($result['allowed']) && (int)($result['registration']['session_id'] ?? 0) === $session_id;
+        }
+        return false;
     }
 
     private static function user_can_manage_session(int $session_id, int $user_id = 0): bool {
@@ -683,7 +684,7 @@ class TPMA_Tutor_Bridge {
              JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id = s.course_id WHERE s.id = %d",
             $session_id
         ));
-        return $tutor_course_id > 0 && function_exists('tutor_utils') && tutor_utils()->has_user_course_content_access($user_id, $tutor_course_id);
+        return $tutor_course_id > 0 && (int)get_post_field('post_author', $tutor_course_id) === $user_id;
     }
 
     private static function is_recording_window_open(int $session_id): bool {
@@ -706,7 +707,8 @@ class TPMA_Tutor_Bridge {
             $args['post__in'] = array(0);
             return $args;
         }
-        if (!self::is_recording_window_open($session_id) && !self::user_can_manage_session($session_id)) {
+        if (!self::user_can_manage_session($session_id)
+            && (!class_exists('TPMA_Course_Access') || !TPMA_Course_Access::current_user_can_resource('recording', $session_id))) {
             $lesson_ids = get_posts(array('post_type' => function_exists('tutor') ? tutor()->lesson_post_type : 'tutor_lesson', 'post_parent' => $topic_id, 'post_status' => 'publish', 'numberposts' => -1, 'fields' => 'ids'));
             $args['post__not_in'] = array_values(array_unique(array_merge((array) ($args['post__not_in'] ?? array()), array_map('intval', (array) $lesson_ids))));
         }
@@ -726,12 +728,13 @@ class TPMA_Tutor_Bridge {
         $user_id = get_current_user_id();
         if ($user_id > 0 && user_can($user_id, 'manage_options')) return;
         $course_id = (int) $query->get('post_parent');
-        if ($user_id > 0 && $course_id > 0 && function_exists('tutor_utils') && tutor_utils()->has_user_course_content_access($user_id, $course_id)) return;
         global $wpdb;
-        $allowed = $user_id > 0 ? $wpdb->get_col($wpdb->prepare(
-            "SELECT DISTINCT session_id FROM " . TPMA_CR_DB::table('regs') . " WHERE wp_user_id = %d AND session_id IS NOT NULL AND COALESCE(status,'') <> 'cancelled' AND COALESCE(payment_status,'') NOT IN ('cancelled','wc-cancelled','refunded','wc-refunded')",
-            $user_id
-        )) : array();
+        $allowed = array();
+        $selected = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+        if ($selected > 0) {
+            $result = TPMA_Course_Access::evaluate_registration($selected, 'course');
+            if (!empty($result['allowed'])) $allowed[] = (int)$result['registration']['session_id'];
+        }
         $meta_query = (array) $query->get('meta_query');
         $meta_query[] = array(
             'relation' => 'OR',
@@ -746,20 +749,49 @@ class TPMA_Tutor_Bridge {
         $post_id = get_queried_object_id();
         $post_type = get_post_type($post_id);
         $lesson_type = function_exists('tutor') ? tutor()->lesson_post_type : 'tutor_lesson';
+        $course_type = function_exists('tutor') ? tutor()->course_post_type : 'courses';
+        if ($post_type === $course_type) {
+            $tpma_course_id = (int)get_post_meta($post_id, '_tpma_course_id', true);
+            if ($tpma_course_id <= 0 || user_can(get_current_user_id(), 'manage_options') || (int)get_post_field('post_author', $post_id) === get_current_user_id()) return;
+            $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+            $result = $reg_id > 0 ? TPMA_Course_Access::evaluate_registration($reg_id, 'course') : array('allowed'=>false);
+            if (empty($result['allowed']) || (int)($result['registration']['course_id'] ?? 0) !== $tpma_course_id) {
+                wp_die('此課程尚未開放，或目前學員沒有存取權限。', '無法進入課程', array('response'=>403));
+            }
+            return;
+        }
         if ($post_type !== $lesson_type && $post_type !== 'tutor-google-meet') return;
         $session_id = self::get_content_session_id($post_id);
+        if ($session_id <= 0 && $post_type === $lesson_type) {
+            $topic_id = (int)get_post_field('post_parent', $post_id);
+            $tutor_course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+            $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+            $result = $reg_id > 0 ? TPMA_Course_Access::evaluate_registration($reg_id, 'recording') : array('allowed'=>false);
+            if (empty($result['allowed']) || (int)($result['registration']['tutor_course_id'] ?? 0) !== $tutor_course_id) {
+                wp_die('此錄播未開放給目前選擇的學員。', '無法存取錄播', array('response'=>403));
+            }
+            return;
+        }
         if ($session_id <= 0) return;
-        $allowed = self::user_can_access_session($session_id);
-        if ($allowed && $post_type === $lesson_type) $allowed = self::is_recording_window_open($session_id) || self::user_can_manage_session($session_id);
+        $resource = $post_type === $lesson_type ? 'recording' : 'meet';
+        $allowed = self::user_can_manage_session($session_id)
+            || (class_exists('TPMA_Course_Access') && TPMA_Course_Access::current_user_can_resource($resource, $session_id));
         if (!$allowed) wp_die('此內容僅開放給指定場次學員。', '無法存取場次內容', array('response' => 403));
     }
 
     public static function protect_session_lesson_output(string $html): string {
         $post_id = get_the_ID();
         $session_id = $post_id ? self::get_content_session_id((int) $post_id) : 0;
-        if ($session_id <= 0) return $html;
-        $allowed = self::user_can_access_session($session_id)
-            && (self::is_recording_window_open($session_id) || self::user_can_manage_session($session_id));
+        if ($session_id <= 0) {
+            $topic_id = $post_id ? (int)get_post_field('post_parent', $post_id) : 0;
+            $tutor_course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+            $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+            $result = $reg_id > 0 ? TPMA_Course_Access::evaluate_registration($reg_id, 'recording') : array('allowed'=>false);
+            return !empty($result['allowed']) && (int)($result['registration']['tutor_course_id'] ?? 0) === $tutor_course_id
+                ? $html : '<div class="tutor-alert tutor-warning">此錄播未開放給目前選擇的學員。</div>';
+        }
+        $allowed = self::user_can_manage_session($session_id)
+            || (class_exists('TPMA_Course_Access') && TPMA_Course_Access::current_user_can_resource('recording', $session_id));
         return $allowed ? $html : '<div class="tutor-alert tutor-warning">此錄播目前未開放給您的場次。</div>';
     }
 
@@ -781,7 +813,6 @@ class TPMA_Tutor_Bridge {
         if (!$order) {
             return;
         }
-
         // Idempotency guard
         if ($order->get_meta('_tpma_tutor_enrolled', true) === 'yes') {
             return;
@@ -820,7 +851,11 @@ class TPMA_Tutor_Bridge {
             }
 
             self::enroll_learner($wp_user_id, $tutor_course_id, $reg_id);
-            self::generate_all_tokens_for_registration($reg_id, $wp_user_id, $tutor_course_id, $class_date);
+        }
+
+        if (class_exists('TPMA_Course_Access')) {
+            TPMA_Course_Access::get_or_create_portal_url($order_id);
+            TPMA_Course_Access::maybe_send_access_event_for_order($order_id);
         }
 
         $order->update_meta_data('_tpma_tutor_enrolled', 'yes');
@@ -877,6 +912,9 @@ class TPMA_Tutor_Bridge {
         $order = wc_get_order($order_id);
         if (!$order) {
             return;
+        }
+        if (class_exists('TPMA_Course_Access')) {
+            TPMA_Course_Access::revoke_order($order_id);
         }
 
         $reg_ids_json = $order->get_meta('_tpma_reg_ids', true);
@@ -1021,6 +1059,12 @@ class TPMA_Tutor_Bridge {
         $tutor_course_id = self::get_tutor_course_id($tpma_course_id);
         if (!$tutor_course_id) {
             return [];
+        }
+
+        $order_id = (int)($reg['woocommerce_order_id'] ?? 0);
+        if ($order_id > 0 && class_exists('TPMA_Course_Access')) {
+            $portal = TPMA_Course_Access::get_or_create_portal_url($order_id, false);
+            return array('portal'=>$portal,'course'=>$portal,'quiz'=>$portal,'certificate'=>$portal,'meet'=>$portal);
         }
 
         return self::generate_all_tokens_for_registration($reg_id, $wp_user_id, $tutor_course_id, $class_date);
@@ -1228,34 +1272,22 @@ class TPMA_Tutor_Bridge {
         $score_pct = ($total_marks > 0) ? round(($earned_marks / $total_marks) * 100, 1) : 0.0;
         $score_str = $score_pct . '%';
 
-        $courses_table = TPMA_CR_DB::table('courses');
         $regs_table    = TPMA_CR_DB::table('regs');
 
-        // Find TPMA course ID via Tutor course ID
-        $tpma_course_id = $tutor_course_id
-            ? (int)$wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$courses_table} WHERE tutor_course_id = %d LIMIT 1",
-                $tutor_course_id
-            ))
-            : 0;
+        $mapped_reg_id = class_exists('TPMA_Course_Access') ? (int)$wpdb->get_var($wpdb->prepare(
+            "SELECT registration_id FROM " . TPMA_CR_DB::table('quiz_contexts') . " WHERE attempt_id=%d", $attempt_id
+        )) : 0;
+        if ($mapped_reg_id <= 0) return;
+        $wpdb->update($regs_table, array('test_score'=>$score_str), array('id'=>$mapped_reg_id), array('%s'), array('%d'));
+    }
 
-        if ($tpma_course_id) {
-            $wpdb->query($wpdb->prepare(
-                "UPDATE {$regs_table}
-                 SET    test_score = %s
-                 WHERE  wp_user_id = %d AND course_id = %d",
-                $score_str, $wp_user_id, $tpma_course_id
-            ));
-        } else {
-            // Fall back: update by user only (last N regs)
-            $wpdb->query($wpdb->prepare(
-                "UPDATE {$regs_table}
-                 SET    test_score = %s
-                 WHERE  wp_user_id = %d
-                 ORDER  BY id DESC
-                 LIMIT  5",
-                $score_str, $wp_user_id
-            ));
+    public static function guard_quiz_start($quiz_id, $user_id): void {
+        $topic_id = (int)get_post_field('post_parent', (int)$quiz_id);
+        $course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+        if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return;
+        if (user_can((int)$user_id, 'manage_options') || (int)get_post_field('post_author', $course_id) === (int)$user_id) return;
+        if (!class_exists('TPMA_Course_Access') || !TPMA_Course_Access::current_user_can_resource('quiz')) {
+            wp_die('此測驗尚未開放，或目前學員沒有應考權限。', '無法開始測驗', array('response'=>403));
         }
     }
 
@@ -1286,7 +1318,12 @@ class TPMA_Tutor_Bridge {
             return $can_complete;
         }
 
-        if (!self::has_user_passed_quiz_in_course((int)$user_id, (int)$course_id)) {
+        $selected_reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+        $score = $selected_reg_id > 0 ? (string)$wpdb->get_var($wpdb->prepare(
+            "SELECT test_score FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d AND wp_user_id=%d", $selected_reg_id, (int)$user_id
+        )) : '';
+        $pass_pct = function_exists('tutor_utils') ? (float)tutor_utils()->get_option('pass_mark_percentage', 80) : 80.0;
+        if ($selected_reg_id <= 0 || (float)rtrim($score, '%') < ($pass_pct > 0 ? $pass_pct : 80.0)) {
             return new WP_Error(
                 'tpma_quiz_not_passed',
                 '您尚未通過課程測驗，請先完成測驗並達到及格標準，再申請發放證書。'
@@ -1358,13 +1395,11 @@ class TPMA_Tutor_Bridge {
             return;
         }
 
-        $regs = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$regs_table}
-             WHERE  wp_user_id = %d AND course_id = %d
-             ORDER  BY id DESC
-             LIMIT  10",
-            $user_id, $tpma_course_id
-        ), ARRAY_A);
+        $selected_reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
+        $regs = $selected_reg_id > 0 ? $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$regs_table} WHERE id=%d AND wp_user_id=%d AND course_id=%d LIMIT 1",
+            $selected_reg_id, $user_id, $tpma_course_id
+        ), ARRAY_A) : array();
 
         if (empty($regs)) {
             return;
@@ -1381,15 +1416,7 @@ class TPMA_Tutor_Bridge {
             }
             $wpdb->update($regs_table, $updates, ['id' => $reg_id], array_fill(0, count($updates), '%s'), ['%d']);
 
-            // Refresh magic tokens so certificate link is up-to-date
-            $reg_wp_user  = (int)$reg['wp_user_id'];
-            $reg_date     = (string)$reg['class_date'];
-            $extra_days   = max(1, (int)get_option('tpma_cr_magic_link_extra_days', 15));
-            $expires_at   = $reg_date && strtotime($reg_date)
-                ? date('Y-m-d 23:59:59', strtotime("+{$extra_days} days", strtotime($reg_date)))
-                : date('Y-m-d 23:59:59', strtotime("+{$extra_days} days"));
-
-            self::create_token($reg_id, $reg_wp_user, $course_id, 'certificate', $expires_at);
+            self::regenerate_magic_urls_for_reg($reg_id);
 
             // Send certificate_ready email
             if (class_exists('TPMA_CR_Mail_Dispatcher')) {
@@ -1467,6 +1494,7 @@ class TPMA_Tutor_Bridge {
         $context['magic_link_quiz']        = $urls['quiz']        ?? '';
         $context['magic_link_certificate'] = $urls['certificate'] ?? '';
         $context['magic_link_meet']        = $urls['meet']        ?? '';
+        $context['magic_link_portal']      = $urls['portal']      ?? ($urls['course'] ?? '');
 
         // Extra Tutor context
         $tpma_course_id = (int)($context['course_id'] ?? 0);
@@ -1494,29 +1522,10 @@ class TPMA_Tutor_Bridge {
             return;
         }
 
-        $days_before = max(1, (int)apply_filters('tpma_cr_reminder_days_before', 3));
-        $target_date = date('Y-m-d', strtotime("+{$days_before} days"));
-
         global $wpdb;
-        $regs_table = TPMA_CR_DB::table('regs');
-
-        $regs = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$regs_table}
-             WHERE  class_date     = %s
-             AND    status        NOT IN ('cancelled','refunded')
-             AND    payment_status IN ('processing','completed')",
-            $target_date
-        ), ARRAY_A);
-
-        foreach ((array)$regs as $reg) {
-            $woo_order_id = (int)$reg['woocommerce_order_id'];
-            if (!$woo_order_id || !function_exists('wc_get_order')) {
-                continue;
-            }
-            $order = wc_get_order($woo_order_id);
-            if ($order) {
-                TPMA_CR_Mail_Dispatcher::send_reminder_email($order, $reg);
-            }
+        $order_ids = $wpdb->get_col("SELECT DISTINCT woocommerce_order_id FROM " . TPMA_CR_DB::table('regs') . " WHERE woocommerce_order_id IS NOT NULL AND COALESCE(status,'')<>'cancelled'");
+        foreach ((array)$order_ids as $order_id) {
+            if (class_exists('TPMA_Course_Access')) TPMA_Course_Access::maybe_send_access_event_for_order((int)$order_id);
         }
     }
 }

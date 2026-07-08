@@ -164,16 +164,25 @@ ns.renderCourses = function renderCourses(list){
    */
   ns.renderCourseView = function renderCourseView(div, showAllDates) {
     const c = div._data;
+    const tutorOwnsContent = !!c.tutor_enabled;
     const allSessions = c._all_sessions || c.sessions || [];
     const visibleSessions = c._visible_sessions || [];
     const sessions = showAllDates ? allSessions : visibleSessions;
     const hasExtra = allSessions.length > visibleSessions.length;
 
+    const intro = c.intro || '';
     const outline = c.outline || '';
-    let outlineHtml = util.esc(outline);
-    try {
-      if (w.marked && outline) outlineHtml = w.marked.parse(outline);
-    } catch (e) { /* ignore */ }
+    const introHtml = tutorOwnsContent
+      ? (c.intro_rendered || '')
+      : util.esc(intro);
+    let outlineHtml = tutorOwnsContent
+      ? (c.outline_rendered || '')
+      : util.esc(outline);
+    if (!tutorOwnsContent) {
+      try {
+        if (w.marked && outline) outlineHtml = w.marked.parse(outline);
+      } catch (e) { /* ignore */ }
+    }
 
     let sessionsHtml = '';
     if (!allSessions.length) {
@@ -244,11 +253,11 @@ ns.renderCourses = function renderCourses(list){
         <div class="tpma-reg-detail-section" id="section-course-content">
           <div class="tpma-detail-field col-span-full">
             <label>課程簡介</label>
-            <span class="value">${util.esc(c.intro || '') || '尚無內容'}</span>
+            <div class="value tpma-rich-content">${introHtml || '尚無內容'}</div>
           </div>
           <div class="tpma-detail-field col-span-full">
             <label>課程大綱</label>
-            <div class="value tpma-outline-view">${outlineHtml || '尚無內容'}</div>
+            <div class="value tpma-outline-view tpma-rich-content">${outlineHtml || '尚無內容'}</div>
           </div>
         </div>
 
@@ -306,36 +315,108 @@ ns.renderCourses = function renderCourses(list){
         val = `${y}-${m}-${day}T${hh}:${mm}`;
       }
     }
-    const row = document.createElement('div');
+    const row = document.createElement('details');
     row.className = 'tpma-session-row';
+    row.open = !session.id;
     row.dataset.sessionId = session.id || '';
     row.dataset.isActive = parseInt(session.is_active, 10) === 0 ? '0' : '1';
     row.dataset.meetLinked = session.tutor_meet_post_id ? '1' : '0';
     const recordingFrom = (session.recording_available_from || '').replace(' ', 'T').slice(0, 16);
     const recordingUntil = (session.recording_available_until || '').replace(' ', 'T').slice(0, 16);
+    const deliveryMode = ['live', 'recorded', 'hybrid'].includes(session.delivery_mode) ? session.delivery_mode : 'live';
+    const inactiveBadge = row.dataset.isActive === '0'
+      ? '<span class="tpma-session-badge tpma-session-badge-warning">已停用</span>'
+      : '';
+    const meetBadge = session.tutor_meet_post_id
+      ? '<span class="tpma-session-badge tpma-session-meet-badge tpma-session-badge-success">Meet 已連結</span>'
+      : '<span class="tpma-session-badge tpma-session-meet-badge">Meet 未建立</span>';
     row.innerHTML = `
-      <input type="datetime-local" value="${val}">
-      ${row.dataset.isActive === '0' ? '<span class="tpma-session-inactive-label">已停用場次</span>' : ''}
-      <select class="tpma-session-visibility">
-        <option value="" ${visibility === '' ? 'selected' : ''}>自動判斷</option>
-        <option value="force_show" ${visibility === 'force_show' ? 'selected' : ''}>強制顯示</option>
-        <option value="force_hide" ${visibility === 'force_hide' ? 'selected' : ''}>強制隱藏</option>
-      </select>
-      <label class="tpma-session-recording-field">錄播開始
-        <input type="datetime-local" class="tpma-recording-from" value="${util.esc(recordingFrom)}">
-      </label>
-      <label class="tpma-session-recording-field">錄播截止
-        <input type="datetime-local" class="tpma-recording-until" value="${util.esc(recordingUntil)}">
-      </label>
-      <div class="tpma-session-tutor-actions" data-session-id="${util.esc(session.id || '')}">
-        <span class="tpma-session-tutor-status">${session.tutor_meet_post_id ? 'Meet 已連結' : 'Meet 未建立'}</span>
-        <button type="button" class="tpma-btn tpma-session-prepare" ${session.id ? '' : 'disabled'}>準備場次內容</button>
-        <button type="button" class="tpma-btn tpma-session-meet" ${session.id ? '' : 'disabled'} ${session.tutor_meet_post_id ? 'hidden' : ''}>建立／連結 Meet</button>
-        <a class="tpma-btn tpma-session-tutor-edit${session.tutor_topic_edit_url ? '' : ' is-disabled'}" href="${util.esc(session.tutor_topic_edit_url || '#')}" target="_blank" rel="noopener noreferrer">Tutor 場次內容</a>
+      <summary class="tpma-session-summary">
+        <span class="tpma-session-summary-main">
+          <strong class="tpma-session-index">場次</strong>
+          <span class="tpma-session-summary-date">尚未設定日期</span>
+        </span>
+        <span class="tpma-session-summary-badges">
+          <span class="tpma-session-badge tpma-session-visibility-badge"></span>
+          ${meetBadge}
+          ${inactiveBadge}
+        </span>
+      </summary>
+      <div class="tpma-session-body">
+        <div class="tpma-session-fields">
+          <label class="tpma-session-field">
+            <span>課程型態</span>
+            <select class="tpma-delivery-mode">
+              <option value="live" ${deliveryMode === 'live' ? 'selected' : ''}>直播</option>
+              <option value="recorded" ${deliveryMode === 'recorded' ? 'selected' : ''}>錄播</option>
+              <option value="hybrid" ${deliveryMode === 'hybrid' ? 'selected' : ''}>直播＋錄播</option>
+            </select>
+          </label>
+          <label class="tpma-session-field tpma-session-date-field">
+            <span>上課日期與時間</span>
+            <input type="datetime-local" value="${val}">
+          </label>
+          <label class="tpma-session-field">
+            <span>前台顯示狀態</span>
+            <select class="tpma-session-visibility">
+              <option value="" ${visibility === '' ? 'selected' : ''}>自動判斷</option>
+              <option value="force_show" ${visibility === 'force_show' ? 'selected' : ''}>強制顯示</option>
+              <option value="force_hide" ${visibility === 'force_hide' ? 'selected' : ''}>強制隱藏</option>
+            </select>
+          </label>
+          <label class="tpma-session-field tpma-session-recording-field">
+            <span>錄播開始</span>
+            <input type="datetime-local" class="tpma-recording-from" value="${util.esc(recordingFrom)}">
+          </label>
+          <label class="tpma-session-field tpma-session-recording-field">
+            <span>錄播截止</span>
+            <input type="datetime-local" class="tpma-recording-until" value="${util.esc(recordingUntil)}">
+          </label>
+        </div>
+        <div class="tpma-session-tutor-panel" data-session-id="${util.esc(session.id || '')}">
+          <div>
+            <span class="tpma-session-panel-label">Tutor LMS</span>
+            <span class="tpma-session-tutor-status">${session.tutor_meet_post_id ? 'Meet 已連結' : (session.tutor_topic_edit_url ? '場次內容已準備' : '場次內容尚未準備')}</span>
+          </div>
+          <div class="tpma-session-tutor-actions">
+            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-prepare" ${session.id ? '' : 'disabled'}>準備場次內容</button>
+            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-meet" ${session.id ? '' : 'disabled'} ${session.tutor_meet_post_id ? 'hidden' : ''}>建立／連結 Meet</button>
+            <a class="tpma-btn tpma-btn-outline tpma-session-tutor-edit${session.tutor_topic_edit_url ? '' : ' is-disabled'}" href="${util.esc(session.tutor_topic_edit_url || '#')}" target="_blank" rel="noopener noreferrer" aria-disabled="${session.tutor_topic_edit_url ? 'false' : 'true'}">編輯 Tutor 場次</a>
+          </div>
+        </div>
+        <div class="tpma-session-actions">
+          <a href="#" class="tpma-btn tpma-btn-outline tpma-session-reg-link" target="_blank" rel="noopener noreferrer">開啟報名表</a>
+          <button type="button" class="tpma-btn tpma-btn-danger-outline tpma-session-remove">移除此場次</button>
+        </div>
       </div>
-      <a href="#" class="tpma-session-reg-link" target="_blank" rel="noopener noreferrer">開啟報名表</a>
-      <button type="button" class="tpma-btn tpma-session-remove">移除</button>
     `;
+    const dateInput = row.querySelector('.tpma-session-date-field input');
+    const deliverySelect = row.querySelector('.tpma-delivery-mode');
+    const visibilitySelect = row.querySelector('.tpma-session-visibility');
+    const updateSummary = () => {
+      const dateLabel = row.querySelector('.tpma-session-summary-date');
+      const visibilityBadge = row.querySelector('.tpma-session-visibility-badge');
+      const dateValue = dateInput ? dateInput.value : '';
+      if (dateLabel) {
+        dateLabel.textContent = dateValue
+          ? dateValue.replace('T', ' ').replace(/-/g, '/')
+          : '尚未設定日期';
+      }
+      if (visibilityBadge) {
+        visibilityBadge.textContent = util.getSessionVisibilityLabel(visibilitySelect ? visibilitySelect.value : '');
+      }
+    };
+    if (dateInput) dateInput.addEventListener('change', updateSummary);
+    if (visibilitySelect) visibilitySelect.addEventListener('change', updateSummary);
+    updateSummary();
+    const updateModeFields = () => {
+      const mode = deliverySelect ? deliverySelect.value : 'live';
+      row.querySelectorAll('.tpma-session-recording-field').forEach(el => { el.hidden = mode === 'live'; });
+      const meetButton = row.querySelector('.tpma-session-meet');
+      if (meetButton && row.dataset.meetLinked !== '1') meetButton.hidden = mode === 'recorded';
+    };
+    if (deliverySelect) deliverySelect.addEventListener('change', updateModeFields);
+    updateModeFields();
     const updateRegLink = () => {
       const cardDiv = container.closest('.tpma-course-item');
       const courseId = cardDiv?.dataset?.id || '';
@@ -345,9 +426,11 @@ ns.renderCourses = function renderCourses(list){
       if (href) {
         linkEl.href = href;
         linkEl.classList.remove('is-disabled');
+        linkEl.setAttribute('aria-disabled', 'false');
       } else {
         linkEl.href = '#';
         linkEl.classList.add('is-disabled');
+        linkEl.setAttribute('aria-disabled', 'true');
       }
     };
     updateRegLink();
@@ -357,24 +440,30 @@ ns.renderCourses = function renderCourses(list){
     const tutorStatus = row.querySelector('.tpma-session-tutor-status');
     if (prepareBtn && session.id) {
       prepareBtn.onclick = async () => {
+        const originalText = prepareBtn.textContent;
         prepareBtn.disabled = true;
+        prepareBtn.textContent = '準備中…';
         try {
           const result = await ns.apiPrepareTutorSession(session.id);
           if (tutorLink && result.edit_url) {
             tutorLink.href = result.edit_url;
             tutorLink.classList.remove('is-disabled');
+            tutorLink.setAttribute('aria-disabled', 'false');
           }
           if (tutorStatus && row.dataset.meetLinked !== '1') tutorStatus.textContent = 'Tutor 場次內容已準備';
         } catch (e) {
           w.alert(e.message || '無法準備 Tutor 場次內容');
         } finally {
           prepareBtn.disabled = false;
+          prepareBtn.textContent = originalText;
         }
       };
     }
     if (meetBtn && session.id) {
       meetBtn.onclick = async () => {
+        const originalText = meetBtn.textContent;
         meetBtn.disabled = true;
+        meetBtn.textContent = '處理中…';
         try {
           const cardDiv = container.closest('.tpma-course-item');
           const courseId = cardDiv?.dataset?.id || '';
@@ -389,21 +478,38 @@ ns.renderCourses = function renderCourses(list){
           const result = await ns.apiCreateOrLinkMeet(session.id, meetId);
           row.dataset.meetLinked = '1';
           if (tutorStatus) tutorStatus.textContent = 'Meet 已連結';
+          const meetBadgeEl = row.querySelector('.tpma-session-meet-badge');
+          if (meetBadgeEl) {
+            meetBadgeEl.textContent = 'Meet 已連結';
+            meetBadgeEl.classList.add('tpma-session-badge-success');
+          }
           meetBtn.hidden = true;
           if (tutorLink && result.topic_edit_url) {
             tutorLink.href = result.topic_edit_url;
             tutorLink.classList.remove('is-disabled');
+            tutorLink.setAttribute('aria-disabled', 'false');
           }
           if (result.meet_url) w.alert('Meet 已建立／連結：' + result.meet_url);
         } catch (e) {
           w.alert(e.message || 'Meet 建立／連結失敗');
         } finally {
           meetBtn.disabled = false;
+          meetBtn.textContent = originalText;
         }
       };
     }
-    row.querySelector('.tpma-session-remove').onclick = () => row.remove();
+    row.querySelector('.tpma-session-remove').onclick = () => {
+      row.remove();
+      Array.from(container.querySelectorAll('.tpma-session-row')).forEach((item, index) => {
+        const label = item.querySelector('.tpma-session-index');
+        if (label) label.textContent = `場次 ${index + 1}`;
+      });
+    };
     container.appendChild(row);
+    Array.from(container.querySelectorAll('.tpma-session-row')).forEach((item, index) => {
+      const label = item.querySelector('.tpma-session-index');
+      if (label) label.textContent = `場次 ${index + 1}`;
+    });
   };
 
   /**
@@ -423,37 +529,46 @@ ns.renderCourses = function renderCourses(list){
     const sessions = c._all_sessions || c.sessions || [];
     const isClosed = parseInt(c.is_active, 10) === 0;
     const tutorOwnsContent = !!c.tutor_enabled;
+    const fieldSuffix = String(c.id || 'new').replace(/[^a-zA-Z0-9_-]/g, '');
+    const tutorIntroHtml = c.intro_rendered || '';
+    const tutorOutlineHtml = c.outline_rendered || '';
 
     div.innerHTML = `
-      <div class="tpma-reg-detail-container">
+      <div class="tpma-reg-detail-container tpma-course-edit-container">
         <h2 class="text-xl font-semibold mb-4 border-b pb-2">課程代碼：<span id="detail-course-code">${util.esc(c.course_code || 'N/A')}</span> 編輯資料</h2>
 
-        <div class="tpma-reg-detail-section edit-mode" id="section-course-basic">
-          <div class="tpma-detail-field">
-            <label>課程代碼（可用講師代碼 + 分類代碼）</label>
-            <input type="text" data-field="course_code" value="${util.esc(c.course_code || '')}" placeholder="例如 LEC01-A1">
+        <div class="tpma-reg-detail-section edit-mode tpma-course-basic-grid" id="section-course-basic">
+          <div class="tpma-section-heading col-span-full">
+            <h3>基本資料</h3>
+            <p>設定課程識別、分類、講師與開放狀態。</p>
           </div>
           <div class="tpma-detail-field">
-            <label>課程名稱 <span class="tpma-required-label">必填</span></label>
-            <input type="text" data-field="course_name" value="${util.esc(c.course_name || '')}">
+            <label for="tpma-course-code-${fieldSuffix}">課程代碼（可用講師代碼 + 分類代碼）</label>
+            <input id="tpma-course-code-${fieldSuffix}" type="text" data-field="course_code" value="${util.esc(c.course_code || '')}" placeholder="例如 LEC01-A1">
           </div>
           <div class="tpma-detail-field">
-            <label>課程分類 <span class="tpma-required-label">必填</span></label>
-            <select data-field="category_code">
+            <label for="tpma-course-name-${fieldSuffix}">課程名稱 <span class="tpma-required-label">必填</span></label>
+            <input id="tpma-course-name-${fieldSuffix}" type="text" data-field="course_name" value="${util.esc(c.course_name || '')}">
+          </div>
+          <div class="tpma-detail-field">
+            <label for="tpma-course-category-${fieldSuffix}">課程分類 <span class="tpma-required-label">必填</span></label>
+            <select id="tpma-course-category-${fieldSuffix}" data-field="category_code">
               ${dom.filter.cat ? dom.filter.cat.innerHTML : '<option value="">--</option>'}
             </select>
           </div>
           <div class="tpma-detail-field">
-            <label>講師 <span class="tpma-required-label">必填</span></label>
-            <div class="flex items-center gap-2">
-              <select data-field="lecturer_code" class="flex-grow"></select>
-              <button type="button" class="tpma-btn tpma-add-lecturer">新增講師</button>
-              <button type="button" class="tpma-btn tpma-btn-danger tpma-remove-lecturer">移除講師</button>
+            <label for="tpma-course-lecturer-${fieldSuffix}">講師 <span class="tpma-required-label">必填</span></label>
+            <div class="tpma-lecturer-control">
+              <select id="tpma-course-lecturer-${fieldSuffix}" data-field="lecturer_code" class="flex-grow"></select>
+              <div class="tpma-inline-actions">
+                <button type="button" class="tpma-btn tpma-btn-outline tpma-add-lecturer">新增講師</button>
+                <button type="button" class="tpma-btn tpma-btn-danger-outline tpma-remove-lecturer">移除講師</button>
+              </div>
             </div>
           </div>
           <div class="tpma-detail-field">
-            <label>單堂時數</label>
-            <select data-field="duration_hours">
+            <label for="tpma-course-duration-${fieldSuffix}">單堂時數</label>
+            <select id="tpma-course-duration-${fieldSuffix}" data-field="duration_hours">
               <option value="3" ${!c.duration_minutes || c.duration_minutes == 180 ? 'selected' : ''}>3 小時</option>
               <option value="2" ${c.duration_minutes == 120 ? 'selected' : ''}>2 小時</option>
               <option value="4" ${c.duration_minutes == 240 ? 'selected' : ''}>4 小時</option>
@@ -463,8 +578,8 @@ ns.renderCourses = function renderCourses(list){
             </select>
           </div>
           <div class="tpma-detail-field">
-            <label>課程狀態</label>
-            <select data-field="is_active">
+            <label for="tpma-course-active-${fieldSuffix}">課程狀態</label>
+            <select id="tpma-course-active-${fieldSuffix}" data-field="is_active">
               <option value="1" ${isClosed ? '' : 'selected'}>開啟</option>
               <option value="0" ${isClosed ? 'selected' : ''}>關閉</option>
             </select>
@@ -473,36 +588,59 @@ ns.renderCourses = function renderCourses(list){
 
         <div class="tpma-reg-detail-section edit-mode" id="section-course-content">
           ${tutorOwnsContent ? `
-            <div class="tpma-detail-field col-span-full tpma-tutor-content-notice">
-              <strong>內容由 Tutor LMS 管理。</strong>
-              ${c.tutor_content_sync_error ? `<p class="tpma-error">${util.esc(c.tutor_content_sync_error)}</p>` : ''}
-              ${c.tutor_edit_url ? `<a class="tpma-btn" href="${util.esc(c.tutor_edit_url)}" target="_blank" rel="noopener noreferrer">前往 Tutor 編輯課程內容</a>` : '<span>請先儲存課程建立 Tutor 課程。</span>'}
-            </div>` : ''}
-          <div class="tpma-detail-field col-span-full">
-            <label>課程簡介</label>
-            <textarea rows="3" data-field="intro" ${tutorOwnsContent ? 'readonly' : ''}>${util.esc(c.intro || '')}</textarea>
-          </div>
-          <div class="tpma-detail-field col-span-full">
-            <label>課程大綱（Markdown）</label>
-            <textarea rows="5" data-field="outline" ${tutorOwnsContent ? 'readonly' : ''}>${util.esc(c.outline || '')}</textarea>
-          </div>
+            <div class="col-span-full tpma-tutor-content-notice">
+              <div class="tpma-tutor-content-header">
+                <div>
+                  <strong>內容由 Tutor LMS 管理</strong>
+                  <p>此處提供格式化預覽，內容修改請前往 Tutor。</p>
+                </div>
+                ${c.tutor_edit_url ? `<a class="tpma-btn" href="${util.esc(c.tutor_edit_url)}" target="_blank" rel="noopener noreferrer">前往 Tutor 編輯</a>` : '<span class="tpma-tutor-content-pending">請先儲存課程以建立 Tutor 課程</span>'}
+              </div>
+              ${c.tutor_content_sync_error ? `<p class="tpma-error" role="alert">${util.esc(c.tutor_content_sync_error)}</p>` : ''}
+            </div>
+            <input type="hidden" data-field="intro" value="${util.esc(c.intro || '')}">
+            <input type="hidden" data-field="outline" value="${util.esc(c.outline || '')}">
+            <section class="tpma-content-preview col-span-full" aria-labelledby="tpma-intro-heading-${fieldSuffix}">
+              <h3 id="tpma-intro-heading-${fieldSuffix}">課程簡介</h3>
+              <div class="tpma-rich-content">${tutorIntroHtml || '<p class="tpma-empty-content">尚無內容</p>'}</div>
+            </section>
+            <section class="tpma-content-preview col-span-full" aria-labelledby="tpma-outline-heading-${fieldSuffix}">
+              <h3 id="tpma-outline-heading-${fieldSuffix}">課程大綱</h3>
+              <div class="tpma-rich-content">${tutorOutlineHtml || '<p class="tpma-empty-content">尚無內容</p>'}</div>
+            </section>` : `
+            <div class="tpma-section-heading col-span-full">
+              <h3>課程內容</h3>
+              <p>簡介使用純文字；大綱支援 Markdown。</p>
+            </div>
+            <div class="tpma-detail-field col-span-full">
+              <label for="tpma-course-intro-${fieldSuffix}">課程簡介</label>
+              <textarea id="tpma-course-intro-${fieldSuffix}" rows="3" data-field="intro">${util.esc(c.intro || '')}</textarea>
+            </div>
+            <div class="tpma-detail-field col-span-full">
+              <label for="tpma-course-outline-${fieldSuffix}">課程大綱（Markdown）</label>
+              <textarea id="tpma-course-outline-${fieldSuffix}" rows="5" data-field="outline">${util.esc(c.outline || '')}</textarea>
+            </div>`}
         </div>
 
         <div class="tpma-reg-detail-section edit-mode" id="section-course-sessions">
           <div class="tpma-detail-field col-span-full">
-            <label>上課時段</label>
+            <div class="tpma-section-heading">
+              <h3>上課場次</h3>
+              <p>展開個別卡片設定錄播、Tutor 與報名操作。</p>
+            </div>
             <div class="tpma-course-dates" data-field="sessions"></div>
-            <div class="tpma-bulk mt-4">
-              以 YYYY-MM-DD HH:MM 每行一筆<br>
-              <textarea rows="3" class="tpma-bulk-input" placeholder="例如 2025-03-01 09:00"></textarea>
-              <button type="button" class="tpma-btn tpma-bulk-apply mt-2">套用</button>
+            <div class="tpma-bulk tpma-bulk-session-entry mt-4">
+              <label for="tpma-course-bulk-${fieldSuffix}">批次新增場次</label>
+              <p>每行輸入一筆，格式為 YYYY-MM-DD HH:MM。</p>
+              <textarea id="tpma-course-bulk-${fieldSuffix}" rows="3" class="tpma-bulk-input" placeholder="例如 2025-03-01 09:00"></textarea>
+              <button type="button" class="tpma-btn tpma-btn-outline tpma-bulk-apply mt-2">套用場次</button>
             </div>
           </div>
         </div>
 
-        <div class="tpma-reg-detail-actions">
+        <div class="tpma-reg-detail-actions tpma-course-edit-actions">
           <button class="tpma-btn" id="tpma-btn-save-course-${c.id}">儲存變更</button>
-          <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-course-edit-${c.id}">取消編輯</button>
+          <button class="tpma-btn tpma-btn-outline" id="tpma-btn-cancel-course-edit-${c.id}">取消編輯</button>
         </div>
         <div class="tpma-error tpma-save-error" style="display:none;"></div>
       </div>

@@ -318,12 +318,15 @@ public static function admin_get_regs($request)
         SELECT
             r.*,
             c.course_name,
+            s.delivery_mode,
             {$lecturer_display_sql} AS lecturer,
             r.woocommerce_order_id,
             r.payment_status
         FROM {$regs_table} r
         LEFT JOIN {$courses_table} c
             ON c.id = r.course_id
+        LEFT JOIN " . TPMA_CR_DB::table('sessions') . " s
+            ON s.id = r.session_id
         LEFT JOIN {$lecturers_table} l
             ON {$lecturer_join_sql}
         WHERE " . implode(' AND ', $where) . "
@@ -395,6 +398,7 @@ public static function admin_update_reg($request)
         'job_title',
         'mobile',
         'emails',
+        'access_mode',
         'status',          // 報名狀態
         'receipt_status',
         'test_score',
@@ -450,17 +454,51 @@ public static function admin_update_reg($request)
             continue;
         }
 
+        if ($f === 'access_mode') {
+            $access_mode = sanitize_key((string)$d[$f]);
+            $session_id = isset($d['session_id']) ? absint($d['session_id']) : (int)$row['session_id'];
+            $delivery_mode = $session_id > 0 ? (string)$wpdb->get_var($wpdb->prepare(
+                "SELECT delivery_mode FROM " . TPMA_CR_DB::table('sessions') . " WHERE id=%d", $session_id
+            )) : '';
+            $allowed_modes = $delivery_mode === 'hybrid' ? array('live','recorded') : array($delivery_mode ?: 'live');
+            if (!in_array($access_mode, $allowed_modes, true)) {
+                return new WP_Error('invalid_access_mode', '此場次不提供所選課程型態', array('status' => 400));
+            }
+            $tpma_update[$f] = $access_mode;
+            continue;
+        }
+
         $tpma_update[$f] = sanitize_text_field($d[$f]);
     }
 
     $has_change = !empty($tpma_update);
+
+    $postpay_order_changed = false;
+    if ($order && array_key_exists('status', $tpma_update)) {
+        $new_reg_status = (string)$tpma_update['status'];
+        $was_postpay = $order->get_meta('_tpma_post_course_payment', true) === 'yes';
+        if ($new_reg_status === 'postpay') {
+            $postpay_order_changed = true;
+            $order->update_meta_data('_tpma_post_course_payment', 'yes');
+            if ($order->get_status() !== 'on-hold') $order->set_status('on-hold', 'TPMA 後台標記為課後付款');
+            $wpdb->update($regs_table, array('status'=>'postpay','payment_status'=>'on-hold'), array('woocommerce_order_id'=>$order_id), array('%s','%s'), array('%d'));
+            $tpma_update['payment_status'] = 'on-hold';
+        } elseif ($was_postpay) {
+            $postpay_order_changed = true;
+            $order->delete_meta_data('_tpma_post_course_payment');
+            $wpdb->update($regs_table, array('status'=>$new_reg_status), array('woocommerce_order_id'=>$order_id,'status'=>'postpay'), array('%s'), array('%d','%s'));
+        }
+        if (class_exists('TPMA_Course_Access')) {
+            TPMA_Course_Access::get_or_create_portal_url($order_id, true);
+        }
+    }
 
     // Woo 欄位更新透過 Service 統一處理
     $woo_result = TPMA_CR_Admin_Woo_Service::apply_order_updates($order, $d, $regs_table);
     if (is_wp_error($woo_result)) {
         return $woo_result;
     }
-    $woo_changed = !empty($woo_result['has_change']);
+    $woo_changed = !empty($woo_result['has_change']) || $postpay_order_changed;
     $has_change = $has_change || $woo_changed;
 
     if (empty($tpma_update) && !$has_change) {
@@ -489,6 +527,9 @@ public static function admin_update_reg($request)
 
     if ($order && $woo_changed) {
         $order->save();
+        if ($postpay_order_changed && class_exists('TPMA_Course_Access')) {
+            TPMA_Course_Access::maybe_send_access_event_for_order($order_id);
+        }
     }
 
     return rest_ensure_response(array('success' => true));
@@ -736,6 +777,7 @@ public static function admin_update_reg($request)
             $sessions = $wpdb->get_results("
                 SELECT id, course_id, session_datetime, is_active, visibility_override,
                        tutor_topic_id, tutor_meet_post_id,
+                       delivery_mode,
                        recording_available_from, recording_available_until
                 FROM {$sessions_table}
                 WHERE course_id IN ({$ids_in})
@@ -758,6 +800,10 @@ public static function admin_update_reg($request)
         foreach ($courses as &$c) {
             $cid = (int)$c['id'];
             $c['sessions'] = isset($sessions_map[$cid]) ? $sessions_map[$cid] : array();
+            // Admin previews render these values as HTML. Sanitize them again at
+            // the response boundary so legacy database content is safe to inject.
+            $c['intro_rendered'] = wp_kses_post((string) ($c['intro'] ?? ''));
+            $c['outline_rendered'] = wp_kses_post((string) ($c['outline'] ?? ''));
             $tutor_id = (int) ($c['tutor_course_id'] ?? 0);
             $c['tutor_enabled'] = class_exists('TPMA_Tutor_Bridge') && TPMA_Tutor_Bridge::is_active();
             $c['tutor_edit_url'] = $tutor_id > 0 ? admin_url('post.php?post=' . $tutor_id . '&action=edit') : '';
@@ -807,6 +853,13 @@ public static function admin_update_reg($request)
                 }
                 $incoming_from = trim(str_replace('T', ' ', (string) ($incoming_session['recording_available_from'] ?? '')));
                 $incoming_until = trim(str_replace('T', ' ', (string) ($incoming_session['recording_available_until'] ?? '')));
+                $incoming_mode = sanitize_key((string)($incoming_session['delivery_mode'] ?? 'live'));
+                if (!in_array($incoming_mode, array('live','recorded','hybrid'), true)) {
+                    return new WP_Error('invalid_delivery_mode', '場次型態必須為直播、錄播或混合', array('status' => 400));
+                }
+                if (in_array($incoming_mode, array('recorded','hybrid'), true) && ($incoming_from === '' || $incoming_until === '')) {
+                    return new WP_Error('recording_window_required', '錄播或混合場次必須設定完整開放起訖', array('status' => 400));
+                }
                 if ($incoming_from !== '' && $incoming_until !== '' && strtotime($incoming_until) <= strtotime($incoming_from)) {
                     return new WP_Error('invalid_recording_window', '錄播截止時間必須晚於開始時間', array('status' => 400));
                 }
@@ -983,6 +1036,8 @@ public static function admin_update_reg($request)
             };
             $recording_from  = $normalize_optional_datetime($s['recording_available_from'] ?? '');
             $recording_until = $normalize_optional_datetime($s['recording_available_until'] ?? '');
+            $delivery_mode = sanitize_key((string)($s['delivery_mode'] ?? 'live'));
+            if (!in_array($delivery_mode, array('live','recorded','hybrid'), true)) $delivery_mode = 'live';
             if ($recording_from && $recording_until && strtotime($recording_until) <= strtotime($recording_from)) {
                 return new WP_Error('invalid_recording_window', '錄播截止時間必須晚於開始時間', array('status' => 400));
             }
@@ -991,6 +1046,7 @@ public static function admin_update_reg($request)
                 'session_datetime'         => $dt,
                 'is_active'                => isset($s['is_active']) && (int) $s['is_active'] === 0 ? 0 : 1,
                 'visibility_override'      => $visibility_override,
+                'delivery_mode'            => $delivery_mode,
                 'recording_available_from' => $recording_from,
                 'recording_available_until'=> $recording_until,
             );
@@ -1014,12 +1070,12 @@ public static function admin_update_reg($request)
                     }
                     $synced_meet_times[] = array('id' => $session_id, 'datetime' => (string) $old->session_datetime);
                 }
-                $wpdb->update($sessions_table, $session_data, array('id' => $session_id), array('%s','%d','%s','%s','%s'), array('%d'));
+                $wpdb->update($sessions_table, $session_data, array('id' => $session_id), array('%s','%d','%s','%s','%s','%s'), array('%d'));
                 $kept_session_ids[] = $session_id;
             } else {
                 $session_data['course_id'] = $course_id;
                 $session_data['created_at'] = current_time('mysql');
-                $wpdb->insert($sessions_table, $session_data, array('%s','%d','%s','%s','%s','%d','%s'));
+                $wpdb->insert($sessions_table, $session_data, array('%s','%d','%s','%s','%s','%s','%d','%s'));
                 if ($wpdb->insert_id) $kept_session_ids[] = (int) $wpdb->insert_id;
             }
         }
@@ -1163,6 +1219,7 @@ public static function admin_update_reg($request)
         $source_sessions = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT id, session_datetime, is_active, visibility_override,
+                        delivery_mode,
                         tutor_topic_id, tutor_meet_post_id,
                         recording_available_from, recording_available_until
                  FROM {$sessions_table}
@@ -1213,6 +1270,7 @@ public static function admin_update_reg($request)
                             'session_datetime'           => $session['session_datetime'],
                             'is_active'                  => isset($session['is_active']) ? (int)$session['is_active'] : 1,
                             'visibility_override'        => sanitize_key($session['visibility_override'] ?? ''),
+                            'delivery_mode'              => sanitize_key($session['delivery_mode'] ?? 'live'),
                             'tutor_topic_id'             => !empty($session['tutor_topic_id']) ? (int) $session['tutor_topic_id'] : null,
                             'tutor_meet_post_id'         => !empty($session['tutor_meet_post_id']) ? (int) $session['tutor_meet_post_id'] : null,
                             'recording_available_from'   => $session['recording_available_from'] ?: null,
@@ -1376,7 +1434,14 @@ public static function admin_update_reg($request)
             return new WP_Error('invalid', 'reg_id 必填', array('status' => 400));
         }
 
-        $urls = TPMA_Tutor_Bridge::regenerate_magic_urls_for_reg($reg_id);
+        global $wpdb;
+        $order_id = (int)$wpdb->get_var($wpdb->prepare("SELECT woocommerce_order_id FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d", $reg_id));
+        if ($order_id > 0 && class_exists('TPMA_Course_Access')) {
+            $portal = TPMA_Course_Access::get_or_create_portal_url($order_id, true);
+            $urls = array('portal'=>$portal,'course'=>$portal,'quiz'=>$portal,'certificate'=>$portal,'meet'=>$portal);
+        } else {
+            $urls = TPMA_Tutor_Bridge::regenerate_magic_urls_for_reg($reg_id);
+        }
         if (empty($urls)) {
             return new WP_Error('not_found', '找不到該報名記錄，或尚未連結 Tutor 課程', array('status' => 404));
         }

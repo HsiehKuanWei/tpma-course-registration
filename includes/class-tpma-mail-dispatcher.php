@@ -1520,6 +1520,10 @@ class TPMA_CR_Mail_Dispatcher
      * @param array    $reg  Row from wp_tpma_registrations (ARRAY_A)
      */
     public static function send_reminder_email(WC_Order $order, array $reg): void {
+        self::send_course_access_event('pre_class_reminder', $order, $reg);
+    }
+
+    public static function send_course_access_event(string $event_key, WC_Order $order, array $reg): void {
         if (!class_exists('TPMA_Mailer')) {
             return;
         }
@@ -1535,14 +1539,13 @@ class TPMA_CR_Mail_Dispatcher
             'emails'       => $reg['emails']        ?? '',
         );
 
-        // Reminder already sent guard (use order meta per-reg)
-        $sent_key = '_tpma_reminder_sent_' . (int)$reg['id'];
+        $sent_key = '_tpma_access_event_' . sanitize_key($event_key) . '_' . (int)($reg['session_id'] ?? 0);
         if ($order->get_meta($sent_key, true) === 'yes') {
             return;
         }
 
         $route_context = array(
-            'event_key'      => 'pre_class_reminder',
+            'event_key'      => $event_key,
             'order'          => $order,
             'draft'          => $draft,
             'single_learner' => $learner_data,
@@ -1550,11 +1553,11 @@ class TPMA_CR_Mail_Dispatcher
         $ctx = self::build_context($order, $draft, $learner_data);
         $route_context['reg_context'] = $ctx;
         $routes = function_exists('tpma_mailer_get_event_routes_for_event')
-            ? tpma_mailer_get_event_routes_for_event('pre_class_reminder', $route_context)
+            ? tpma_mailer_get_event_routes_for_event($event_key, $route_context)
             : array();
         if (empty($routes)) {
-            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config('pre_class_reminder')) {
-                self::notify_admin_unmatched_event('pre_class_reminder', array(
+            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config($event_key)) {
+                self::notify_admin_unmatched_event($event_key, array(
                     'reason' => 'event_triggered_but_no_route_matched',
                 ), $order);
             }
@@ -1578,7 +1581,7 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         if (!$sent) {
-            self::notify_admin_unmatched_event('pre_class_reminder', array(
+            self::notify_admin_unmatched_event($event_key, array(
                 'reason' => 'routes_matched_but_no_mail_sent',
             ), $order);
             return;

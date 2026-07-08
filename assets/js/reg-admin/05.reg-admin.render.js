@@ -366,6 +366,7 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
         const opt = document.createElement('option');
         opt.value = sessionValue;
         opt.dataset.sessionId = s.id || '';
+        opt.dataset.deliveryMode = s.delivery_mode || 'live';
 
         const label = durationMinutes ? U.formatSessionDisplay(sessionValue, durationMinutes) : sessionValue;
         opt.textContent = label;
@@ -394,7 +395,19 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
   const initCourseId = courseSel.value || row.course_id || '';
   rebuildDates(initCourseId);
 
-  courseSel.addEventListener('change', function(){ rebuildDates(this.value); });
+  function updateAccessMode(){
+    const accessSel = document.querySelector('.tpma-reg-card[data-id="' + row.id + '"] [data-field="access_mode"]');
+    if (!accessSel) return;
+    const mode = dateSel.selectedOptions?.[0]?.dataset?.deliveryMode || row.delivery_mode || 'live';
+    const current = accessSel.value;
+    const allowed = mode === 'hybrid' ? ['live', 'recorded'] : [mode === 'recorded' ? 'recorded' : 'live'];
+    accessSel.innerHTML = allowed.map(value => `<option value="${value}">${value === 'recorded' ? '錄播' : '直播'}</option>`).join('');
+    accessSel.value = allowed.includes(current) ? current : allowed[0];
+  }
+  updateAccessMode();
+
+  courseSel.addEventListener('change', function(){ rebuildDates(this.value); updateAccessMode(); });
+  dateSel.addEventListener('change', updateAccessMode);
 };
 
 R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
@@ -465,6 +478,10 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   appendEditField(studentSection, '職稱', 'job_title', 'text', row.job_title);
   appendEditField(studentSection, '手機', 'mobile', 'text', row.mobile);
   appendEditField(studentSection, 'Email', 'emails', 'text', row.emails);
+  const accessOptions = row.delivery_mode === 'hybrid'
+    ? (O.accessMode || [])
+    : (O.accessMode || []).filter(x => x.value === (row.delivery_mode === 'recorded' ? 'recorded' : 'live'));
+  appendEditField(studentSection, '課程型態', 'access_mode', 'select', row.access_mode || (row.delivery_mode === 'recorded' ? 'recorded' : 'live'), accessOptions);
   detailContainer.appendChild(studentSection);
 
   // 區塊 3: 公司資料
@@ -536,6 +553,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   actionsDiv.className = 'tpma-reg-detail-actions';
   actionsDiv.innerHTML = `
     <button class="tpma-btn" id="tpma-btn-save-detail-${row.id}">儲存變更</button>
+    ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-${row.id}">重發／複製共用入口</button>` : ''}
     <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit-${row.id}">取消編輯</button>
   `;
   detailContainer.appendChild(actionsDiv);
@@ -589,10 +607,24 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   }
 
   actionsDiv.querySelector(`#tpma-btn-save-detail-${row.id}`).addEventListener('click', async function(){
+    if (statusSel && statusSel.value === 'postpay' && row.status !== 'postpay') {
+      if (!w.confirm('課後付款會套用至同一 Woo 訂單的全部學員，並將訂單維持為 on-hold。確定繼續？')) return;
+    }
     await R.saveDetail(ctx, container, row.id);
   });
   actionsDiv.querySelector(`#tpma-btn-cancel-edit-${row.id}`).addEventListener('click', function(){
     R.renderDetailView(ctx, container, row);
+  });
+  const portalBtn = actionsDiv.querySelector(`#tpma-btn-portal-${row.id}`);
+  if (portalBtn) portalBtn.addEventListener('click', async function(){
+    if (!w.confirm('重發會讓此訂單舊的共用入口立即失效。確定產生新入口？')) return;
+    try {
+      const result = await API.regeneratePortal(ctx, row.id);
+      const url = result?.urls?.portal || result?.portal || '';
+      if (!url) throw new Error('未取得共用入口');
+      await navigator.clipboard.writeText(url);
+      w.alert('新的訂單共用入口已複製。');
+    } catch (e) { w.alert(e.message || '無法產生共用入口'); }
   });
 };
 

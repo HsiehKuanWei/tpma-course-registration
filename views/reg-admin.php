@@ -32,6 +32,7 @@ $TPMA_ENUM = [
     'completed'    => '已結訓',
     'hold'         => '保留中',
     'hold_refunded' => '待退款',
+    'postpay'       => '課後付款',
     'cancelled'     => '已取消'
 
   ],
@@ -86,6 +87,10 @@ $TPMA_OPTIONS_FOR_JS = [
   'regStatus'     => tpma_enum_to_options($TPMA_ENUM['regStatus']),
   'receiptStatus' => tpma_enum_to_options($TPMA_ENUM['receiptStatus']),
   'receiptType'   => tpma_enum_to_options($TPMA_ENUM['receiptType']),
+  'accessMode'    => [
+    ['value' => 'live', 'label' => '直播'],
+    ['value' => 'recorded', 'label' => '錄播'],
+  ],
 ];
 
 ?>
@@ -305,6 +310,14 @@ $TPMA_OPTIONS_FOR_JS = [
 
         <button class="tpma-btn tpma-batch-btn" data-batch-field="status">批次設定報名狀態</button>
 
+        <label style="margin-top:4px;">批次修改課程型態</label>
+        <select id="tpma-batch-access-mode" class="tpma-batch-select">
+          <option value="">請選擇型態</option>
+          <option value="live">直播</option>
+          <option value="recorded">錄播</option>
+        </select>
+        <button class="tpma-btn tpma-batch-btn" data-batch-field="access_mode">批次設定課程型態</button>
+
         <label style="margin-top:4px;">批次修改收據狀態</label>
         <select id="tpma-batch-receipt-status" class="tpma-batch-select">
           <option value="">請選擇狀態</option>
@@ -409,6 +422,7 @@ window.TPMARegAdmin.options.wcStatus      = <?php echo wp_json_encode($TPMA_OPTI
 window.TPMARegAdmin.options.regStatus     = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['regStatus'], JSON_UNESCAPED_UNICODE); ?>;
 window.TPMARegAdmin.options.receiptStatus = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['receiptStatus'], JSON_UNESCAPED_UNICODE); ?>;
 window.TPMARegAdmin.options.receiptType   = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['receiptType'], JSON_UNESCAPED_UNICODE); ?>;
+window.TPMARegAdmin.options.accessMode    = <?php echo wp_json_encode($TPMA_OPTIONS_FOR_JS['accessMode'], JSON_UNESCAPED_UNICODE); ?>;
 </script>
 
 <script src="<?php echo esc_url( TPMA_CR_URL . 'assets/js/reg-admin/03.reg-admin.api.js?ver=' . tpma_cr_asset_ver('assets/js/reg-admin/03.reg-admin.api.js') ); ?>"></script>

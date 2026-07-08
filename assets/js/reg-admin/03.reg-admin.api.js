@@ -34,4 +34,10 @@ API.updateRegistration = async function updateRegistration(ctx, payload){
   return data;
 };
 
+API.regeneratePortal = async function regeneratePortal(ctx, regId){
+  return await PublicAPI.fetchJson(ctx.apiBase + '/admin/magic-links/regenerate', {
+    method: 'POST', body: JSON.stringify({ reg_id: parseInt(regId, 10) || 0 })
+  }, ctx.nonce);
+};
+
 })(window);

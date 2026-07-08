@@ -315,6 +315,8 @@ class TPMA_CR_Settings {
     const OPTION_TUTOR_ENABLED            = 'tpma_cr_tutor_enabled';
     const OPTION_TUTOR_DEFAULT_INSTRUCTOR = 'tpma_cr_tutor_default_instructor';
     const OPTION_MAGIC_LINK_EXTRA_DAYS    = 'tpma_cr_magic_link_extra_days';
+    const OPTION_LIVE_ACCESS_DAYS_BEFORE  = 'tpma_cr_live_access_days_before';
+    const OPTION_LIVE_ACCESS_DAYS_AFTER   = 'tpma_cr_live_access_days_after';
 
     /**
      * Returns true when Tutor LMS is active AND the integration toggle is on.
@@ -339,10 +341,14 @@ class TPMA_CR_Settings {
         $enabled     = isset($_POST['tpma_cr_tutor_enabled']) ? 1 : 0;
         $instructor  = absint(wp_unslash($_POST['tpma_cr_tutor_default_instructor'] ?? 0));
         $extra_days  = max(1, absint(wp_unslash($_POST['tpma_cr_magic_link_extra_days'] ?? 15)));
+        $days_before = max(1, absint(wp_unslash($_POST['tpma_cr_live_access_days_before'] ?? 7)));
+        $days_after  = max(1, absint(wp_unslash($_POST['tpma_cr_live_access_days_after'] ?? 15)));
 
         update_option(self::OPTION_TUTOR_ENABLED,            $enabled,    false);
         update_option(self::OPTION_TUTOR_DEFAULT_INSTRUCTOR, $instructor, false);
         update_option(self::OPTION_MAGIC_LINK_EXTRA_DAYS,    $extra_days, false);
+        update_option(self::OPTION_LIVE_ACCESS_DAYS_BEFORE,  $days_before, false);
+        update_option(self::OPTION_LIVE_ACCESS_DAYS_AFTER,   $days_after, false);
 
         if (class_exists('TPMA_Tutor_Bridge')) {
             TPMA_Tutor_Bridge::refresh_active_state();
@@ -357,6 +363,8 @@ class TPMA_CR_Settings {
         $enabled       = (bool)(int)get_option(self::OPTION_TUTOR_ENABLED, 1);
         $instructor    = self::get_tutor_default_instructor();
         $extra_days    = self::get_magic_link_extra_days();
+        $days_before   = max(1, absint(get_option(self::OPTION_LIVE_ACCESS_DAYS_BEFORE, 7)));
+        $days_after    = max(1, absint(get_option(self::OPTION_LIVE_ACCESS_DAYS_AFTER, 15)));
 
         echo '<h2>Tutor LMS 整合設定</h2>';
 
@@ -374,6 +382,13 @@ class TPMA_CR_Settings {
         echo '<p class="description">停用後 TPMA 報名功能仍正常運作，僅關閉 Tutor 相關功能。</p>';
         echo '</td>';
         echo '</tr>';
+
+        echo '<tr><th scope="row"><label for="tpma_cr_live_access_days_before">直播課前開放</label></th><td>';
+        echo '<input type="number" min="1" max="90" class="small-text" id="tpma_cr_live_access_days_before" name="tpma_cr_live_access_days_before" value="' . esc_attr((string)$days_before) . '"> 天';
+        echo '<p class="description">課程頁、講義與 Meet 最早開放時間，預設課前 7 天。</p></td></tr>';
+        echo '<tr><th scope="row"><label for="tpma_cr_live_access_days_after">直播課後保留</label></th><td>';
+        echo '<input type="number" min="1" max="365" class="small-text" id="tpma_cr_live_access_days_after" name="tpma_cr_live_access_days_after" value="' . esc_attr((string)$days_after) . '"> 天';
+        echo '<p class="description">課程頁、講義與測驗於場次結束後保留的天數，預設 15 天。</p></td></tr>';
 
         // Default instructor
         echo '<tr>';

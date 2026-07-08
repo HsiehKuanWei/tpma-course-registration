@@ -163,6 +163,7 @@ class TPMA_CR_Mailer_Registration
             'description' => 'TPMA Tutor Bridge 產生的免登入與課程連結。',
             'vars'        => array(
                 'magic_link_course'      => array('label' => '免登入課程連結', 'description' => '可直接登入課程的 magic link。'),
+                'magic_link_portal'      => array('label' => '訂單共用課程入口', 'description' => '同一訂單所有學員共用的課程入口。'),
                 'magic_link_quiz'        => array('label' => '免登入測驗連結', 'description' => '可直接進入測驗的 magic link。'),
                 'magic_link_certificate' => array('label' => '免登入證書連結', 'description' => '可直接查看證書的 magic link。'),
                 'magic_link_meet'        => array('label' => '免登入 Google Meet 連結', 'description' => '課程會議用免登入連結。'),
@@ -207,6 +208,16 @@ class TPMA_CR_Mailer_Registration
                     'default_template'     => array(
                         'subject'   => 'TPMA 課前提醒：{{course_name}}',
                         'body_html' => '<p>{{student_name}} 您好：</p><p>提醒您課程即將開始。</p><ul><li>課程名稱：{{course_name}}</li><li>課程日期：{{class_date}}</li></ul><p><a href="{{magic_link_meet}}">前往線上教室</a></p>',
+                    ),
+                ),
+                'recorded_course_opened' => array(
+                    'label'                => '錄播課程開放通知',
+                    'source'               => 'tpma-course-registration',
+                    'note'                 => 'cron',
+                    'default_template_key' => 'recorded_course_opened',
+                    'default_template'     => array(
+                        'subject'   => 'TPMA 錄播課程已開放：{{course_name}}',
+                        'body_html' => '<p>您好：</p><p>錄播課程已開放，請由以下共用入口選擇學員後進入：</p><p><a href="{{magic_link_portal}}">進入課程</a></p>',
                     ),
                 ),
                 'quiz_invitation' => array(

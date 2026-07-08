@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
-    const SCHEMA_VERSION = '1.6.0';
+    const SCHEMA_VERSION = '1.7.0';
 
     private static $table_columns_cache = array();
 
@@ -42,6 +42,15 @@ class TPMA_CR_DB
             case 'magic_tokens':
 
                 return $wpdb->prefix . 'tpma_magic_tokens';
+
+            case 'portal_tokens':
+                return $wpdb->prefix . 'tpma_portal_tokens';
+
+            case 'quiz_contexts':
+                return $wpdb->prefix . 'tpma_quiz_attempt_contexts';
+
+            case 'portal_audit':
+                return $wpdb->prefix . 'tpma_portal_audit';
 
         }
 
@@ -157,6 +166,13 @@ class TPMA_CR_DB
             delete_option('tpma_cr_session_backfill_cursor');
             delete_option('tpma_cr_session_backfill_complete');
         }
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$regs_table} LIKE 'access_mode'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$regs_table} ADD COLUMN access_mode VARCHAR(20) NOT NULL DEFAULT 'live' AFTER session_id");
+            $access_mode_added = true;
+        } else {
+            $access_mode_added = false;
+        }
 
         // ── lecturers: wp_user_id ────────────────────────────────
         $lecturers_table = self::table('lecturers');
@@ -181,7 +197,9 @@ class TPMA_CR_DB
         if (empty($col)) {
             $wpdb->query("ALTER TABLE {$sessions_table} ADD COLUMN visibility_override VARCHAR(20) NOT NULL DEFAULT ''");
         }
+        $delivery_mode_added = false;
         foreach (array(
+            'delivery_mode'            => "VARCHAR(20) NOT NULL DEFAULT 'live'",
             'tutor_topic_id'           => 'BIGINT UNSIGNED DEFAULT NULL',
             'tutor_meet_post_id'       => 'BIGINT UNSIGNED DEFAULT NULL',
             'recording_available_from' => 'DATETIME DEFAULT NULL',
@@ -190,8 +208,18 @@ class TPMA_CR_DB
             $col = $wpdb->get_results("SHOW COLUMNS FROM {$sessions_table} LIKE '{$column}'");
             if (empty($col)) {
                 $wpdb->query("ALTER TABLE {$sessions_table} ADD COLUMN {$column} {$definition}");
+                if ($column === 'delivery_mode') $delivery_mode_added = true;
             }
         }
+        if (!empty($delivery_mode_added)) $wpdb->query("UPDATE {$sessions_table}
+                      SET delivery_mode = CASE
+                        WHEN tutor_meet_post_id IS NOT NULL AND tutor_meet_post_id > 0 THEN 'live'
+                        WHEN recording_available_from IS NOT NULL AND recording_available_until IS NOT NULL THEN 'recorded'
+                        ELSE 'live' END
+                      WHERE delivery_mode = 'live'");
+        if ($access_mode_added || !empty($delivery_mode_added)) $wpdb->query("UPDATE {$regs_table} r INNER JOIN {$sessions_table} s ON s.id=r.session_id
+                      SET r.access_mode = CASE WHEN s.delivery_mode='recorded' THEN 'recorded' ELSE 'live' END
+                      WHERE r.access_mode IS NULL OR r.access_mode = '' OR " . ($access_mode_added ? "1=1" : "1=0"));
         $session_index = $wpdb->get_var("SHOW INDEX FROM {$sessions_table} WHERE Key_name = 'course_datetime_idx'");
         if (!$session_index) {
             $wpdb->query("ALTER TABLE {$sessions_table} ADD KEY course_datetime_idx (course_id, session_datetime)");
@@ -219,6 +247,38 @@ class TPMA_CR_DB
                 KEY user_reg_idx (wp_user_id, registration_id)
             ) {$charset_collate};"
         );
+
+        $wpdb->query("CREATE TABLE IF NOT EXISTS " . self::table('portal_tokens') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            order_id BIGINT UNSIGNED NOT NULL,
+            token_hash VARCHAR(64) NOT NULL,
+            encrypted_token LONGTEXT NOT NULL,
+            expires_at DATETIME NOT NULL,
+            created_at DATETIME NOT NULL,
+            revoked_at DATETIME DEFAULT NULL,
+            PRIMARY KEY (id), UNIQUE KEY token_hash_idx (token_hash), KEY order_active_idx (order_id, revoked_at)
+        ) {$charset_collate};");
+        $wpdb->query("CREATE TABLE IF NOT EXISTS " . self::table('quiz_contexts') . " (
+            attempt_id BIGINT UNSIGNED NOT NULL,
+            registration_id BIGINT UNSIGNED NOT NULL,
+            order_id BIGINT UNSIGNED NOT NULL,
+            session_id BIGINT UNSIGNED NOT NULL,
+            created_at DATETIME NOT NULL,
+            PRIMARY KEY (attempt_id), KEY registration_idx (registration_id)
+        ) {$charset_collate};");
+        $wpdb->query("CREATE TABLE IF NOT EXISTS " . self::table('portal_audit') . " (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            order_id BIGINT UNSIGNED NOT NULL,
+            registration_id BIGINT UNSIGNED DEFAULT NULL,
+            event_key VARCHAR(40) NOT NULL,
+            ip_hash VARCHAR(64) NOT NULL,
+            created_at DATETIME NOT NULL,
+            PRIMARY KEY (id), KEY order_created_idx (order_id, created_at)
+        ) {$charset_collate};");
+        if (!(bool)get_option('tpma_cr_portal_tokens_migrated_v1', false)) {
+            $wpdb->query($wpdb->prepare("UPDATE {$tokens_table} SET expires_at=%s WHERE expires_at>%s", current_time('mysql'), current_time('mysql')));
+            update_option('tpma_cr_portal_tokens_migrated_v1', 1, false);
+        }
     }
 
     /**
@@ -424,6 +484,7 @@ $charset_collate = $wpdb->get_charset_collate();
 			created_at DATETIME NOT NULL,
 			course_id BIGINT UNSIGNED NOT NULL,
 			session_id BIGINT UNSIGNED DEFAULT NULL,
+			access_mode VARCHAR(20) NOT NULL DEFAULT 'live',
 			class_date DATE DEFAULT NULL,
 			student_name VARCHAR(255) NOT NULL,
 			department VARCHAR(255) DEFAULT NULL,
@@ -465,6 +526,7 @@ $charset_collate = $wpdb->get_charset_collate();
             session_datetime DATETIME NOT NULL,
             is_active TINYINT(1) NOT NULL DEFAULT 1,
             visibility_override VARCHAR(20) NOT NULL DEFAULT '',
+            delivery_mode VARCHAR(20) NOT NULL DEFAULT 'live',
             tutor_topic_id BIGINT UNSIGNED DEFAULT NULL,
             tutor_meet_post_id BIGINT UNSIGNED DEFAULT NULL,
             recording_available_from DATETIME DEFAULT NULL,

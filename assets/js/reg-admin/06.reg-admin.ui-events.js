@@ -578,10 +578,12 @@ if (menuTarget) {
       const field = this.getAttribute('data-batch-field');
       let value = '';
       if (field === 'status') value = (document.getElementById('tpma-batch-status')||{}).value || '';
+      else if (field === 'access_mode') value = (document.getElementById('tpma-batch-access-mode')||{}).value || '';
       else if (field === 'receipt_status') value = (document.getElementById('tpma-batch-receipt-status')||{}).value || '';
       else if (field === 'receipt_type') value = (document.getElementById('tpma-batch-receipt-type')||{}).value || '';
       else if (field === 'remit_paid_at') value = (document.getElementById('tpma-batch-remit-date')||{}).value || '';
       if (!value) { alert('請先選擇要套用的值'); return; }
+      if (field === 'status' && value === 'postpay' && !confirm('課後付款會同步套用所選資料所屬 Woo 訂單內的全部學員。確定繼續？')) return;
       await UI.applyBatch(ctx, field, value);
     });
   });

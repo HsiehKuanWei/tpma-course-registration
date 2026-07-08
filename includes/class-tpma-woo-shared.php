@@ -460,6 +460,10 @@ class TPMA_CR_Woo_Shared
                     'created_at'           => current_time('mysql'),
                     'course_id'            => $course_id,
                     'session_id'           => $session_id,
+                    'access_mode'          => (string) $wpdb->get_var($wpdb->prepare(
+                        "SELECT CASE WHEN delivery_mode='recorded' THEN 'recorded' ELSE 'live' END FROM " . TPMA_CR_DB::table('sessions') . " WHERE id=%d",
+                        $session_id
+                    )),
                     'class_date'           => $class_date,
 
                     'student_name'         => sanitize_text_field($learner['student_name'] ?? ''),

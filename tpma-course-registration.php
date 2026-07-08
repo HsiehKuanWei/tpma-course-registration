@@ -6,7 +6,7 @@ Plugin Name: TPMA Course & Registration
 
 Description: 課程資料庫與報名資料庫，提供外部表單、前端管理介面與匯入工具。
 
-Version: 1.8.1
+Version: 1.9.0
 
 Author: TPMA
 
@@ -30,7 +30,7 @@ if (!defined('ABSPATH')) {
 
 if (!defined('TPMA_CR_VERSION')) {
 
-    define('TPMA_CR_VERSION', '1.8.1');
+    define('TPMA_CR_VERSION', '1.9.0');
 
 }
 
@@ -69,6 +69,7 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-admin-woo-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-thankyou-view.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-special-product.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-tutor-bridge.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-course-access.php';
 // WooCommerce 整合已移至獨立插件 tpma-woo-fields，這裡不再載入舊版：
 // require_once TPMA_CR_PATH . 'includes/class-tpma-woo-service.php';
 // require_once TPMA_CR_PATH . 'includes/class-tpma-woocommerce-integration.php';
@@ -90,6 +91,9 @@ add_action('plugins_loaded', function () {
     // Tutor LMS integration (optional — silently skipped when Tutor is absent)
     if (class_exists('TPMA_Tutor_Bridge')) {
         TPMA_Tutor_Bridge::init();
+    }
+    if (class_exists('TPMA_Course_Access')) {
+        TPMA_Course_Access::init();
     }
 }, 12);
 
