@@ -103,7 +103,6 @@ $TPMA_OPTIONS_FOR_JS = [
                placeholder="報名編號 / 學員 / 承辦 / 公司（模糊）">
         <button class="tpma-btn" id="tpma-btn-apply-q">搜尋</button>
         <button class="tpma-btn" id="tpma-btn-clear-all">清除全部篩選</button>
-        <button class="tpma-btn" id="tpma-btn-export">匯出 Excel</button>
     </div>
 	
   <div class="tpma-toolbar-row">
@@ -297,53 +296,77 @@ $TPMA_OPTIONS_FOR_JS = [
         <button class="tpma-btn" id="tpma-btn-clear-status-all">清除狀態篩選</button>
       </div>
 
-      <div class="tpma-menu-section">
-        <div style="font-weight:bold; margin-bottom:2px;">批次修改（第二層）</div>
-
-        <label>批次修改報名狀態</label>
-        <select id="tpma-batch-status" class="tpma-batch-select">
-          <option value="">請選擇狀態</option>
-          <?php foreach ($TPMA_ENUM['regStatus'] as $v => $label): ?>
-            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
-          <?php endforeach; ?>
-        </select>
-
-        <button class="tpma-btn tpma-batch-btn" data-batch-field="status">批次設定報名狀態</button>
-
-        <label style="margin-top:4px;">批次修改課程型態</label>
-        <select id="tpma-batch-access-mode" class="tpma-batch-select">
-          <option value="">請選擇型態</option>
-          <option value="live">直播</option>
-          <option value="recorded">錄播</option>
-        </select>
-        <button class="tpma-btn tpma-batch-btn" data-batch-field="access_mode">批次設定課程型態</button>
-
-        <label style="margin-top:4px;">批次修改收據狀態</label>
-        <select id="tpma-batch-receipt-status" class="tpma-batch-select">
-          <option value="">請選擇狀態</option>
-          <?php foreach ($TPMA_ENUM['receiptStatus'] as $v => $label): ?>
-            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
-          <?php endforeach; ?>
-        </select>
-
-        <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_status">批次設定收據狀態</button>
-
-        <label style="margin-top:4px;">批次修改收據方式</label>
-        <select id="tpma-batch-receipt-type" class="tpma-batch-select">
-          <option value="">請選擇方式</option>
-          <?php foreach ($TPMA_ENUM['receiptType'] as $v => $label): ?>
-            <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
-          <?php endforeach; ?>
-        </select>
-
-        <button class="tpma-btn tpma-batch-btn" data-batch-field="receipt_type">批次設定收據方式</button>
-      </div>
     </div>
   </div>
 
   <div class="tpma-reg-grid-th">操作</div>
 
 </div>
+
+  <div class="tpma-bulk-toolbar" id="tpma-bulk-toolbar">
+    <div class="tpma-bulk-primary">
+      <span class="tpma-bulk-count" id="tpma-bulk-count">已選取 0 筆</span>
+      <select id="tpma-bulk-action" class="tpma-bulk-control">
+        <option value="">選擇操作</option>
+        <option value="update_field">更新欄位</option>
+        <option value="send_mail">批次寄信</option>
+        <option value="reset_course_mail_meta">重置課程寄件紀錄</option>
+        <option value="export_excel">匯出 Excel</option>
+      </select>
+      <button type="button" class="tpma-btn" id="tpma-bulk-clear">清除選取</button>
+    </div>
+    <div class="tpma-bulk-secondary" id="tpma-bulk-secondary">
+      <select id="tpma-bulk-target-update-field" class="tpma-bulk-target" data-bulk-for="update_field">
+        <option value="">選擇更新欄位</option>
+        <option value="status">報名狀態</option>
+        <option value="access_mode">課程型態</option>
+        <option value="receipt_status">收據狀態</option>
+        <option value="receipt_type">收據方式</option>
+        <option value="remit_paid_at">匯款日期</option>
+      </select>
+      <select id="tpma-bulk-value-status" class="tpma-bulk-value" data-bulk-target="status">
+        <option value="">選擇狀態</option>
+        <?php foreach ($TPMA_ENUM['regStatus'] as $v => $label): ?>
+          <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+        <?php endforeach; ?>
+      </select>
+      <select id="tpma-bulk-value-access-mode" class="tpma-bulk-value" data-bulk-target="access_mode">
+        <option value="">選擇型態</option>
+        <option value="live">直播</option>
+        <option value="recorded">錄播</option>
+      </select>
+      <select id="tpma-bulk-value-receipt-status" class="tpma-bulk-value" data-bulk-target="receipt_status">
+        <option value="">選擇收據狀態</option>
+        <?php foreach ($TPMA_ENUM['receiptStatus'] as $v => $label): ?>
+          <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+        <?php endforeach; ?>
+      </select>
+      <select id="tpma-bulk-value-receipt-type" class="tpma-bulk-value" data-bulk-target="receipt_type">
+        <option value="">選擇收據方式</option>
+        <?php foreach ($TPMA_ENUM['receiptType'] as $v => $label): ?>
+          <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+        <?php endforeach; ?>
+      </select>
+      <input type="date" id="tpma-bulk-value-remit-paid-at" class="tpma-bulk-value" data-bulk-target="remit_paid_at">
+      <select id="tpma-bulk-mail-event" class="tpma-bulk-target" data-bulk-for="send_mail">
+        <option value="">選擇信件種類</option>
+        <option value="course_access">課程入口通知</option>
+        <option value="certificate_ready">證書通知</option>
+        <option value="receipt_notice">收據通知</option>
+      </select>
+      <select id="tpma-bulk-reset-event" class="tpma-bulk-target" data-bulk-for="reset_course_mail_meta">
+        <option value="">全部課程寄件紀錄</option>
+        <option value="course_access">課程入口通知</option>
+      </select>
+      <select id="tpma-bulk-export-type" class="tpma-bulk-target" data-bulk-for="export_excel">
+        <option value="students">課程學員資料</option>
+        <option value="statistics">統計報表</option>
+      </select>
+      <span class="tpma-bulk-hint" id="tpma-bulk-hint"></span>
+      <button type="button" class="tpma-btn tpma-btn-primary" id="tpma-bulk-apply">套用</button>
+    </div>
+    <div class="tpma-bulk-result" id="tpma-bulk-result" aria-live="polite"></div>
+  </div>
 
   <div id="tpma-reg-tbody" class="tpma-reg-grid-body">
     <div class="tpma-loading-row">載入中.</div>
@@ -391,6 +414,21 @@ $TPMA_OPTIONS_FOR_JS = [
       <div class="tpma-modal-footer">
         <button type="button" class="tpma-btn tpma-btn-secondary" id="tpma-export-cancel">取消</button>
         <button type="button" class="tpma-btn" id="tpma-export-confirm">確認匯出</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="tpma-bulk-result-modal" class="tpma-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="tpma-bulk-result-modal-title">
+    <div class="tpma-modal-dialog tpma-bulk-result-dialog">
+      <div class="tpma-modal-header">
+        <h3 id="tpma-bulk-result-modal-title">批次操作結果</h3>
+        <button type="button" class="tpma-modal-close-btn" id="tpma-bulk-result-modal-close" aria-label="關閉">✕</button>
+      </div>
+      <div class="tpma-modal-body">
+        <div id="tpma-bulk-result-modal-body" class="tpma-bulk-result-modal-body"></div>
+      </div>
+      <div class="tpma-modal-footer">
+        <button type="button" class="tpma-btn" id="tpma-bulk-result-modal-ok">關閉</button>
       </div>
     </div>
   </div>

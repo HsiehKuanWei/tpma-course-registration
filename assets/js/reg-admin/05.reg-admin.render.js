@@ -125,6 +125,38 @@ R.isClassCompleted = function isClassCompleted(ctx, row){
   return end.getTime() < Date.now();
 };
 
+R.accessModeLabel = function accessModeLabel(row){
+  const mode = String(row.access_mode || (row.delivery_mode === 'recorded' ? 'recorded' : 'live')).toLowerCase();
+  return mode === 'recorded' ? '錄播' : '直播';
+};
+
+R.buildAccessModeBadgeHtml = function buildAccessModeBadgeHtml(row){
+  const label = R.accessModeLabel(row);
+  const cls = label === '錄播' ? 'is-recorded' : 'is-live';
+  return '<span class="tpma-access-mode-badge ' + cls + '" title="課程型態: ' + U.esc(label) + '">' + U.esc(label) + '</span>';
+};
+
+R.getAccessModeSummary = function getAccessModeSummary(rows){
+  const labels = [];
+  (rows || []).forEach(function(row){
+    const label = R.accessModeLabel(row);
+    if (labels.indexOf(label) === -1) labels.push(label);
+  });
+  return labels.join(' / ');
+};
+
+R.buildAccessModeSummaryHtml = function buildAccessModeSummaryHtml(rows){
+  const seen = {};
+  const badges = [];
+  (rows || []).forEach(function(row){
+    const label = R.accessModeLabel(row);
+    if (seen[label]) return;
+    seen[label] = true;
+    badges.push(R.buildAccessModeBadgeHtml(row));
+  });
+  return badges.join(' ');
+};
+
 R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
   const icons = [];
   if (!row.session_id) {
@@ -243,6 +275,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField('課程名稱', courseText);
   appendField('授課講師', lecturerText);
   appendField('授課日期時間', R.buildClassDateRangeHtml(ctx, row), { html: true });
+  appendField('課程型態', R.accessModeLabel(row));
   appendField('報名編號', row.reg_no || 'N/A');
 
   appendField('學員姓名', row.student_name);
@@ -553,7 +586,8 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   actionsDiv.className = 'tpma-reg-detail-actions';
   actionsDiv.innerHTML = `
     <button class="tpma-btn" id="tpma-btn-save-detail-${row.id}">儲存變更</button>
-    ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-${row.id}">重發／複製共用入口</button>` : ''}
+    ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-${row.id}">複製共用入口</button>` : ''}
+    ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-reset-${row.id}">重置入口</button>` : ''}
     <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit-${row.id}">取消編輯</button>
   `;
   detailContainer.appendChild(actionsDiv);
@@ -617,14 +651,24 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   });
   const portalBtn = actionsDiv.querySelector(`#tpma-btn-portal-${row.id}`);
   if (portalBtn) portalBtn.addEventListener('click', async function(){
-    if (!global.confirm('重發會讓此訂單舊的共用入口立即失效。確定產生新入口？')) return;
     try {
-      const result = await API.regeneratePortal(ctx, row.id);
+      const result = await API.regeneratePortal(ctx, row.id, false);
+      const url = result?.urls?.portal || result?.portal || '';
+      if (!url) throw new Error('未取得共用入口');
+      await navigator.clipboard.writeText(url);
+      global.alert('訂單共用入口已複製。');
+    } catch (e) { global.alert(e.message || '無法取得共用入口'); }
+  });
+  const portalResetBtn = actionsDiv.querySelector(`#tpma-btn-portal-reset-${row.id}`);
+  if (portalResetBtn) portalResetBtn.addEventListener('click', async function(){
+    if (!global.confirm('重置入口會讓此訂單舊的共用入口立即失效。確定產生新入口？')) return;
+    try {
+      const result = await API.regeneratePortal(ctx, row.id, true);
       const url = result?.urls?.portal || result?.portal || '';
       if (!url) throw new Error('未取得共用入口');
       await navigator.clipboard.writeText(url);
       global.alert('新的訂單共用入口已複製。');
-    } catch (e) { global.alert(e.message || '無法產生共用入口'); }
+    } catch (e) { global.alert(e.message || '無法重置共用入口'); }
   });
 };
 
@@ -731,7 +775,7 @@ R.createFlatRowCard = function createFlatRowCard(ctx, row, seq){
   const courseText = R.getCourseSummaryText(row);
   const lecturerText = R.getLecturerSummaryText(row);
   const titleAttr = lecturerText ? ' title="講師：' + U.esc(lecturerText) + '"' : '';
-  cCourse.innerHTML = '<div class="tpma-cell-wrap"><div><strong class="tpma-reg-flat-primary"' + titleAttr + '>' + U.esc(courseText) + '</strong>' + (lecturerText ? '<div class="tpma-reg-flat-secondary">講師：' + U.esc(lecturerText) + '</div>' : '') + '</div></div>';
+  cCourse.innerHTML = '<div class="tpma-cell-wrap"><div><strong class="tpma-reg-flat-primary"' + titleAttr + '>' + U.esc(courseText) + '</strong><div class="tpma-reg-flat-secondary">' + R.buildAccessModeBadgeHtml(row) + (lecturerText ? ' <span>講師：' + U.esc(lecturerText) + '</span>' : '') + '</div></div></div>';
   summary.appendChild(cCourse);
 
   const cDate = document.createElement('div');
@@ -810,7 +854,7 @@ R.createNestedStudentRow = function createNestedStudentRow(ctx, row, seq){
   cStu.className = 'tpma-reg-cell';
   cStu.setAttribute('data-label', '學員姓名');
   const studentSub = [U.display(row.department), U.display(row.job_title)].filter(Boolean).join(' / ');
-  cStu.innerHTML = '<div class="tpma-cell-wrap tpma-reg-student-name-wrap"><div><strong class="tpma-reg-student-name">' + U.esc(U.display(row.student_name)) + '</strong>' + (studentSub ? '<div class="tpma-reg-student-sub">' + U.esc(studentSub) + '</div>' : '') + '</div></div>';
+  cStu.innerHTML = '<div class="tpma-cell-wrap tpma-reg-student-name-wrap"><div><strong class="tpma-reg-student-name">' + U.esc(U.display(row.student_name)) + '</strong><div class="tpma-reg-student-sub">' + R.buildAccessModeBadgeHtml(row) + (studentSub ? ' <span>' + U.esc(studentSub) + '</span>' : '') + '</div></div></div>';
   summary.appendChild(cStu);
 
   const cComp = document.createElement('div');
@@ -945,7 +989,8 @@ R.renderNestedTable = function renderNestedTable(ctx, tbody){
     const classCourse = document.createElement('div');
     classCourse.className = 'tpma-reg-class-cell';
     classCourse.setAttribute('data-label', '課程名稱');
-    classCourse.innerHTML = '<div class="tpma-cell-wrap tpma-reg-class-title-wrap"><div><strong class="tpma-reg-class-title">' + U.esc(R.getCourseSummaryText(firstRow)) + '</strong></div></div>';
+    const accessModeSummary = R.buildAccessModeSummaryHtml(group.rows || []);
+    classCourse.innerHTML = '<div class="tpma-cell-wrap tpma-reg-class-title-wrap"><div><strong class="tpma-reg-class-title">' + U.esc(R.getCourseSummaryText(firstRow)) + '</strong>' + (accessModeSummary ? '<div class="tpma-reg-flat-secondary">' + accessModeSummary + '</div>' : '') + '</div></div>';
     classSummary.appendChild(classCourse);
 
     const classLecturer = document.createElement('div');

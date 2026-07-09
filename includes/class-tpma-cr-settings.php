@@ -7,6 +7,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_Settings {
     const OPTION_SPECIAL_PRODUCT_ID = 'tpma_cr_special_product_id';
     const OPTION_VIRTUAL_USER_ROLE = 'tpma_cr_virtual_user_role';
+    const OPTION_AUTO_COURSE_MAIL_ENABLED = 'tpma_cr_auto_course_mail_enabled';
 
     public static function init() {
         add_filter('tpma_special_product_id', array(__CLASS__, 'filter_special_product_id'), 10, 1);
@@ -40,6 +41,10 @@ class TPMA_CR_Settings {
             return $saved;
         }
         return self::get_default_virtual_user_role();
+    }
+
+    public static function is_auto_course_mail_enabled(): bool {
+        return (bool) (int) get_option(self::OPTION_AUTO_COURSE_MAIL_ENABLED, 0);
     }
 
     public static function get_default_virtual_user_role() {
@@ -95,6 +100,7 @@ class TPMA_CR_Settings {
             delete_option('tpma_cr_wc_product_id');
         }
         update_option(self::OPTION_VIRTUAL_USER_ROLE, $virtual_user_role, false);
+        update_option(self::OPTION_AUTO_COURSE_MAIL_ENABLED, isset($_POST['tpma_cr_auto_course_mail_enabled']) ? 1 : 0, false);
 
         // Save Tutor integration settings
         self::save_tutor_settings();
@@ -463,6 +469,7 @@ class TPMA_CR_Settings {
         $extra_days    = self::get_magic_link_extra_days();
         $days_before   = max(1, absint(get_option(self::OPTION_LIVE_ACCESS_DAYS_BEFORE, 7)));
         $days_after    = max(1, absint(get_option(self::OPTION_LIVE_ACCESS_DAYS_AFTER, 15)));
+        $auto_mail     = self::is_auto_course_mail_enabled();
 
         echo '<h2>Tutor LMS 整合設定</h2>';
 
@@ -478,6 +485,14 @@ class TPMA_CR_Settings {
         echo '<td>';
         echo '<label><input type="checkbox" name="tpma_cr_tutor_enabled" value="1"' . checked($enabled, true, false) . '> 啟用（課程同步、自動報名、Magic Link）</label>';
         echo '<p class="description">停用後 TPMA 報名功能仍正常運作，僅關閉 Tutor 相關功能。</p>';
+        echo '</td>';
+        echo '</tr>';
+
+        echo '<tr>';
+        echo '<th scope="row">課程通知自動寄發</th>';
+        echo '<td>';
+        echo '<label><input type="checkbox" name="tpma_cr_auto_course_mail_enabled" value="1"' . checked($auto_mail, true, false) . '> 啟用課程通知自動寄發</label>';
+        echo '<p class="description">預設關閉。只控制訂單狀態更新、cron 等自動觸發的課前提醒與錄播開放通知；後台手動批次寄信不受此開關影響。</p>';
         echo '</td>';
         echo '</tr>';
 
@@ -523,5 +538,33 @@ class TPMA_CR_Settings {
         echo '</tr>';
 
         echo '</table>';
+
+        self::render_mail_event_diagnostics_table();
+    }
+
+    protected static function render_mail_event_diagnostics_table(): void {
+        echo '<h3>for Tutor 寄件事件診斷</h3>';
+        if (!class_exists('TPMA_CR_Mail_Dispatcher')) {
+            echo '<p class="description">尚未載入 TPMA_CR_Mail_Dispatcher，無法產生診斷。</p>';
+            return;
+        }
+
+        $rows = TPMA_CR_Mail_Dispatcher::get_mail_event_diagnostics();
+        echo '<table class="widefat striped" style="max-width:1100px;">';
+        echo '<thead><tr>';
+        echo '<th>事件</th><th>觸發方式</th><th>模板</th><th>路由</th><th>收件來源</th><th>目前是否自動寄</th>';
+        echo '</tr></thead><tbody>';
+        foreach ($rows as $event_key => $row) {
+            echo '<tr>';
+            echo '<td><code>' . esc_html($event_key) . '</code><br><span class="description">' . esc_html((string)($row['label'] ?? '')) . '</span></td>';
+            echo '<td>' . esc_html((string)($row['trigger'] ?? '')) . '</td>';
+            $template_note = !empty($row['route_matched']) ? '路由指定' : '預設建議';
+            echo '<td>' . (!empty($row['template_exists']) ? '存在' : '<strong style="color:#b32d2e;">缺少</strong>') . '<br><code>' . esc_html((string)($row['template_summary'] ?? ($row['template_key'] ?? ''))) . '</code><br><span class="description">' . esc_html($template_note) . '</span></td>';
+            echo '<td>' . (!empty($row['route_matched']) ? '已命中' : '<strong style="color:#b32d2e;">未命中</strong>') . '<br><span class="description">' . esc_html((string)($row['route_summary'] ?? '')) . '</span></td>';
+            echo '<td>' . (!empty($row['recipient_valid']) ? '合法' : '<strong style="color:#b32d2e;">需檢查</strong>') . '<br><span class="description">' . esc_html((string)($row['recipient_summary'] ?? '')) . '</span></td>';
+            echo '<td>' . (!empty($row['auto_active']) ? '<strong style="color:#008a20;">會自動寄</strong>' : '不自動寄') . '</td>';
+            echo '</tr>';
+        }
+        echo '</tbody></table>';
     }
 }

@@ -7,6 +7,8 @@ if (!defined('ABSPATH')) {
 class TPMA_Course_Access {
     const COOKIE = 'tpma_portal_session';
     const SESSION_TTL = 43200;
+    const SESSION_MIN_TTL = 28800;
+    const SESSION_EXTRA_TTL = 7200;
 
     public static function init(): void {
         add_action('init', array(__CLASS__, 'handle_portal'), 98);
@@ -49,6 +51,19 @@ class TPMA_Course_Access {
         if ($resource === 'meet') return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end;
         if ($resource === 'quiz') return $now_ts >= $end - HOUR_IN_SECONDS && $now_ts <= $end + max(1, $days_after) * DAY_IN_SECONDS;
         return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end + max(1, $days_after) * DAY_IN_SECONDS;
+    }
+
+    public static function registration_session_has_ended(array $row, string $now = ''): bool {
+        $start = strtotime((string)($row['session_datetime'] ?? ''));
+        if (!$start) {
+            return false;
+        }
+        $duration = max(1, (int)($row['duration_minutes'] ?? 180));
+        $now_ts = strtotime($now !== '' ? $now : current_time('mysql'));
+        if (!$now_ts) {
+            return false;
+        }
+        return $now_ts > ($start + $duration * MINUTE_IN_SECONDS);
     }
 
     public static function evaluate_registration(int $registration_id, string $resource = 'course', string $now = ''): array {
@@ -204,6 +219,10 @@ class TPMA_Course_Access {
 
     public static function maybe_send_access_event_for_order(int $order_id): void {
         if ($order_id <= 0 || !class_exists('TPMA_CR_Mail_Dispatcher') || !function_exists('wc_get_order')) return;
+        $auto_enabled = class_exists('TPMA_CR_Settings')
+            ? TPMA_CR_Settings::is_auto_course_mail_enabled()
+            : (bool)(int)get_option('tpma_cr_auto_course_mail_enabled', 0);
+        if (!$auto_enabled) return;
         $order = wc_get_order($order_id);
         if (!$order) return;
         global $wpdb;
@@ -212,8 +231,9 @@ class TPMA_Course_Access {
         foreach ((array)$regs as $reg) {
             $result = self::evaluate_registration((int)$reg['id'], 'course');
             if (empty($result['allowed'])) continue;
-            $event = ($result['mode'] ?? 'live') === 'recorded' ? 'recorded_course_opened' : 'pre_class_reminder';
-            $key = $event . ':' . (int)$reg['session_id'];
+            if (self::registration_session_has_ended((array)($result['registration'] ?? array()))) continue;
+            $event = 'course_access';
+            $key = $event . ':' . (int)$reg['session_id'] . ':' . sanitize_key((string)($result['mode'] ?? 'live'));
             if (!isset($groups[$key])) $groups[$key] = array('event' => $event, 'regs' => array());
             $groups[$key]['regs'][] = $reg;
         }
@@ -245,7 +265,7 @@ class TPMA_Course_Access {
         if (!empty($_GET['switch'])) {
             check_admin_referer('tpma_portal_switch');
             $session['registration_id'] = 0;
-            set_transient('tpma_portal_' . self::cookie_value(), $session, self::SESSION_TTL);
+            self::refresh_portal_session(self::cookie_value(), $session);
             wp_clear_auth_cookie();
             wp_set_current_user(0);
         }
@@ -258,11 +278,11 @@ class TPMA_Course_Access {
                 wp_die('所選學員目前沒有課程權限。', '無法選擇學員', array('response' => 403));
             }
             $session['registration_id'] = $reg_id;
-            set_transient('tpma_portal_' . self::cookie_value(), $session, self::SESSION_TTL);
+            self::refresh_portal_session(self::cookie_value(), $session);
             $user = get_user_by('id', (int)$candidate['wp_user_id']);
             if (!$user) wp_die('找不到學員帳號。', '無法進入課程', array('response' => 404));
             wp_set_current_user($user->ID);
-            wp_set_auth_cookie($user->ID, false);
+            wp_set_auth_cookie($user->ID, true);
             do_action('wp_login', $user->user_login, $user);
             self::audit((int)$session['order_id'], $reg_id, 'selected');
             $course_url = !empty($candidate['tutor_course_id']) ? get_permalink((int)$candidate['tutor_course_id']) : home_url('/');
@@ -337,8 +357,8 @@ class TPMA_Course_Access {
 
     private static function start_portal_session(int $token_id, int $order_id): void {
         $id = bin2hex(random_bytes(24));
-        set_transient('tpma_portal_' . $id, array('token_id'=>$token_id,'order_id'=>$order_id,'registration_id'=>0), self::SESSION_TTL);
-        setcookie(self::COOKIE, $id, array('expires'=>time()+self::SESSION_TTL,'path'=>COOKIEPATH ?: '/','domain'=>COOKIE_DOMAIN,'secure'=>is_ssl(),'httponly'=>true,'samesite'=>'Lax'));
+        $session = array('token_id'=>$token_id,'order_id'=>$order_id,'registration_id'=>0);
+        self::refresh_portal_session($id, $session);
         $_COOKIE[self::COOKIE] = $id;
     }
 
@@ -353,7 +373,61 @@ class TPMA_Course_Access {
         if (!is_array($session)) return null;
         global $wpdb;
         $valid = $wpdb->get_var($wpdb->prepare("SELECT id FROM " . TPMA_CR_DB::table('portal_tokens') . " WHERE id=%d AND revoked_at IS NULL AND expires_at >= %s", (int)$session['token_id'], current_time('mysql')));
-        return $valid ? $session : null;
+        if (!$valid) return null;
+        self::refresh_portal_session($id, $session);
+        self::ensure_portal_user_session($session);
+        return $session;
+    }
+
+    private static function portal_session_ttl(array $session = array()): int {
+        $ttl = max(self::SESSION_TTL, self::SESSION_MIN_TTL);
+        $reg_id = (int)($session['registration_id'] ?? 0);
+        if ($reg_id > 0) {
+            global $wpdb;
+            $minutes = (int)$wpdb->get_var($wpdb->prepare(
+                "SELECT c.duration_minutes FROM " . TPMA_CR_DB::table('regs') . " r
+                 JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+                 WHERE r.id=%d LIMIT 1",
+                $reg_id
+            ));
+            if ($minutes > 0) {
+                $ttl = max($ttl, $minutes * MINUTE_IN_SECONDS + self::SESSION_EXTRA_TTL);
+            }
+        }
+        return $ttl;
+    }
+
+    private static function refresh_portal_session(string $id, array $session): void {
+        if ($id === '') return;
+        $ttl = self::portal_session_ttl($session);
+        set_transient('tpma_portal_' . $id, $session, $ttl);
+        if (!headers_sent()) {
+            setcookie(self::COOKIE, $id, array(
+                'expires'  => time() + $ttl,
+                'path'     => COOKIEPATH ?: '/',
+                'domain'   => COOKIE_DOMAIN,
+                'secure'   => is_ssl(),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ));
+        }
+        $_COOKIE[self::COOKIE] = $id;
+    }
+
+    private static function ensure_portal_user_session(array $session): void {
+        $reg_id = (int)($session['registration_id'] ?? 0);
+        $order_id = (int)($session['order_id'] ?? 0);
+        if ($reg_id <= 0 || $order_id <= 0) return;
+        $candidate = self::candidate_for_order($order_id, $reg_id);
+        if (!$candidate || empty($candidate['wp_user_id'])) return;
+        $user_id = (int)$candidate['wp_user_id'];
+        if (get_current_user_id() === $user_id) return;
+        $user = get_user_by('id', $user_id);
+        if (!$user) return;
+        wp_set_current_user($user_id);
+        if (!headers_sent()) {
+            wp_set_auth_cookie($user_id, true);
+        }
     }
 
     public static function render_identity_bar(): void {

@@ -78,6 +78,13 @@ UI.anyRowSelected = function anyRowSelected(){
   return !!document.querySelector('.tpma-reg-select:checked');
 };
 
+UI.getSelectedRegistrationIds = function getSelectedRegistrationIds(){
+  return Array.from(document.querySelectorAll('.tpma-reg-select:checked')).map(cb=>{
+    const card = cb.closest('.tpma-reg-card');
+    return card ? (parseInt(card.dataset.id || '0', 10) || 0) : 0;
+  }).filter(Boolean);
+};
+
 UI.updateBatchButtonsEnabled = function updateBatchButtonsEnabled(ctx){
   const hasSel = UI.anyRowSelected();
   document.querySelectorAll('.tpma-batch-btn').forEach(btn=>{
@@ -88,6 +95,301 @@ UI.updateBatchButtonsEnabled = function updateBatchButtonsEnabled(ctx){
     el.disabled = !hasSel;
     el.title = hasSel ? '' : '請先勾選資料';
   });
+  UI.updateBulkToolbar(ctx);
+};
+
+UI.getSelectedRows = function getSelectedRows(ctx){
+  const selected = new Set(UI.getSelectedRegistrationIds().map(String));
+  return (ctx.data.allRegs || []).filter(row=> selected.has(String(row.id)));
+};
+
+UI.getBulkTargetElement = function getBulkTargetElement(action){
+  const map = {
+    update_field: 'tpma-bulk-target-update-field',
+    send_mail: 'tpma-bulk-mail-event',
+    reset_course_mail_meta: 'tpma-bulk-reset-event',
+    export_excel: 'tpma-bulk-export-type'
+  };
+  const id = map[action] || '';
+  return id ? document.getElementById(id) : null;
+};
+
+UI.getBulkValueElement = function getBulkValueElement(target){
+  const map = {
+    status: 'tpma-bulk-value-status',
+    access_mode: 'tpma-bulk-value-access-mode',
+    receipt_status: 'tpma-bulk-value-receipt-status',
+    receipt_type: 'tpma-bulk-value-receipt-type',
+    remit_paid_at: 'tpma-bulk-value-remit-paid-at'
+  };
+  const id = map[target] || '';
+  return id ? document.getElementById(id) : null;
+};
+
+UI.updateBulkToolbar = function updateBulkToolbar(ctx){
+  if (!ctx || !ctx.dom || !ctx.dom.bulkToolbar) return;
+  const ids = UI.getSelectedRegistrationIds();
+  const action = ctx.dom.bulkAction ? (ctx.dom.bulkAction.value || '') : '';
+  const targetEl = UI.getBulkTargetElement(action);
+  const target = targetEl ? (targetEl.value || '') : '';
+  const hasSel = ids.length > 0;
+  const requiresSelection = !!action && action !== 'export_excel';
+  if (ctx.dom.bulkCount) ctx.dom.bulkCount.textContent = '已選取 ' + ids.length + ' 筆';
+
+  document.querySelectorAll('.tpma-bulk-target').forEach(el=>{
+    const show = action && el.getAttribute('data-bulk-for') === action;
+    el.style.display = show ? '' : 'none';
+    el.disabled = !show || (requiresSelection && !hasSel);
+  });
+  document.querySelectorAll('.tpma-bulk-value').forEach(el=>{
+    const show = action === 'update_field' && target && el.getAttribute('data-bulk-target') === target;
+    el.style.display = show ? '' : 'none';
+    el.disabled = !show || (requiresSelection && !hasSel);
+  });
+
+  if (ctx.dom.bulkAction) ctx.dom.bulkAction.disabled = false;
+  if (ctx.dom.bulkClear) ctx.dom.bulkClear.disabled = !hasSel;
+
+  let hint = hasSel ? '請選擇操作、目標項目與必要欄位值。' : '可直接匯出目前篩選結果；其他批次操作請先勾選學員。';
+  if (action === 'send_mail') {
+    const rows = UI.getSelectedRows(ctx);
+    const orderIds = new Set(rows.map(r=> String(r.woocommerce_order_id || '')).filter(Boolean));
+    hint = '寄信會由伺服器再次檢查資格；收據通知會按 ' + orderIds.size + ' 筆訂單去重。';
+  } else if (action === 'reset_course_mail_meta') {
+    hint = '只會清除課程開放類寄件紀錄，不會清除證書或收據紀錄。';
+  } else if (action === 'update_field' && target === 'status') {
+    hint = '課後付款會同步影響同一 Woo 訂單狀態。';
+  } else if (action === 'export_excel') {
+    const rows = UI.getSelectedRows(ctx);
+    const count = rows.length || (ctx.data.currentRegs || []).length;
+    hint = rows.length ? ('將匯出已選取的 ' + rows.length + ' 筆資料。') : ('將匯出目前篩選結果 ' + count + ' 筆資料。');
+  }
+  if (ctx.dom.bulkHint) ctx.dom.bulkHint.textContent = hint;
+
+  const valueEl = UI.getBulkValueElement(target);
+  const targetRequired = action === 'update_field' || action === 'send_mail';
+  const targetReady = !targetRequired || !!target;
+  const needsValue = action === 'update_field';
+  const hasValue = !needsValue || (valueEl && valueEl.value !== '');
+  if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = !action || !targetReady || !hasValue || (requiresSelection && !hasSel);
+};
+
+UI.summarizeBulkResult = function summarizeBulkResult(data){
+  const parts = [
+    '處理 ' + (data.processed || 0) + ' 筆',
+    '更新 ' + (data.updated || 0) + ' 筆',
+    '寄出 ' + (data.sent || 0) + ' 筆',
+    '排除 ' + ((data.skipped || []).length) + ' 筆',
+    '失敗 ' + ((data.failed || []).length) + ' 筆'
+  ];
+  const lines = [parts.join('，')];
+  const details = []
+    .concat((data.skipped || []).slice(0, 5).map(item=> '排除 #' + (item.id || '-') + '：' + (item.message || item.reason || 'skipped')))
+    .concat((data.failed || []).slice(0, 5).map(item=> '失敗 #' + (item.id || '-') + '：' + (item.message || item.reason || 'failed')));
+  if (details.length) lines.push(details.join('\n'));
+  return lines.join('\n');
+};
+
+UI.bulkReasonLabel = function bulkReasonLabel(reason, fallback){
+  const map = {
+    already_sent: '先前已寄送，未重複處理',
+    certificate_missing: '缺少證書資料',
+    course_access_unavailable: '課程權限模組尚未載入',
+    dispatcher_unavailable: '寄件處理模組尚未載入',
+    event_triggered_but_no_route_matched: '事件已觸發，但沒有符合條件的路由',
+    exception: '處理時發生例外錯誤',
+    invalid_access_mode: '此場次不支援所選課程型態',
+    invalid_course_event: '不支援的課程通知事件',
+    invalid_field: '不支援的批次欄位',
+    invalid_registration: '報名資料無效',
+    invalid_status: '不支援的訂單狀態',
+    learner_route_ignored: '收據為訂單層級事件，已略過學員收件來源',
+    mailer_unavailable: 'TPMA Mailer 尚未載入',
+    no_order: '找不到對應的 Woo 訂單',
+    no_recipients_or_send_failed: '沒有有效收件人，或寄送失敗',
+    no_route: '沒有命中啟用中的寄件路由',
+    not_live_access: '不是直播課程型態',
+    not_recorded_access: '不是錄播課程型態',
+    order_closed: '訂單已取消、退款或失敗',
+    order_locked: '訂單狀態不允許修改金額',
+    order_not_completed: '訂單尚未完成',
+    order_not_found: '找不到對應的 Woo 訂單',
+    outside_access_window: '不在課程開放寄送時間內',
+    payment_required: '付款狀態不符合寄送條件',
+    postpay_status_not_allowed: '課後付款訂單狀態不符合寄送條件',
+    registration_cancelled: '報名已取消',
+    registration_not_found: '找不到報名資料',
+    route_invalid: '寄件路由設定不合法',
+    routes_matched_but_no_mail_sent: '路由已命中，但沒有成功寄出',
+    session_finished: '場次已授課完畢'
+  };
+  if (map[reason]) return map[reason];
+  const text = fallback || reason || '未提供原因';
+  return /[\u4e00-\u9fff]/.test(text) ? text : ('未翻譯原因：' + text);
+};
+
+UI.bulkItemMessage = function bulkItemMessage(item){
+  const reason = item && item.reason ? String(item.reason) : '';
+  const fallback = item && item.message ? String(item.message) : '';
+  return UI.bulkReasonLabel(reason, fallback);
+};
+
+UI.closeBulkResultModal = function closeBulkResultModal(){
+  const overlay = document.getElementById('tpma-bulk-result-modal');
+  if (overlay) overlay.classList.remove('open');
+  document.body.classList.remove('tpma-reg-modal-open');
+  if (overlay && UI.bulkResultModalPlaceholder && UI.bulkResultModalPlaceholder.parentNode) {
+    UI.bulkResultModalPlaceholder.parentNode.insertBefore(overlay, UI.bulkResultModalPlaceholder);
+    UI.bulkResultModalPlaceholder.remove();
+    UI.bulkResultModalPlaceholder = null;
+  }
+};
+
+UI.mountBulkResultModal = function mountBulkResultModal(overlay){
+  if (!overlay || overlay.parentNode === document.body) return;
+  const placeholder = document.createComment('tpma bulk result modal placeholder');
+  overlay.parentNode.insertBefore(placeholder, overlay);
+  document.body.appendChild(overlay);
+  UI.bulkResultModalPlaceholder = placeholder;
+};
+
+UI.openBulkResultModal = function openBulkResultModal(data, title){
+  const overlay = document.getElementById('tpma-bulk-result-modal');
+  const body = document.getElementById('tpma-bulk-result-modal-body');
+  const titleEl = document.getElementById('tpma-bulk-result-modal-title');
+  if (!overlay || !body) return;
+  if (titleEl) titleEl.textContent = title || '批次操作結果';
+  body.innerHTML = '';
+
+  const summary = document.createElement('div');
+  summary.className = 'tpma-bulk-result-summary';
+  [
+    ['processed', '處理', data.processed || 0],
+    ['updated', '更新', data.updated || 0],
+    ['sent', '寄出', data.sent || 0],
+    ['skipped', '排除', (data.skipped || []).length],
+    ['failed', '失敗', (data.failed || []).length]
+  ].forEach(item=>{
+    const box = document.createElement('div');
+    box.className = 'tpma-bulk-result-stat tpma-bulk-result-stat-' + item[0];
+    const num = document.createElement('strong');
+    num.textContent = String(item[2]);
+    const label = document.createElement('span');
+    label.textContent = item[1];
+    box.appendChild(num);
+    box.appendChild(label);
+    summary.appendChild(box);
+  });
+  body.appendChild(summary);
+
+  const appendList = function(label, rows){
+    const section = document.createElement('div');
+    section.className = 'tpma-bulk-result-section';
+    const h = document.createElement('h4');
+    h.textContent = label + '（' + rows.length + '）';
+    section.appendChild(h);
+    if (!rows.length) {
+      const empty = document.createElement('div');
+      empty.className = 'tpma-bulk-result-empty';
+      empty.textContent = '無';
+      section.appendChild(empty);
+    } else {
+      const list = document.createElement('ul');
+      list.className = 'tpma-bulk-result-list';
+      rows.forEach(row=>{
+        const li = document.createElement('li');
+        const id = document.createElement('span');
+        id.className = 'tpma-bulk-result-id';
+        id.textContent = '#' + (row.id || '-');
+        const msg = document.createElement('span');
+        msg.textContent = UI.bulkItemMessage(row);
+        li.appendChild(id);
+        li.appendChild(msg);
+        list.appendChild(li);
+      });
+      section.appendChild(list);
+    }
+    body.appendChild(section);
+  };
+
+  appendList('排除項目', Array.isArray(data.skipped) ? data.skipped : []);
+  appendList('失敗項目', Array.isArray(data.failed) ? data.failed : []);
+  UI.mountBulkResultModal(overlay);
+  document.body.classList.add('tpma-reg-modal-open');
+  overlay.classList.add('open');
+  overlay.scrollTop = 0;
+  requestAnimationFrame(function(){
+    const dialog = overlay.querySelector('.tpma-bulk-result-dialog');
+    if (dialog && typeof dialog.scrollIntoView === 'function') {
+      dialog.scrollIntoView({ block: 'center', inline: 'center' });
+    }
+  });
+};
+
+UI.applyBulk = async function applyBulk(ctx){
+  const ids = UI.getSelectedRegistrationIds();
+  const action = ctx.dom.bulkAction ? (ctx.dom.bulkAction.value || '') : '';
+  if (!action) return;
+  const targetEl = UI.getBulkTargetElement(action);
+  const target = targetEl ? (targetEl.value || '') : '';
+  if (action !== 'export_excel' && !ids.length) return;
+  const valueEl = UI.getBulkValueElement(target);
+  const value = valueEl ? (valueEl.value || '') : '';
+
+  let payload = { ids };
+  if (action === 'export_excel') {
+    const exportModule = global.TPMARegAdmin && global.TPMARegAdmin.exportModule;
+    if (!exportModule || typeof exportModule.openModal !== 'function') {
+      alert('匯出模組尚未載入');
+      return;
+    }
+    exportModule.openModal(ctx, target || 'students');
+    return;
+  } else if (action === 'update_field') {
+    if (!target) { alert('請先選擇要更新的欄位'); return; }
+    if (!value) { alert('請先選擇或輸入套用值'); return; }
+    payload.action = 'update_field';
+    payload.field = target;
+    payload.value = value;
+    if (target === 'status' && value === 'postpay' && !confirm('課後付款會同步套用所選資料所屬 Woo 訂單狀態。確定繼續？')) return;
+    if (!confirm('確定批次更新 ' + ids.length + ' 筆資料？')) return;
+  } else if (action === 'send_mail') {
+    if (!target) { alert('請先選擇信件種類'); return; }
+    const rows = UI.getSelectedRows(ctx);
+    const orderIds = new Set(rows.map(r=> String(r.woocommerce_order_id || '')).filter(Boolean));
+    payload.action = 'send_course_mail';
+    payload.event_key = target;
+    payload.force = false;
+    const scope = target === 'receipt_notice' ? ('將按 ' + orderIds.size + ' 筆 Woo 訂單去重寄送') : ('將檢查 ' + ids.length + ' 位學員');
+    if (!confirm(scope + '，伺服器會自動排除不符合資格或無有效路由者。確定寄送？')) return;
+  } else if (action === 'reset_course_mail_meta') {
+    payload.action = 'reset_course_mail_meta';
+    payload.event_key = target;
+    if (!confirm('確定重置所選資料對應訂單 / 場次的課程寄件紀錄？')) return;
+  } else {
+    return;
+  }
+
+  if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = true;
+  if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '處理中...';
+  try{
+    const data = await API.bulkRegistrations(ctx, payload);
+    if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+    UI.openBulkResultModal(data, '批次操作結果');
+    await UI.refreshFromServer(ctx);
+  }catch(e){
+    console.error(e);
+    if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+    UI.openBulkResultModal({
+      processed: 0,
+      updated: 0,
+      sent: 0,
+      skipped: [],
+      failed: [{ id: '-', reason: 'exception', message: e.message || '批次操作失敗' }]
+    }, '批次操作失敗');
+  }finally{
+    UI.updateBulkToolbar(ctx);
+  }
 };
 
 UI.updateClassSelectionState = function updateClassSelectionState(classCard){
@@ -571,22 +873,50 @@ if (menuTarget) {
     });
   }
 
-  // batch buttons
-  document.querySelectorAll('.tpma-batch-btn').forEach(btn=>{
-    btn.addEventListener('click', async function(){
-      if (!UI.anyRowSelected()) return;
-      const field = this.getAttribute('data-batch-field');
-      let value = '';
-      if (field === 'status') value = (document.getElementById('tpma-batch-status')||{}).value || '';
-      else if (field === 'access_mode') value = (document.getElementById('tpma-batch-access-mode')||{}).value || '';
-      else if (field === 'receipt_status') value = (document.getElementById('tpma-batch-receipt-status')||{}).value || '';
-      else if (field === 'receipt_type') value = (document.getElementById('tpma-batch-receipt-type')||{}).value || '';
-      else if (field === 'remit_paid_at') value = (document.getElementById('tpma-batch-remit-date')||{}).value || '';
-      if (!value) { alert('請先選擇要套用的值'); return; }
-      if (field === 'status' && value === 'postpay' && !confirm('課後付款會同步套用所選資料所屬 Woo 訂單內的全部學員。確定繼續？')) return;
-      await UI.applyBatch(ctx, field, value);
+  if (ctx.dom.bulkAction) ctx.dom.bulkAction.addEventListener('change', function(){
+    if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+    document.querySelectorAll('.tpma-bulk-target, .tpma-bulk-value').forEach(el=>{
+      if (el.tagName === 'SELECT') el.selectedIndex = 0;
+      else el.value = '';
+    });
+    UI.updateBulkToolbar(ctx);
+  });
+  document.querySelectorAll('.tpma-bulk-target').forEach(el=>{
+    el.addEventListener('change', function(){
+      if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+      document.querySelectorAll('.tpma-bulk-value').forEach(valueEl=>{
+        if (valueEl.tagName === 'SELECT') valueEl.selectedIndex = 0;
+        else valueEl.value = '';
+      });
+      UI.updateBulkToolbar(ctx);
     });
   });
+  document.querySelectorAll('.tpma-bulk-value').forEach(el=>{
+    el.addEventListener('change', function(){
+      if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+      UI.updateBulkToolbar(ctx);
+    });
+  });
+  if (ctx.dom.bulkClear) ctx.dom.bulkClear.addEventListener('click', function(){
+    document.querySelectorAll('.tpma-reg-select, .tpma-class-select').forEach(cb=>{
+      cb.checked = false;
+      cb.indeterminate = false;
+    });
+    UI.updateAllClassSelectionStates(ctx);
+    UI.updateBulkToolbar(ctx);
+  });
+  if (ctx.dom.bulkApply) ctx.dom.bulkApply.addEventListener('click', function(){
+    UI.applyBulk(ctx);
+  });
+  const bulkResultModal = document.getElementById('tpma-bulk-result-modal');
+  const bulkResultClose = document.getElementById('tpma-bulk-result-modal-close');
+  const bulkResultOk = document.getElementById('tpma-bulk-result-modal-ok');
+  if (bulkResultClose) bulkResultClose.addEventListener('click', UI.closeBulkResultModal);
+  if (bulkResultOk) bulkResultOk.addEventListener('click', UI.closeBulkResultModal);
+  if (bulkResultModal) bulkResultModal.addEventListener('click', function(e){
+    if (e.target === bulkResultModal) UI.closeBulkResultModal();
+  });
+  UI.updateBulkToolbar(ctx);
 };
 
 })(window);

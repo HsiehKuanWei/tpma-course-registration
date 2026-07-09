@@ -53,20 +53,21 @@ function getStudentExportRows(ctx){
 // ------------------------------------------------------------
 // Modal 開關
 // ------------------------------------------------------------
-EXP.openModal = function openModal(ctx){
+EXP.openModal = function openModal(ctx, defaultType){
   const overlay = document.getElementById('tpma-export-modal');
   if (!overlay) return;
+  defaultType = defaultType === 'statistics' ? 'statistics' : 'students';
 
   // 更新筆數顯示
   const count = getStudentExportRows(ctx).length;
   const countEl = document.getElementById('tpma-export-student-count');
   if (countEl) countEl.textContent = count;
 
-  // 重置為預設選項（學員資料）
+  // 重置為選單指定類型
   const radios = overlay.querySelectorAll('input[name="tpma-export-type"]');
-  radios.forEach(r => { r.checked = (r.value === 'students'); });
+  radios.forEach(r => { r.checked = (r.value === defaultType); });
   const statsOpts = document.getElementById('tpma-export-stats-options');
-  if (statsOpts) statsOpts.style.display = 'none';
+  if (statsOpts) statsOpts.style.display = defaultType === 'statistics' ? '' : 'none';
 
   overlay.classList.add('open');
 };

@@ -321,6 +321,7 @@ ns.renderCourses = function renderCourses(list){
     row.dataset.sessionId = session.id || '';
     row.dataset.isActive = parseInt(session.is_active, 10) === 0 ? '0' : '1';
     row.dataset.meetLinked = session.tutor_meet_post_id ? '1' : '0';
+    row.dataset.topicLinked = session.tutor_topic_id || session.tutor_topic_edit_url ? '1' : '0';
     const recordingFrom = (session.recording_available_from || '').replace(' ', 'T').slice(0, 16);
     const recordingUntil = (session.recording_available_until || '').replace(' ', 'T').slice(0, 16);
     const deliveryMode = ['live', 'recorded', 'hybrid'].includes(session.delivery_mode) ? session.delivery_mode : 'live';
@@ -378,7 +379,7 @@ ns.renderCourses = function renderCourses(list){
             <span class="tpma-session-tutor-status">${session.tutor_meet_post_id ? 'Meet 已連結' : (session.tutor_topic_edit_url ? '場次內容已準備' : '場次內容尚未準備')}</span>
           </div>
           <div class="tpma-session-tutor-actions">
-            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-prepare" ${session.id ? '' : 'disabled'}>建立 Tutor 場次章節</button>
+            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-prepare" ${session.id ? '' : 'disabled'} ${row.dataset.topicLinked === '1' ? 'hidden' : ''}>建立 Tutor 場次章節</button>
             <button type="button" class="tpma-btn tpma-btn-outline tpma-session-meet" ${session.id ? '' : 'disabled'} ${session.tutor_meet_post_id ? 'hidden' : ''}>建立／連結 Meet</button>
             <a class="tpma-btn tpma-btn-outline tpma-session-tutor-edit${session.tutor_topic_edit_url ? '' : ' is-disabled'}" href="${util.esc(session.tutor_topic_edit_url || '#')}" target="_blank" rel="noopener noreferrer" aria-disabled="${session.tutor_topic_edit_url ? 'false' : 'true'}">編輯 Tutor 場次</a>
           </div>
@@ -451,6 +452,8 @@ ns.renderCourses = function renderCourses(list){
             tutorLink.setAttribute('aria-disabled', 'false');
           }
           if (tutorStatus && row.dataset.meetLinked !== '1') tutorStatus.textContent = 'Tutor 場次內容已準備';
+          row.dataset.topicLinked = '1';
+          prepareBtn.hidden = true;
         } catch (e) {
           w.alert(e.message || '無法準備 Tutor 場次內容');
         } finally {

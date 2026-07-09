@@ -16,10 +16,14 @@ class TPMA_CR_Mail_Dispatcher
             'course_access'      => 'course_access',
             // Pre-class reminder N days before class (contains Meet link)
             'pre_class_reminder' => 'pre_class_reminder',
+            // Recorded course opened notice
+            'recorded_course_opened' => 'recorded_course_opened',
             // Quiz invitation (manually triggered by admin after class)
             'quiz_invitation'    => 'quiz_invitation',
-            // Certificate ready (auto-triggered when Tutor course completed)
+            // Certificate ready (manually triggered after Tutor completion)
             'certificate_ready'  => 'certificate_ready',
+            // Receipt notice (order-level, manually triggered)
+            'receipt_notice'     => 'receipt_notice',
             // Other extension keys; keep admin remittance report
             'admin_remit_report' => 'admin_remit_report',
         );
@@ -1435,57 +1439,386 @@ class TPMA_CR_Mail_Dispatcher
     // Tutor integration mailers
     // ──────────────────────────────────────────────────────────
 
+    private static function empty_mail_result(): array {
+        return array(
+            'processed' => 0,
+            'updated'   => 0,
+            'sent'      => 0,
+            'skipped'   => array(),
+            'failed'    => array(),
+        );
+    }
+
+    private static function result_skip(array $result, $id, string $reason, string $message = ''): array {
+        $result['skipped'][] = array(
+            'id'      => $id,
+            'reason'  => $reason,
+            'message' => $message !== '' ? $message : $reason,
+        );
+        return $result;
+    }
+
+    private static function result_fail(array $result, $id, string $reason, string $message = ''): array {
+        $result['failed'][] = array(
+            'id'      => $id,
+            'reason'  => $reason,
+            'message' => $message !== '' ? $message : $reason,
+        );
+        return $result;
+    }
+
+    private static function build_learner_from_reg(array $reg): array {
+        return array(
+            'reg_id'       => $reg['id'] ?? '',
+            'reg_no'       => $reg['reg_no'] ?? '',
+            'student_name' => $reg['student_name'] ?? '',
+            'job_title'    => $reg['job_title'] ?? '',
+            'emails'       => $reg['emails'] ?? '',
+        );
+    }
+
+    private static function course_event_aliases(): array {
+        return array('course_access', 'pre_class_reminder', 'recorded_course_opened');
+    }
+
+    private static function canonical_course_event_key(string $event_key): string {
+        $event_key = sanitize_key($event_key);
+        return in_array($event_key, self::course_event_aliases(), true) ? 'course_access' : $event_key;
+    }
+
+    private static function legacy_course_event_for_mode(string $mode): string {
+        return sanitize_key($mode) === 'recorded' ? 'recorded_course_opened' : 'pre_class_reminder';
+    }
+
+    private static function get_course_event_routes(string $requested_event_key, string $mode, array $base_context): array {
+        if (!function_exists('tpma_mailer_get_event_routes_for_event')) {
+            return array('event_key' => $requested_event_key, 'routes' => array(), 'has_config' => false);
+        }
+
+        $canonical = self::canonical_course_event_key($requested_event_key);
+        $candidates = array();
+        if ($requested_event_key !== $canonical) {
+            $candidates[] = sanitize_key($requested_event_key);
+        }
+        $candidates[] = $canonical;
+        if ($canonical === 'course_access') {
+            $candidates[] = self::legacy_course_event_for_mode($mode);
+        }
+        $candidates = array_values(array_unique(array_filter($candidates)));
+
+        $has_config = false;
+        foreach ($candidates as $event_key) {
+            $context = $base_context;
+            $context['event_key'] = $event_key;
+            try {
+                $routes = tpma_mailer_get_event_routes_for_event($event_key, $context);
+            } catch (Throwable $e) {
+                $routes = array();
+            }
+            $has_sendable_route = false;
+            foreach ((array)$routes as $route) {
+                $route = is_array($route) ? $route : array();
+                if (self::resolve_existing_template_key(self::extract_route_template($route)) !== '') {
+                    $has_sendable_route = true;
+                    break;
+                }
+            }
+            if (!empty($routes) && $has_sendable_route) {
+                return array('event_key' => $event_key, 'routes' => $routes, 'has_config' => true);
+            }
+            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config($event_key)) {
+                $has_config = true;
+            }
+        }
+
+        return array('event_key' => $canonical, 'routes' => array(), 'has_config' => $has_config);
+    }
+
+    public static function access_event_meta_key(string $event_key, int $session_id): string {
+        return '_tpma_access_event_v2_' . self::canonical_course_event_key($event_key) . '_' . max(0, $session_id);
+    }
+
+    public static function reset_access_event_meta_for_order(WC_Order $order, int $session_id = 0, string $event_key = ''): int {
+        $deleted = 0;
+        $event_key = sanitize_key($event_key);
+        $events = $event_key !== '' ? array($event_key) : self::course_event_aliases();
+        if (in_array($event_key, self::course_event_aliases(), true)) {
+            $events = self::course_event_aliases();
+        }
+
+        foreach ($order->get_meta_data() as $meta) {
+            if (!is_object($meta) || !method_exists($meta, 'get_data')) {
+                continue;
+            }
+            $data = $meta->get_data();
+            $key = (string)($data['key'] ?? '');
+            if ($key === '') {
+                continue;
+            }
+            $matched = false;
+            foreach ($events as $event) {
+                $prefix = '_tpma_access_event_v2_' . $event . '_';
+                if (strpos($key, $prefix) !== 0) {
+                    continue;
+                }
+                if ($session_id > 0 && $key !== '_tpma_access_event_v2_' . $event . '_' . $session_id) {
+                    continue;
+                }
+                $matched = true;
+                break;
+            }
+            if ($matched) {
+                $order->delete_meta_data($key);
+                $deleted++;
+            }
+        }
+
+        if ($deleted > 0) {
+            $order->save();
+        }
+
+        return $deleted;
+    }
+
+    public static function get_mail_event_diagnostics(): array {
+        $auto_enabled = class_exists('TPMA_CR_Settings')
+            ? TPMA_CR_Settings::is_auto_course_mail_enabled()
+            : (bool)(int)get_option('tpma_cr_auto_course_mail_enabled', 0);
+        $defaults = self::get_default_templates();
+        $defs = array(
+            'course_access' => array('label' => '課程入口通知', 'trigger' => '自動 / 手動批次'),
+            'certificate_ready' => array('label' => '證書寄發', 'trigger' => '手動批次'),
+            'receipt_notice' => array('label' => '收據寄發', 'trigger' => '手動批次'),
+        );
+
+        $out = array();
+        foreach ($defs as $event_key => $def) {
+            $routes = array();
+            $route_error = '';
+            $diagnostic_event_keys = $event_key === 'course_access' ? self::course_event_aliases() : array($event_key);
+            foreach ($diagnostic_event_keys as $diagnostic_event_key) {
+                $ctx = array('event_key' => $diagnostic_event_key, 'draft' => array(), 'reg_context' => array());
+                if (function_exists('tpma_mailer_get_event_routes_for_event')) {
+                    try {
+                        $event_routes = tpma_mailer_get_event_routes_for_event($diagnostic_event_key, $ctx);
+                        foreach ((array)$event_routes as $route) {
+                            if (is_array($route)) {
+                                $route['_tpma_diagnostic_event_key'] = $diagnostic_event_key;
+                            }
+                            $routes[] = $route;
+                        }
+                    } catch (Throwable $e) {
+                        $route_error = $e->getMessage();
+                    }
+                }
+            }
+
+            $sources = array();
+            $invalid = array();
+            $route_template_keys = array();
+            $resolved_route_template_keys = array();
+            foreach ((array)$routes as $route) {
+                $route = is_array($route) ? $route : array();
+                $route_sources = self::extract_route_sources($route);
+                $sources = array_merge($sources, $route_sources);
+                if ($event_key === 'receipt_notice' && in_array('tpma_cr_learner', $route_sources, true)) {
+                    $invalid[] = 'tpma_cr_learner';
+                }
+
+                $route_template_key = self::extract_route_template($route);
+                if ($route_template_key !== '') {
+                    $route_template_keys[] = $route_template_key;
+                    $resolved_route_template_key = self::resolve_existing_template_key($route_template_key);
+                    if ($resolved_route_template_key !== '') {
+                        $resolved_route_template_keys[] = $resolved_route_template_key;
+                    }
+                }
+            }
+            $sources = array_values(array_unique(array_filter($sources)));
+            $route_template_keys = array_values(array_unique(array_filter($route_template_keys)));
+            $resolved_route_template_keys = array_values(array_unique(array_filter($resolved_route_template_keys)));
+            $default_template_key = (string)($defaults[$event_key] ?? $event_key);
+            $has_route_templates = !empty($route_template_keys);
+            $template_keys = $has_route_templates ? $route_template_keys : array($default_template_key);
+            $template_exists = $has_route_templates
+                ? !empty($resolved_route_template_keys)
+                : self::resolve_existing_template_key($default_template_key) !== '';
+            $template_summary = $has_route_templates
+                ? implode(', ', $route_template_keys)
+                : $default_template_key;
+            if ($has_route_templates && count($resolved_route_template_keys) < count($route_template_keys)) {
+                $missing_templates = array_values(array_diff($route_template_keys, $resolved_route_template_keys));
+                if (!empty($missing_templates)) {
+                    $template_summary .= '；缺少：' . implode(', ', $missing_templates);
+                }
+            }
+            $has_route_config = !empty($routes);
+            if (function_exists('tpma_mailer_has_event_route_config')) {
+                foreach ($diagnostic_event_keys as $diagnostic_event_key) {
+                    if (tpma_mailer_has_event_route_config($diagnostic_event_key)) {
+                        $has_route_config = true;
+                        break;
+                    }
+                }
+            }
+
+            $out[$event_key] = array(
+                'label'             => $def['label'],
+                'trigger'           => $def['trigger'],
+                'template_key'      => implode(', ', $template_keys),
+                'default_template_key' => $default_template_key,
+                'template_summary'  => $template_summary,
+                'template_exists'   => $template_exists,
+                'route_matched'     => !empty($routes),
+                'route_summary'     => !empty($routes) ? count($routes) . ' 個啟用路由' : ($has_route_config ? '有設定但目前條件未命中' : '尚未設定啟用路由') . ($route_error ? '：' . $route_error : ''),
+                'recipient_valid'   => !empty($sources) && empty($invalid),
+                'recipient_summary' => !empty($sources) ? implode(', ', $sources) : '無收件來源',
+                'auto_active'       => $auto_enabled && $event_key === 'course_access',
+            );
+        }
+
+        return $out;
+    }
+
+    private static function normalize_send_options($options): array {
+        if (is_bool($options)) {
+            $options = array('force' => $options);
+        }
+        return wp_parse_args(is_array($options) ? $options : array(), array(
+            'force' => false,
+            'manual' => false,
+            'allow_finished' => false,
+        ));
+    }
+
+    public static function course_event_eligibility(string $event_key, array $reg, $options = array()): array {
+        $options = self::normalize_send_options($options);
+        $event_key = sanitize_key($event_key);
+        if (!in_array($event_key, self::course_event_aliases(), true)) {
+            return array('eligible' => false, 'reason' => 'invalid_course_event');
+        }
+        $reg_id = (int)($reg['id'] ?? 0);
+        if ($reg_id <= 0) {
+            return array('eligible' => false, 'reason' => 'invalid_registration');
+        }
+        if (!class_exists('TPMA_Course_Access')) {
+            return array('eligible' => false, 'reason' => 'course_access_unavailable');
+        }
+        $result = TPMA_Course_Access::evaluate_registration($reg_id, 'course');
+        if (empty($result['allowed'])) {
+            return array('eligible' => false, 'reason' => (string)($result['reason'] ?? 'not_allowed'));
+        }
+        $row = (array)($result['registration'] ?? $reg);
+        $allow_finished = !empty($options['manual']) || !empty($options['allow_finished']);
+        if (!$allow_finished && TPMA_Course_Access::registration_session_has_ended($row)) {
+            return array('eligible' => false, 'reason' => 'session_finished');
+        }
+        $mode = sanitize_key((string)($result['mode'] ?? ($row['access_mode'] ?? 'live')));
+        if ($event_key === 'pre_class_reminder' && $mode !== 'live') {
+            return array('eligible' => false, 'reason' => 'not_live_access');
+        }
+        if ($event_key === 'recorded_course_opened' && $mode !== 'recorded') {
+            return array('eligible' => false, 'reason' => 'not_recorded_access');
+        }
+        return array('eligible' => true, 'reason' => '', 'registration' => $row, 'mode' => $mode);
+    }
+
+    private static function certificate_eligibility(WC_Order $order, array $reg): array {
+        if ($order->get_status() !== 'completed') {
+            return array('eligible' => false, 'reason' => 'order_not_completed');
+        }
+        $certificate_id = trim((string)($reg['certificate_id'] ?? ''));
+        $status = sanitize_key((string)($reg['status'] ?? ''));
+        if ($certificate_id === '' && $status !== 'cert_ready') {
+            return array('eligible' => false, 'reason' => 'certificate_missing');
+        }
+        return array('eligible' => true, 'reason' => '');
+    }
+
+    private static function order_has_postpay_registration(WC_Order $order): bool {
+        if ($order->get_meta('_tpma_post_course_payment', true) === 'yes') {
+            return true;
+        }
+        global $wpdb;
+        $order_id = (int)$order->get_id();
+        if ($order_id <= 0) {
+            return false;
+        }
+        return (bool)$wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM " . TPMA_CR_DB::table('regs') . " WHERE woocommerce_order_id=%d AND status='postpay'",
+            $order_id
+        ));
+    }
+
+    private static function receipt_eligibility(WC_Order $order): array {
+        $status = $order->get_status();
+        $postpay = self::order_has_postpay_registration($order);
+        if (in_array($status, array('completed', 'processing'), true) || ($status === 'on-hold' && $postpay)) {
+            return array('eligible' => true, 'reason' => '');
+        }
+        if (in_array($status, array('cancelled', 'refunded', 'failed'), true)) {
+            return array('eligible' => false, 'reason' => 'order_closed');
+        }
+        return array('eligible' => false, 'reason' => $postpay ? 'postpay_status_not_allowed' : 'payment_required');
+    }
+
     /**
      * Send certificate_ready email for a single learner registration.
-     * Called by TPMA_Tutor_Bridge::on_course_completed().
+     * Manual-only in normal flow; Tutor completion hook only updates status/certificate data.
      *
      * @param WC_Order $order
      * @param array    $reg  Row from wp_tpma_registrations (ARRAY_A)
      */
-    public static function send_certificate_email(WC_Order $order, array $reg): void {
+    public static function send_certificate_email(WC_Order $order, array $reg, $options = array()): array {
+        $options = self::normalize_send_options($options);
+        $result = self::empty_mail_result();
+        $result['processed'] = 1;
+        $reg_id = (int)($reg['id'] ?? 0);
+
         if (!class_exists('TPMA_Mailer')) {
-            return;
+            return self::result_fail($result, $reg_id, 'mailer_unavailable', 'TPMA Mailer 未載入');
+        }
+        $eligible = self::certificate_eligibility($order, $reg);
+        if (empty($eligible['eligible'])) {
+            return self::result_skip($result, $reg_id, (string)$eligible['reason']);
         }
 
-        $draft = self::get_draft_from_order($order);
-        $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
+        $sent_key = '_tpma_certificate_ready_sent_' . $reg_id;
+        if (empty($options['force']) && $order->get_meta($sent_key, true) === 'yes') {
+            return self::result_skip($result, $reg_id, 'already_sent');
+        }
 
-        $learner_data = array(
-            'reg_id'       => $reg['id']           ?? '',
-            'reg_no'       => $reg['reg_no']        ?? '',
-            'student_name' => $reg['student_name']  ?? '',
-            'job_title'    => $reg['job_title']     ?? '',
-            'emails'       => $reg['emails']        ?? '',
-        );
-
+        $draft = self::apply_default_templates(self::get_draft_from_order($order));
+        $learner = self::build_learner_from_reg($reg);
+        $ctx = self::build_context($order, $draft, $learner);
         $route_context = array(
             'event_key'      => 'certificate_ready',
             'order'          => $order,
             'draft'          => $draft,
-            'single_learner' => $learner_data,
+            'single_learner' => $learner,
+            'reg_context'    => $ctx,
         );
-        $ctx = self::build_context($order, $draft, $learner_data);
-        $route_context['reg_context'] = $ctx;
         $routes = function_exists('tpma_mailer_get_event_routes_for_event')
             ? tpma_mailer_get_event_routes_for_event('certificate_ready', $route_context)
             : array();
         if (empty($routes)) {
             if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config('certificate_ready')) {
-                self::notify_admin_unmatched_event('certificate_ready', array(
-                    'reason' => 'event_triggered_but_no_route_matched',
-                ), $order);
+                self::notify_admin_unmatched_event('certificate_ready', array('reason' => 'event_triggered_but_no_route_matched'), $order);
             }
-            return;
+            return self::result_skip($result, $reg_id, 'no_route');
         }
 
         $sent = false;
         foreach ($routes as $route) {
             $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
-            $sources = self::extract_route_sources($route);
+            $sources = self::extract_route_sources(is_array($route) ? $route : array());
             if ($tpl === '') {
                 continue;
             }
             $recipients = self::get_route_recipients($sources, $route_context);
+            if (empty($recipients) && empty(self::get_copy_recipients_from_config($tpl))) {
+                continue;
+            }
             if (self::send_route_with_copy_fallback($tpl, $recipients, $ctx)) {
                 $sent = true;
             }
@@ -1495,10 +1828,14 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         if (!$sent) {
-            self::notify_admin_unmatched_event('certificate_ready', array(
-                'reason' => 'routes_matched_but_no_mail_sent',
-            ), $order);
+            self::notify_admin_unmatched_event('certificate_ready', array('reason' => 'routes_matched_but_no_mail_sent'), $order);
+            return self::result_skip($result, $reg_id, 'no_recipients_or_send_failed');
         }
+
+        $order->update_meta_data($sent_key, 'yes');
+        $order->save();
+        $result['sent'] = 1;
+        return $result;
     }
 
     /**
@@ -1509,39 +1846,52 @@ class TPMA_CR_Mail_Dispatcher
      * @param array    $reg  Row from wp_tpma_registrations (ARRAY_A)
      */
     public static function send_reminder_email(WC_Order $order, array $reg): void {
-        self::send_course_access_event('pre_class_reminder', $order, $reg);
+        self::send_course_access_event('course_access', $order, $reg);
     }
 
-    public static function send_course_access_event(string $event_key, WC_Order $order, array $reg): void {
-        self::send_course_access_event_for_regs($event_key, $order, array($reg));
+    public static function send_course_access_event(string $event_key, WC_Order $order, array $reg): array {
+        return self::send_course_access_event_for_regs($event_key, $order, array($reg));
     }
 
-    public static function send_course_access_event_for_regs(string $event_key, WC_Order $order, array $regs): void {
+    public static function send_course_access_event_for_regs(string $event_key, WC_Order $order, array $regs, $options = array()): array {
+        $options = self::normalize_send_options($options);
+        $result = self::empty_mail_result();
         if (!class_exists('TPMA_Mailer')) {
-            return;
+            return self::result_fail($result, $order->get_id(), 'mailer_unavailable', 'TPMA Mailer 未載入');
         }
 
         $regs = array_values(array_filter($regs, 'is_array'));
-        if (empty($regs)) return;
+        $result['processed'] = count($regs);
+        if (empty($regs)) return $result;
+
+        $eligible_regs = array();
+        $eligible_modes = array();
+        foreach ($regs as $reg) {
+            $eligibility = self::course_event_eligibility($event_key, $reg, $options);
+            if (empty($eligibility['eligible'])) {
+                $result = self::result_skip($result, (int)($reg['id'] ?? 0), (string)($eligibility['reason'] ?? 'not_allowed'));
+                continue;
+            }
+            $eligible_regs[] = (array)($eligibility['registration'] ?? $reg);
+            $eligible_modes[] = sanitize_key((string)($eligibility['mode'] ?? 'live'));
+        }
+        $regs = $eligible_regs;
+        if (empty($regs)) return $result;
         $first_reg = $regs[0];
+        $first_mode = $eligible_modes[0] ?? sanitize_key((string)($first_reg['access_mode'] ?? 'live'));
+        $canonical_event_key = self::canonical_course_event_key($event_key);
 
         $draft = self::get_draft_from_order($order);
         $draft = self::apply_default_templates(is_array($draft) ? $draft : array());
-        $sent_key = '_tpma_access_event_v2_' . sanitize_key($event_key) . '_' . (int)($first_reg['session_id'] ?? 0);
-        if ($order->get_meta($sent_key, true) === 'yes') {
-            return;
+        $sent_key = self::access_event_meta_key($canonical_event_key, (int)($first_reg['session_id'] ?? 0));
+        if (empty($options['force']) && $order->get_meta($sent_key, true) === 'yes') {
+            foreach ($regs as $reg) {
+                $result = self::result_skip($result, (int)($reg['id'] ?? 0), 'already_sent');
+            }
+            return $result;
         }
 
-        $build_learner = static function (array $reg): array {
-            return array(
-                'reg_id'       => $reg['id'] ?? '',
-                'reg_no'       => $reg['reg_no'] ?? '',
-                'student_name' => $reg['student_name'] ?? '',
-                'job_title'    => $reg['job_title'] ?? '',
-                'emails'       => $reg['emails'] ?? '',
-            );
-        };
-        $first_learner = $build_learner($first_reg);
+        $first_learner = self::build_learner_from_reg($first_reg);
         $first_ctx = self::build_context($order, $draft, $first_learner);
         $route_context = array(
             'event_key'      => $event_key,
@@ -1550,21 +1900,26 @@ class TPMA_CR_Mail_Dispatcher
             'single_learner' => $first_learner,
             'reg_context'    => $first_ctx,
         );
-        $routes = function_exists('tpma_mailer_get_event_routes_for_event')
-            ? tpma_mailer_get_event_routes_for_event($event_key, $route_context)
-            : array();
+        $route_lookup = self::get_course_event_routes($event_key, $first_mode, $route_context);
+        $route_event_key = (string)($route_lookup['event_key'] ?? $canonical_event_key);
+        $routes = (array)($route_lookup['routes'] ?? array());
+        $route_context['event_key'] = $route_event_key;
         if (empty($routes)) {
-            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config($event_key)) {
-                self::notify_admin_unmatched_event($event_key, array(
+            if (!empty($route_lookup['has_config'])) {
+                self::notify_admin_unmatched_event($route_event_key, array(
                     'reason' => 'event_triggered_but_no_route_matched',
                 ), $order);
             }
-            return;
+            foreach ($regs as $reg) {
+                $result = self::result_skip($result, (int)($reg['id'] ?? 0), 'no_route');
+            }
+            return $result;
         }
 
         $sent = false;
         $all_complete = true;
         foreach ($routes as $route) {
+            $route = is_array($route) ? $route : array();
             $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
             $sources = self::extract_route_sources($route);
             if ($tpl === '') {
@@ -1573,7 +1928,7 @@ class TPMA_CR_Mail_Dispatcher
 
             if (in_array('tpma_cr_learner', $sources, true)) {
                 foreach ($regs as $reg) {
-                    $learner = $build_learner($reg);
+                    $learner = self::build_learner_from_reg($reg);
                     $ctx = self::build_context($order, $draft, $learner);
                     $learner_context = $route_context;
                     $learner_context['single_learner'] = $learner;
@@ -1602,16 +1957,90 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         if (!$sent) {
-            self::notify_admin_unmatched_event($event_key, array(
+            self::notify_admin_unmatched_event($route_event_key, array(
                 'reason' => 'routes_matched_but_no_mail_sent',
             ), $order);
-            return;
+            foreach ($regs as $reg) {
+                $result = self::result_skip($result, (int)($reg['id'] ?? 0), 'no_recipients_or_send_failed');
+            }
+            return $result;
         }
 
         if ($all_complete) {
             $order->update_meta_data($sent_key, 'yes');
             $order->save();
         }
+        $result['sent'] = count($regs);
+        return $result;
+    }
+
+    public static function send_receipt_notice(WC_Order $order, $options = array()): array {
+        $options = self::normalize_send_options($options);
+        $result = self::empty_mail_result();
+        $result['processed'] = 1;
+        $order_id = (int)$order->get_id();
+
+        if (!class_exists('TPMA_Mailer')) {
+            return self::result_fail($result, $order_id, 'mailer_unavailable', 'TPMA Mailer 未載入');
+        }
+        $eligible = self::receipt_eligibility($order);
+        if (empty($eligible['eligible'])) {
+            return self::result_skip($result, $order_id, (string)$eligible['reason']);
+        }
+        if (empty($options['force']) && $order->get_meta('_tpma_receipt_notice_sent', true) === 'yes') {
+            return self::result_skip($result, $order_id, 'already_sent');
+        }
+
+        $draft = self::apply_default_templates(self::get_draft_from_order($order));
+        $ctx = self::build_context($order, $draft);
+        $route_context = array(
+            'event_key'   => 'receipt_notice',
+            'order'       => $order,
+            'draft'       => $draft,
+            'reg_context' => $ctx,
+        );
+        $routes = function_exists('tpma_mailer_get_event_routes_for_event')
+            ? tpma_mailer_get_event_routes_for_event('receipt_notice', $route_context)
+            : array();
+        if (empty($routes)) {
+            if (function_exists('tpma_mailer_has_event_route_config') && tpma_mailer_has_event_route_config('receipt_notice')) {
+                self::notify_admin_unmatched_event('receipt_notice', array('reason' => 'event_triggered_but_no_route_matched'), $order);
+            }
+            return self::result_skip($result, $order_id, 'no_route');
+        }
+
+        $sent = false;
+        foreach ($routes as $route) {
+            $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
+            $sources = self::extract_route_sources(is_array($route) ? $route : array());
+            if (in_array('tpma_cr_learner', $sources, true)) {
+                $result = self::result_skip($result, $order_id, 'learner_route_ignored', '收據為訂單層級事件，已略過 tpma_cr_learner 收件來源');
+                $sources = array_values(array_diff($sources, array('tpma_cr_learner')));
+            }
+            if ($tpl === '' || empty($sources)) {
+                continue;
+            }
+            $recipients = self::get_route_recipients($sources, $route_context);
+            if (empty($recipients) && empty(self::get_copy_recipients_from_config($tpl))) {
+                continue;
+            }
+            if (self::send_route_with_copy_fallback($tpl, $recipients, $ctx)) {
+                $sent = true;
+            }
+            if (self::send_route_copies_if_primary_sent($tpl, $recipients, $ctx)) {
+                $sent = true;
+            }
+        }
+
+        if (!$sent) {
+            self::notify_admin_unmatched_event('receipt_notice', array('reason' => 'routes_matched_but_no_mail_sent'), $order);
+            return self::result_skip($result, $order_id, 'no_recipients_or_send_failed');
+        }
+
+        $order->update_meta_data('_tpma_receipt_notice_sent', 'yes');
+        $order->save();
+        $result['sent'] = 1;
+        return $result;
     }
 
 }

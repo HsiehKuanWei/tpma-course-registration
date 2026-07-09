@@ -34,9 +34,25 @@ API.updateRegistration = async function updateRegistration(ctx, payload){
   return data;
 };
 
-API.regeneratePortal = async function regeneratePortal(ctx, regId){
+API.bulkRegistrations = async function bulkRegistrations(ctx, payload){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/registrations/bulk', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  }, ctx.nonce);
+
+  if (!data || data.success === false) {
+    const msg = (data && data.message) ? data.message : '批次操作失敗';
+    throw new Error(msg);
+  }
+  return data;
+};
+
+API.regeneratePortal = async function regeneratePortal(ctx, regId, regenerate){
   return await PublicAPI.fetchJson(ctx.apiBase + '/admin/magic-links/regenerate', {
-    method: 'POST', body: JSON.stringify({ reg_id: parseInt(regId, 10) || 0 })
+    method: 'POST', body: JSON.stringify({
+      reg_id: parseInt(regId, 10) || 0,
+      regenerate: !!regenerate
+    })
   }, ctx.nonce);
 };
 

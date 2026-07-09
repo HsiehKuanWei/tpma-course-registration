@@ -20,6 +20,14 @@
    * @param {HTMLElement} div 課程卡片容器（內含 data-field 表單）
    */
   ns.saveCourse = async function saveCourse(div) {
+    if (!div || div.dataset.saving === '1') return;
+    div.dataset.saving = '1';
+    const saveBtn = div.querySelector('[id^="tpma-btn-save-course-"]');
+    const cancelBtn = div.querySelector('[id^="tpma-btn-cancel-course-"]');
+    const addSessionBtn = div.querySelector('.tpma-session-add');
+    const previousSaveText = saveBtn ? saveBtn.textContent : '';
+    [saveBtn, cancelBtn, addSessionBtn].forEach(btn => { if (btn) btn.disabled = true; });
+    if (saveBtn) saveBtn.textContent = '儲存中…';
     const id = div.dataset.id ? parseInt(div.dataset.id, 10) : 0;
 
     // 讀取表單欄位值
@@ -60,6 +68,9 @@
         saveError.textContent = '請填寫必填欄位';
         saveError.style.display = 'block';
       }
+      div.dataset.saving = '0';
+      [saveBtn, cancelBtn, addSessionBtn].forEach(btn => { if (btn) btn.disabled = false; });
+      if (saveBtn) saveBtn.textContent = previousSaveText;
       return;
     }
 
@@ -72,7 +83,12 @@
       if (inactiveSameCourse) {
         const lecturerText = util.lecturerLabelByCode(lecturer_code) || lecturer_code;
         const ok = w.confirm(`已有停用課程「${course_name}」（講師：${lecturerText}），是否恢復此課程？`);
-        if (!ok) return;
+        if (!ok) {
+          div.dataset.saving = '0';
+          [saveBtn, cancelBtn, addSessionBtn].forEach(btn => { if (btn) btn.disabled = false; });
+          if (saveBtn) saveBtn.textContent = previousSaveText;
+          return;
+        }
         try {
           await ns.apiRestoreCourse(inactiveSameCourse.id);
           await ns.fetchAll();
@@ -85,6 +101,9 @@
             saveError.style.display = 'block';
           }
         }
+        div.dataset.saving = '0';
+        [saveBtn, cancelBtn, addSessionBtn].forEach(btn => { if (btn) btn.disabled = false; });
+        if (saveBtn) saveBtn.textContent = previousSaveText;
         return;
       }
     }
@@ -172,6 +191,10 @@
         saveError.textContent = e.message || '儲存失敗，請稍後再試';
         saveError.style.display = 'block';
       }
+    } finally {
+      div.dataset.saving = '0';
+      [saveBtn, cancelBtn, addSessionBtn].forEach(btn => { if (btn) btn.disabled = false; });
+      if (saveBtn) saveBtn.textContent = previousSaveText;
     }
   };
 

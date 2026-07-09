@@ -22,6 +22,12 @@ class TPMA_CR_REST_Admin
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
+        register_rest_route($ns, '/admin/registrations/bulk', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_bulk_registrations'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
         // 課程 / 場次
         register_rest_route($ns, '/admin/courses', array(
             'methods'  => 'GET',
@@ -532,7 +538,347 @@ public static function admin_update_reg($request)
         }
     }
 
+    if ($order && class_exists('TPMA_CR_Mail_Dispatcher')) {
+        $reset_fields = array('session_id', 'access_mode', 'status', 'payment_status');
+        if (array_intersect($reset_fields, array_keys($tpma_update))) {
+            $old_session_id = (int)($row['session_id'] ?? 0);
+            $new_session_id = array_key_exists('session_id', $tpma_update) ? (int)$tpma_update['session_id'] : $old_session_id;
+            TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, $old_session_id);
+            if ($new_session_id > 0 && $new_session_id !== $old_session_id) {
+                TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, $new_session_id);
+            }
+        }
+    }
+
     return rest_ensure_response(array('success' => true));
+}
+
+public static function admin_bulk_registrations($request)
+{
+    global $wpdb;
+
+    $d = $request->get_json_params();
+    if (!is_array($d)) {
+        $d = array();
+    }
+
+    $ids = array_values(array_unique(array_filter(array_map('absint', (array)($d['ids'] ?? array())))));
+    $action = sanitize_key((string)($d['action'] ?? ''));
+    $field = sanitize_key((string)($d['field'] ?? ''));
+    $event_key = sanitize_key((string)($d['event_key'] ?? ''));
+    $value = $d['value'] ?? '';
+    $force = !empty($d['force']);
+
+    if (empty($ids)) {
+        return new WP_Error('invalid_ids', '請先選擇學員', array('status' => 400));
+    }
+
+    $result = self::empty_bulk_result();
+    if ($action === 'update_field') {
+        $allowed_fields = array('status', 'access_mode', 'receipt_status', 'receipt_type', 'remit_paid_at');
+        if (!in_array($field, $allowed_fields, true)) {
+            return new WP_Error('invalid_field', '不支援的批次欄位', array('status' => 400));
+        }
+        if ($value === '' || $value === null) {
+            return new WP_Error('missing_value', '缺少批次套用值', array('status' => 400));
+        }
+        $result = self::bulk_update_field($ids, $field, $value);
+    } elseif ($action === 'send_course_mail') {
+        $allowed_events = array('course_access', 'pre_class_reminder', 'recorded_course_opened', 'certificate_ready', 'receipt_notice');
+        if (!in_array($event_key, $allowed_events, true)) {
+            return new WP_Error('invalid_event', '不支援的寄件事件', array('status' => 400));
+        }
+        $result = self::bulk_send_mail($ids, $event_key, $force);
+    } elseif ($action === 'reset_course_mail_meta') {
+        $result = self::bulk_reset_course_mail_meta($ids, $event_key);
+    } else {
+        return new WP_Error('invalid_action', '不支援的批次動作', array('status' => 400));
+    }
+
+    $result['success'] = empty($result['failed']);
+    return rest_ensure_response($result);
+}
+
+private static function empty_bulk_result(): array
+{
+    return array(
+        'success'   => true,
+        'processed' => 0,
+        'updated'   => 0,
+        'sent'      => 0,
+        'skipped'   => array(),
+        'failed'    => array(),
+    );
+}
+
+private static function bulk_add_skip(array $result, $id, string $reason, string $message = ''): array
+{
+    $result['skipped'][] = array(
+        'id' => $id,
+        'reason' => $reason,
+        'message' => $message !== '' ? $message : $reason,
+    );
+    return $result;
+}
+
+private static function bulk_add_fail(array $result, $id, string $reason, string $message = ''): array
+{
+    $result['failed'][] = array(
+        'id' => $id,
+        'reason' => $reason,
+        'message' => $message !== '' ? $message : $reason,
+    );
+    return $result;
+}
+
+private static function merge_bulk_result(array $base, array $part): array
+{
+    foreach (array('processed', 'updated', 'sent') as $key) {
+        $base[$key] += (int)($part[$key] ?? 0);
+    }
+    foreach (array('skipped', 'failed') as $key) {
+        if (!empty($part[$key]) && is_array($part[$key])) {
+            $base[$key] = array_merge($base[$key], $part[$key]);
+        }
+    }
+    return $base;
+}
+
+private static function get_registration_rows(array $ids): array
+{
+    global $wpdb;
+    if (empty($ids)) {
+        return array();
+    }
+    $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+    $sql = $wpdb->prepare(
+        "SELECT * FROM " . TPMA_CR_DB::table('regs') . " WHERE id IN ({$placeholders})",
+        ...$ids
+    );
+    $rows = $wpdb->get_results($sql, ARRAY_A);
+    $by_id = array();
+    foreach ((array)$rows as $row) {
+        $by_id[(int)$row['id']] = $row;
+    }
+    return $by_id;
+}
+
+private static function bulk_update_field(array $ids, string $field, $value): array
+{
+    global $wpdb;
+    $regs_table = TPMA_CR_DB::table('regs');
+    $rows = self::get_registration_rows($ids);
+    $result = self::empty_bulk_result();
+    $result['processed'] = count($ids);
+    $orders_to_reset = array();
+
+    foreach ($ids as $id) {
+        $row = $rows[$id] ?? null;
+        if (!$row) {
+            $result = self::bulk_add_skip($result, $id, 'registration_not_found');
+            continue;
+        }
+
+        $order_id = (int)($row['woocommerce_order_id'] ?? 0);
+        $order = $order_id > 0 && function_exists('wc_get_order') ? wc_get_order($order_id) : null;
+        try {
+            if ($field === 'access_mode') {
+                $access_mode = sanitize_key((string)$value);
+                $session_id = (int)($row['session_id'] ?? 0);
+                $delivery_mode = $session_id > 0 ? (string)$wpdb->get_var($wpdb->prepare(
+                    "SELECT delivery_mode FROM " . TPMA_CR_DB::table('sessions') . " WHERE id=%d",
+                    $session_id
+                )) : '';
+                $allowed_modes = $delivery_mode === 'hybrid' ? array('live', 'recorded') : array($delivery_mode ?: 'live');
+                if (!in_array($access_mode, $allowed_modes, true)) {
+                    $result = self::bulk_add_skip($result, $id, 'invalid_access_mode', '此場次不提供所選課程型態');
+                    continue;
+                }
+                $wpdb->update($regs_table, array('access_mode' => $access_mode), array('id' => $id), array('%s'), array('%d'));
+                $result['updated']++;
+                if ($order) $orders_to_reset[$order_id][(int)$row['session_id']] = true;
+                continue;
+            }
+
+            if ($field === 'status') {
+                $status = sanitize_key((string)$value);
+                if ($status === 'postpay' && $order) {
+                    $order->update_meta_data('_tpma_post_course_payment', 'yes');
+                    if ($order->get_status() !== 'on-hold') {
+                        $order->set_status('on-hold', 'TPMA 後台批次標記為課後付款');
+                    }
+                    $order->save();
+                    $wpdb->update($regs_table, array('status' => 'postpay', 'payment_status' => 'on-hold'), array('woocommerce_order_id' => $order_id), array('%s', '%s'), array('%d'));
+                } else {
+                    if ($order && $order->get_meta('_tpma_post_course_payment', true) === 'yes' && $status !== 'postpay') {
+                        $order->delete_meta_data('_tpma_post_course_payment');
+                        $order->save();
+                        $wpdb->update($regs_table, array('status' => $status), array('woocommerce_order_id' => $order_id, 'status' => 'postpay'), array('%s'), array('%d', '%s'));
+                    } else {
+                        $wpdb->update($regs_table, array('status' => $status), array('id' => $id), array('%s'), array('%d'));
+                    }
+                }
+                $result['updated']++;
+                if ($order) $orders_to_reset[$order_id][(int)$row['session_id']] = true;
+                continue;
+            }
+
+            if ($field === 'receipt_status') {
+                $wpdb->update($regs_table, array('receipt_status' => sanitize_key((string)$value)), array('id' => $id), array('%s'), array('%d'));
+                $result['updated']++;
+                continue;
+            }
+
+            if ($field === 'receipt_type' || $field === 'remit_paid_at') {
+                if (!$order) {
+                    $result = self::bulk_add_skip($result, $id, 'order_not_found');
+                    continue;
+                }
+                $payload = array($field => sanitize_text_field((string)$value));
+                $woo_result = TPMA_CR_Admin_Woo_Service::apply_order_updates($order, $payload, $regs_table);
+                if (is_wp_error($woo_result)) {
+                    $result = self::bulk_add_fail($result, $id, $woo_result->get_error_code(), $woo_result->get_error_message());
+                    continue;
+                }
+                $order->save();
+                $wpdb->update($regs_table, array($field => sanitize_text_field((string)$value)), array('id' => $id), array('%s'), array('%d'));
+                $result['updated']++;
+                continue;
+            }
+        } catch (Throwable $e) {
+            $result = self::bulk_add_fail($result, $id, 'exception', $e->getMessage());
+        }
+    }
+
+    if (class_exists('TPMA_CR_Mail_Dispatcher') && !empty($orders_to_reset) && function_exists('wc_get_order')) {
+        foreach ($orders_to_reset as $order_id => $sessions) {
+            $order = wc_get_order((int)$order_id);
+            if (!$order) {
+                continue;
+            }
+            foreach (array_keys($sessions) as $session_id) {
+                TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, (int)$session_id);
+            }
+        }
+    }
+
+    return $result;
+}
+
+private static function bulk_send_mail(array $ids, string $event_key, bool $force): array
+{
+    if (!class_exists('TPMA_CR_Mail_Dispatcher') || !function_exists('wc_get_order')) {
+        return self::bulk_add_fail(self::empty_bulk_result(), 0, 'mailer_unavailable', '寄件模組未載入');
+    }
+
+    $rows = self::get_registration_rows($ids);
+    $result = self::empty_bulk_result();
+    $orders = array();
+    $course_groups = array();
+
+    foreach ($ids as $id) {
+        $row = $rows[$id] ?? null;
+        if (!$row) {
+            $result['processed']++;
+            $result = self::bulk_add_skip($result, $id, 'registration_not_found');
+            continue;
+        }
+        $order_id = (int)($row['woocommerce_order_id'] ?? 0);
+        if ($order_id <= 0) {
+            $result['processed']++;
+            $result = self::bulk_add_skip($result, $id, 'order_not_found');
+            continue;
+        }
+
+        if ($event_key === 'receipt_notice') {
+            $orders[$order_id] = true;
+            continue;
+        }
+
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            $result['processed']++;
+            $result = self::bulk_add_skip($result, $id, 'order_not_found');
+            continue;
+        }
+
+        if ($event_key === 'certificate_ready') {
+            $part = TPMA_CR_Mail_Dispatcher::send_certificate_email($order, $row, array('force' => $force));
+            $result = self::merge_bulk_result($result, $part);
+            continue;
+        }
+
+        $group_key = $order_id . ':' . (int)($row['session_id'] ?? 0);
+        if (in_array($event_key, array('course_access', 'pre_class_reminder', 'recorded_course_opened'), true)) {
+            $group_key .= ':' . sanitize_key((string)($row['access_mode'] ?? 'live'));
+        }
+        if (!isset($course_groups[$group_key])) {
+            $course_groups[$group_key] = array('order_id' => $order_id, 'regs' => array());
+        }
+        $course_groups[$group_key]['regs'][] = $row;
+    }
+
+    if ($event_key === 'receipt_notice') {
+        foreach (array_keys($orders) as $order_id) {
+            $order = wc_get_order((int)$order_id);
+            if (!$order) {
+                $result = self::bulk_add_skip($result, $order_id, 'order_not_found');
+                continue;
+            }
+            $part = TPMA_CR_Mail_Dispatcher::send_receipt_notice($order, array('force' => $force));
+            $result = self::merge_bulk_result($result, $part);
+        }
+        return $result;
+    }
+
+    foreach ($course_groups as $group) {
+        $order = wc_get_order((int)$group['order_id']);
+        if (!$order) {
+            foreach ($group['regs'] as $row) {
+                $result['processed']++;
+                $result = self::bulk_add_skip($result, (int)$row['id'], 'order_not_found');
+            }
+            continue;
+        }
+        $part = TPMA_CR_Mail_Dispatcher::send_course_access_event_for_regs($event_key, $order, $group['regs'], array('force' => $force, 'manual' => true));
+        $result = self::merge_bulk_result($result, $part);
+    }
+
+    return $result;
+}
+
+private static function bulk_reset_course_mail_meta(array $ids, string $event_key = ''): array
+{
+    $rows = self::get_registration_rows($ids);
+    $result = self::empty_bulk_result();
+    $result['processed'] = count($ids);
+    if (!class_exists('TPMA_CR_Mail_Dispatcher') || !function_exists('wc_get_order')) {
+        return self::bulk_add_fail($result, 0, 'dispatcher_unavailable', '寄件模組未載入');
+    }
+
+    $seen = array();
+    foreach ($ids as $id) {
+        $row = $rows[$id] ?? null;
+        if (!$row) {
+            $result = self::bulk_add_skip($result, $id, 'registration_not_found');
+            continue;
+        }
+        $order_id = (int)($row['woocommerce_order_id'] ?? 0);
+        $session_id = (int)($row['session_id'] ?? 0);
+        $key = $order_id . ':' . $session_id . ':' . $event_key;
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $order = $order_id > 0 ? wc_get_order($order_id) : null;
+        if (!$order) {
+            $result = self::bulk_add_skip($result, $id, 'order_not_found');
+            continue;
+        }
+        $result['updated'] += TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, $session_id, $event_key);
+    }
+
+    return $result;
 }
 
 
@@ -1006,6 +1352,7 @@ public static function admin_update_reg($request)
         );
         $kept_session_ids = array();
         $synced_meet_times = array();
+        $seen_new_session_datetimes = array();
 
         foreach ($sessions as $s) {
             if (empty($s['datetime'])) {
@@ -1029,6 +1376,19 @@ public static function admin_update_reg($request)
             // 非預期格式就跳過，以免寫入壞資料
             if (!preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $dt)) {
                 continue;
+            }
+
+            if ($session_id <= 0) {
+                if (isset($seen_new_session_datetimes[$dt])) {
+                    continue;
+                }
+                $seen_new_session_datetimes[$dt] = true;
+                foreach ((array) $existing_sessions as $existing_id => $existing_session) {
+                    if ((string) $existing_session->session_datetime === $dt && !in_array((int) $existing_id, $kept_session_ids, true)) {
+                        $session_id = (int) $existing_id;
+                        break;
+                    }
+                }
             }
 
             $normalize_optional_datetime = static function ($value) {
@@ -1460,7 +1820,8 @@ public static function admin_update_reg($request)
         global $wpdb;
         $order_id = (int)$wpdb->get_var($wpdb->prepare("SELECT woocommerce_order_id FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d", $reg_id));
         if ($order_id > 0 && class_exists('TPMA_Course_Access')) {
-            $portal = TPMA_Course_Access::get_or_create_portal_url($order_id, true);
+            $regenerate = !empty($params['regenerate']);
+            $portal = TPMA_Course_Access::get_or_create_portal_url($order_id, $regenerate);
             $urls = array('portal'=>$portal,'course'=>$portal,'quiz'=>$portal,'certificate'=>$portal,'meet'=>$portal);
         } else {
             $urls = TPMA_Tutor_Bridge::regenerate_magic_urls_for_reg($reg_id);

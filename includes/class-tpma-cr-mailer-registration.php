@@ -182,53 +182,34 @@ class TPMA_CR_Mailer_Registration
             'description' => '依附 Tutor Bridge 的 TPMA 延伸事件。',
             'events'      => array(
                 'course_access' => array(
-                    'label'                => '課程存取連結',
+                    'label'                => '課程入口通知',
                     'source'               => 'tpma-course-registration',
-                    'note'                 => 'Tutor Bridge',
+                    'note'                 => 'auto / admin trigger',
                     'default_template_key' => 'course_access',
+                    'aliases'              => array('pre_class_reminder', 'recorded_course_opened', 'quiz_invitation'),
                     'default_template'     => array(
                         'subject'   => 'TPMA 課程連結：{{course_name}}',
                         'body_html' => '<p>{{student_name}} 您好：</p><p>您的課程連結如下：</p><p><a href="{{magic_link_portal}}">前往課程</a></p>',
                     ),
                 ),
-                'pre_class_reminder' => array(
-                    'label'                => '課前提醒',
-                    'source'               => 'tpma-course-registration',
-                    'note'                 => 'cron',
-                    'default_template_key' => 'pre_class_reminder',
-                    'default_template'     => array(
-                        'subject'   => 'TPMA 課前提醒：{{course_name}}',
-                        'body_html' => '<p>{{student_name}} 您好：</p><p>提醒您課程即將開始。</p><ul><li>課程名稱：{{course_name}}</li><li>課程日期：{{class_date}}</li></ul><p><a href="{{magic_link_portal}}">前往線上教室</a></p>',
-                    ),
-                ),
-                'recorded_course_opened' => array(
-                    'label'                => '錄播課程開放通知',
-                    'source'               => 'tpma-course-registration',
-                    'note'                 => 'cron',
-                    'default_template_key' => 'recorded_course_opened',
-                    'default_template'     => array(
-                        'subject'   => 'TPMA 錄播課程已開放：{{course_name}}',
-                        'body_html' => '<p>您好：</p><p>錄播課程已開放，請由以下共用入口選擇學員後進入：</p><p><a href="{{magic_link_portal}}">進入課程</a></p>',
-                    ),
-                ),
-                'quiz_invitation' => array(
-                    'label'                => '測驗邀請',
-                    'source'               => 'tpma-course-registration',
-                    'note'                 => 'admin trigger',
-                    'default_template_key' => 'quiz_invitation',
-                    'default_template'     => array(
-                        'subject'   => 'TPMA 測驗通知：{{course_name}}',
-                        'body_html' => '<p>{{student_name}} 您好：</p><p>請透過以下共用入口選擇應考學員：</p><p><a href="{{magic_link_portal}}">前往測驗</a></p>',
-                    ),
-                ),
                 'certificate_ready' => array(
                     'label'                => '證書完成',
                     'source'               => 'tpma-course-registration',
-                    'note'                 => 'Tutor course completed',
+                    'note'                 => 'admin trigger',
                     'default_template_key' => 'certificate_ready',
                     'default_template'     => array(
                         'subject'   => 'TPMA 結訓證書通知：{{course_name}}',
                         'body_html' => '<p>{{student_name}} 您好：</p><p>您的結訓證書已可檢視。</p><p><a href="{{magic_link_portal}}">進入課程入口</a></p>',
+                    ),
+                ),
+                'receipt_notice' => array(
+                    'label'                => '收據通知',
+                    'source'               => 'tpma-course-registration',
+                    'note'                 => 'admin trigger',
+                    'default_template_key' => 'receipt_notice',
+                    'default_template'     => array(
+                        'subject'   => 'TPMA 收據通知：{{order_number}}',
+                        'body_html' => '<p>您好：</p><p>此訂單的收據通知如下。</p><p>訂單編號：{{order_number}}</p><p>課程：{{course_name}}</p>',
                     ),
                 ),
             ),

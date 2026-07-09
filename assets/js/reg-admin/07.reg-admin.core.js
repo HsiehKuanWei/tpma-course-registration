@@ -37,6 +37,13 @@ function bootstrap(){
       viewModeNested: document.getElementById('tpma-view-mode-nested'),
       viewModeFlat: document.getElementById('tpma-view-mode-flat'),
       grid: document.querySelector('.tpma-reg-grid'),
+      bulkToolbar: document.getElementById('tpma-bulk-toolbar'),
+      bulkCount: document.getElementById('tpma-bulk-count'),
+      bulkAction: document.getElementById('tpma-bulk-action'),
+      bulkApply: document.getElementById('tpma-bulk-apply'),
+      bulkClear: document.getElementById('tpma-bulk-clear'),
+      bulkHint: document.getElementById('tpma-bulk-hint'),
+      bulkResult: document.getElementById('tpma-bulk-result'),
       // Add references to header menu buttons and menus
       menuButtons: document.querySelectorAll('.tpma-th-menu-btn'),
       menus: document.querySelectorAll('.tpma-th-menu')
