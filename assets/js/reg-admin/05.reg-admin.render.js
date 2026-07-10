@@ -146,13 +146,19 @@ R.getAccessModeSummary = function getAccessModeSummary(rows){
 };
 
 R.buildAccessModeSummaryHtml = function buildAccessModeSummaryHtml(rows){
-  const seen = {};
-  const badges = [];
+  const representativeByLabel = {};
   (rows || []).forEach(function(row){
     const label = R.accessModeLabel(row);
-    if (seen[label]) return;
-    seen[label] = true;
-    badges.push(R.buildAccessModeBadgeHtml(row));
+    if (!representativeByLabel[label]) representativeByLabel[label] = row;
+  });
+
+  const labels = ['直播', '錄播'].filter(function(label){ return !!representativeByLabel[label]; });
+  Object.keys(representativeByLabel).forEach(function(label){
+    if (labels.indexOf(label) === -1) labels.push(label);
+  });
+
+  const badges = labels.map(function(label){
+    return R.buildAccessModeBadgeHtml(representativeByLabel[label]);
   });
   return badges.join(' ');
 };

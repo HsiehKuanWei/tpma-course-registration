@@ -1169,6 +1169,7 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
         global $wpdb;
         $courses_table  = TPMA_CR_DB::table('courses');
         $sessions_table = TPMA_CR_DB::table('sessions');
+        $regs_table     = TPMA_CR_DB::table('regs');
 
         $d  = $request->get_json_params();
         $id = intval($d['id'] ?? 0);
@@ -1434,7 +1435,11 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
                     }
                     $synced_meet_times[] = array('id' => $session_id, 'datetime' => (string) $old->session_datetime);
                 }
+                $session_datetime_changed = (string) $old->session_datetime !== $dt;
                 $wpdb->update($sessions_table, $session_data, array('id' => $session_id), array('%s','%d','%s','%s','%s','%s'), array('%d'));
+                if ($session_datetime_changed && class_exists('TPMA_CR_Admin_Woo_Service')) {
+                    TPMA_CR_Admin_Woo_Service::sync_session_datetime_snapshot($regs_table, $session_id, $dt);
+                }
                 $kept_session_ids[] = $session_id;
             } else {
                 $session_data['course_id'] = $course_id;

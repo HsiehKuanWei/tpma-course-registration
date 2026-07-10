@@ -356,6 +356,76 @@ class TPMA_CR_Admin_Woo_Service
     }
 
     /**
+     * Keep registrations and Woo snapshots aligned when a course session time changes.
+     */
+    public static function sync_session_datetime_snapshot(string $regs_table, int $session_id, string $session_datetime): array
+    {
+        if ($regs_table === '' || $session_id <= 0 || $session_datetime === '' || !class_exists('TPMA_CR_DB')) {
+            return array('registrations' => 0, 'orders' => 0);
+        }
+
+        global $wpdb;
+        $session_datetime = sanitize_text_field($session_datetime);
+        $class_date = substr($session_datetime, 0, 10);
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $class_date)) {
+            return array('registrations' => 0, 'orders' => 0);
+        }
+
+        $order_ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT woocommerce_order_id FROM {$regs_table} WHERE session_id = %d AND woocommerce_order_id IS NOT NULL AND woocommerce_order_id > 0",
+            $session_id
+        ));
+
+        $wpdb->update(
+            $regs_table,
+            array('class_date' => $class_date),
+            array('session_id' => $session_id),
+            array('%s'),
+            array('%d')
+        );
+        $updated_regs = (int) $wpdb->rows_affected;
+
+        $updated_orders = 0;
+        if (!function_exists('wc_get_order')) {
+            return array('registrations' => $updated_regs, 'orders' => 0);
+        }
+
+        foreach ((array) $order_ids as $order_id) {
+            $order = wc_get_order((int) $order_id);
+            if (!$order) {
+                continue;
+            }
+
+            $changed = false;
+            $order_session_id = (int) $order->get_meta('_tpma_session_id', true);
+            $draft_json = (string) $order->get_meta('_tpma_reg_draft_json', true);
+            $draft = $draft_json !== '' ? json_decode($draft_json, true) : array();
+            if (!is_array($draft)) {
+                $draft = array();
+            }
+            $draft_session_id = (int) ($draft['session_id'] ?? 0);
+
+            if ($order_session_id === $session_id || $draft_session_id === $session_id) {
+                $order->update_meta_data('_tpma_session_id', $session_id);
+                $order->update_meta_data('_tpma_session_datetime', $session_datetime);
+
+                $draft['session_id'] = $session_id;
+                $draft['session_datetime'] = $session_datetime;
+                $draft['class_date'] = $class_date;
+                $order->update_meta_data('_tpma_reg_draft_json', wp_json_encode($draft, JSON_UNESCAPED_UNICODE));
+                $changed = true;
+            }
+
+            if ($changed) {
+                $order->save();
+                $updated_orders++;
+            }
+        }
+
+        return array('registrations' => $updated_regs, 'orders' => $updated_orders);
+    }
+
+    /**
      * 讀取 rows 中涉及的 Woo 訂單，並將 Woo 資訊覆蓋回傳。
      *
      * @param array $rows regs 查詢結果（含 woocommerce_order_id）

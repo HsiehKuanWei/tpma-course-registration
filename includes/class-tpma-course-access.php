@@ -262,15 +262,21 @@ class TPMA_Course_Access {
         if (empty($_GET['tpma_portal'])) return;
         $session = self::read_portal_session();
         if (!$session) wp_die('課程入口工作階段已過期，請重新開啟通知信中的連結。', '工作階段已過期', array('response' => 403));
-        if (!empty($_GET['switch'])) {
-            check_admin_referer('tpma_portal_switch');
+        if (!empty($_GET['switch']) && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+            $switch_nonce = sanitize_text_field(wp_unslash($_GET['tpma_switch_nonce'] ?? ''));
+            if ($switch_nonce === '' || empty($session['switch_nonce']) || !hash_equals((string)$session['switch_nonce'], $switch_nonce)) {
+                wp_die('切換學員連結已失效，請重新整理課程頁後再試。', '無法切換學員', array('response' => 403));
+            }
             $session['registration_id'] = 0;
             self::refresh_portal_session(self::cookie_value(), $session);
             wp_clear_auth_cookie();
             wp_set_current_user(0);
         }
         if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['tpma_registration_id'])) {
-            check_admin_referer('tpma_portal_select');
+            $select_nonce = sanitize_text_field(wp_unslash($_POST['tpma_select_nonce'] ?? ''));
+            if ($select_nonce === '' || empty($session['select_nonce']) || !hash_equals((string)$session['select_nonce'], $select_nonce)) {
+                wp_die('選擇學員連結已失效，請重新整理頁面後再試。', '無法選擇學員', array('response' => 403));
+            }
             $reg_id = absint(wp_unslash($_POST['tpma_registration_id']));
             $candidate = self::candidate_for_order((int)$session['order_id'], $reg_id);
             if (!$candidate) {
@@ -289,7 +295,7 @@ class TPMA_Course_Access {
             wp_safe_redirect($course_url ?: home_url('/'));
             exit;
         }
-        self::render_selector((int)$session['order_id']);
+        self::render_selector((int)$session['order_id'], $session);
         exit;
     }
 
@@ -320,7 +326,7 @@ class TPMA_Course_Access {
         }, (array)$rows));
     }
 
-    private static function render_selector(int $order_id): void {
+    private static function render_selector(int $order_id, array $session = array()): void {
         $candidates = self::get_candidates($order_id);
         status_header(200);
         nocache_headers();
@@ -329,7 +335,9 @@ class TPMA_Course_Access {
         if (!$candidates) {
             echo '<p role="alert">目前沒有已開放課程權限的學員。</p>';
         } else {
-            echo '<form method="post">'; wp_nonce_field('tpma_portal_select');
+            $session = self::ensure_portal_switch_nonce($session);
+            echo '<form method="post" action="' . esc_url(add_query_arg('tpma_portal', '1', home_url('/'))) . '">';
+            echo '<input type="hidden" name="tpma_select_nonce" value="' . esc_attr((string)($session['select_nonce'] ?? '')) . '">';
             $first_enabled = true;
             foreach ($candidates as $index => $row) {
                 $meta = implode('｜', array_filter(array((string)($row['company_name'] ?? ''), (string)($row['department'] ?? ''), (string)($row['course_name'] ?? ''))));
@@ -374,8 +382,21 @@ class TPMA_Course_Access {
         global $wpdb;
         $valid = $wpdb->get_var($wpdb->prepare("SELECT id FROM " . TPMA_CR_DB::table('portal_tokens') . " WHERE id=%d AND revoked_at IS NULL AND expires_at >= %s", (int)$session['token_id'], current_time('mysql')));
         if (!$valid) return null;
+        $session = self::ensure_portal_switch_nonce($session);
         self::refresh_portal_session($id, $session);
         self::ensure_portal_user_session($session);
+        return $session;
+    }
+
+    private static function ensure_portal_switch_nonce(array $session): array {
+        $switch_nonce = (string)($session['switch_nonce'] ?? '');
+        if (!preg_match('/^[a-f0-9]{32,64}$/', $switch_nonce)) {
+            $session['switch_nonce'] = bin2hex(random_bytes(24));
+        }
+        $select_nonce = (string)($session['select_nonce'] ?? '');
+        if (!preg_match('/^[a-f0-9]{32,64}$/', $select_nonce)) {
+            $session['select_nonce'] = bin2hex(random_bytes(24));
+        }
         return $session;
     }
 
@@ -399,6 +420,7 @@ class TPMA_Course_Access {
 
     private static function refresh_portal_session(string $id, array $session): void {
         if ($id === '') return;
+        $session = self::ensure_portal_switch_nonce($session);
         $ttl = self::portal_session_ttl($session);
         set_transient('tpma_portal_' . $id, $session, $ttl);
         if (!headers_sent()) {
@@ -431,12 +453,17 @@ class TPMA_Course_Access {
     }
 
     public static function render_identity_bar(): void {
-        $reg_id = self::current_registration_id();
+        $session = self::read_portal_session();
+        $reg_id = (int)($session['registration_id'] ?? 0);
         if ($reg_id <= 0) return;
         global $wpdb;
         $name = $wpdb->get_var($wpdb->prepare("SELECT student_name FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d", $reg_id));
         if (!$name) return;
-        $url = wp_nonce_url(add_query_arg(array('tpma_portal'=>'1','switch'=>'1'), home_url('/')), 'tpma_portal_switch');
+        $url = add_query_arg(array(
+            'tpma_portal' => '1',
+            'switch' => '1',
+            'tpma_switch_nonce' => (string)($session['switch_nonce'] ?? ''),
+        ), home_url('/'));
         echo '<aside style="position:fixed;right:16px;bottom:16px;z-index:99999;background:#17342f;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.22)">目前學員：' . esc_html($name) . ' <a style="color:#9de5d8;margin-left:8px" href="' . esc_url($url) . '">切換學員</a></aside>';
     }
 

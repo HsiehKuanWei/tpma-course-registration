@@ -227,6 +227,11 @@ class TPMA_Tutor_Bridge {
         }
     }
 
+    private static function format_calendar_summary(string $course_name): string {
+        $course_name = trim($course_name);
+        return $course_name !== '' ? $course_name : 'TPMA 課程';
+    }
+
     private static function sync_session_child_titles(int $topic_id, int $session_id, string $title): void {
         if ($topic_id <= 0 || $session_id <= 0 || $title === '') return;
         $lesson_type = function_exists('tutor') ? tutor()->lesson_post_type : 'tutor_lesson';
@@ -463,6 +468,7 @@ class TPMA_Tutor_Bridge {
             update_post_meta($topic_id, '_tpma_session_id', $session_id);
             wp_update_post(array('ID' => $topic_id, 'post_title' => $title));
             self::sync_session_child_titles($topic_id, $session_id, $title);
+            self::reorder_course_topics((int) $session['tutor_course_id']);
             return $topic_id;
         }
         $topic_id = wp_insert_post(array(
@@ -475,6 +481,7 @@ class TPMA_Tutor_Bridge {
         if (is_wp_error($topic_id)) return 0;
         $wpdb->update(TPMA_CR_DB::table('sessions'), array('tutor_topic_id' => (int) $topic_id), array('id' => $session_id), array('%d'), array('%d'));
         self::sync_session_child_titles((int) $topic_id, $session_id, $title);
+        self::reorder_course_topics((int) $session['tutor_course_id']);
         return (int) $topic_id;
     }
 
@@ -565,6 +572,7 @@ class TPMA_Tutor_Bridge {
             if ($type === 'quiz') self::enforce_topic_quiz_settings($topic_id);
         }
         self::clear_course_topic_resource_cache($tutor_course_id);
+        self::reorder_course_topics($tutor_course_id);
     }
 
     private static function get_topic_resource_type(int $topic_id): string {
@@ -585,6 +593,67 @@ class TPMA_Tutor_Bridge {
 
     private static function clear_course_topic_resource_cache(int $tutor_course_id): void {
         unset(self::$course_topic_resource_cache[$tutor_course_id]);
+    }
+
+    private static function reorder_course_topics(int $tutor_course_id): void {
+        if ($tutor_course_id <= 0) return;
+
+        $topic_ids = get_posts(array(
+            'post_type'        => 'topics',
+            'post_parent'      => $tutor_course_id,
+            'post_status'      => array('publish','draft','private','future'),
+            'numberposts'      => -1,
+            'fields'           => 'ids',
+            'orderby'          => 'menu_order',
+            'order'            => 'ASC',
+            'suppress_filters' => true,
+            'tpma_skip_session_topic_filter' => true,
+        ));
+        if (empty($topic_ids)) return;
+
+        global $wpdb;
+        $original_index = array();
+        $session_ids = array();
+        foreach ((array) $topic_ids as $idx => $topic_id) {
+            $topic_id = (int) $topic_id;
+            $original_index[$topic_id] = (int) $idx;
+            $session_id = (int) get_post_meta($topic_id, '_tpma_session_id', true);
+            if ($session_id > 0) $session_ids[] = $session_id;
+        }
+
+        $session_datetimes = array();
+        if (!empty($session_ids)) {
+            $session_ids = array_values(array_unique(array_map('absint', $session_ids)));
+            $rows = $wpdb->get_results(
+                "SELECT id, session_datetime FROM " . TPMA_CR_DB::table('sessions') . " WHERE id IN (" . implode(',', $session_ids) . ")",
+                ARRAY_A
+            );
+            foreach ((array) $rows as $row) {
+                $session_datetimes[(int) $row['id']] = (string) $row['session_datetime'];
+            }
+        }
+
+        $rank = static function (int $topic_id) use ($session_datetimes, $original_index): array {
+            $session_id = (int) get_post_meta($topic_id, '_tpma_session_id', true);
+            if ($session_id > 0) {
+                $datetime = $session_datetimes[$session_id] ?? '';
+                $timestamp = $datetime !== '' ? strtotime($datetime) : PHP_INT_MAX;
+                return array(20, $timestamp ?: PHP_INT_MAX, $original_index[$topic_id] ?? PHP_INT_MAX, $topic_id);
+            }
+
+            $priority = self::get_topic_resource_type($topic_id) === 'recording' ? 30 : 10;
+            return array($priority, $original_index[$topic_id] ?? PHP_INT_MAX, 0, $topic_id);
+        };
+
+        usort($topic_ids, static function ($a, $b) use ($rank): int {
+            return $rank((int) $a) <=> $rank((int) $b);
+        });
+
+        foreach (array_values($topic_ids) as $menu_order => $topic_id) {
+            wp_update_post(array('ID' => (int) $topic_id, 'menu_order' => $menu_order));
+        }
+
+        self::clear_course_topic_resource_cache($tutor_course_id);
     }
 
     private static function find_meet_candidates(int $session_id): array {
@@ -684,7 +753,7 @@ class TPMA_Tutor_Bridge {
         $end->modify('+' . max(1, (int) $session['duration_minutes']) . ' minutes');
         $title = self::format_session_title((string) $session['session_datetime'], (string) $session['course_name']);
         $event = new \Google_Service_Calendar_Event(array(
-            'summary' => $title, 'description' => '',
+            'summary' => self::format_calendar_summary((string) $session['course_name']), 'description' => '',
             'start' => array('dateTime' => $start->format('c'), 'timeZone' => $tz_name),
             'end' => array('dateTime' => $end->format('c'), 'timeZone' => $tz_name),
             'attendees' => array(),
@@ -1057,7 +1126,7 @@ class TPMA_Tutor_Bridge {
         try {
             $event = $client->service->events->get($client->current_calendar, $event_id);
             if (method_exists($event, 'setSummary')) {
-                $event->setSummary($topic_title);
+                $event->setSummary(self::format_calendar_summary((string) $session['course_name']));
             }
             $event->setStart(new \Google_Service_Calendar_EventDateTime(array('dateTime' => $start->format('c'), 'timeZone' => $tz_name)));
             $event->setEnd(new \Google_Service_Calendar_EventDateTime(array('dateTime' => $end->format('c'), 'timeZone' => $tz_name)));
