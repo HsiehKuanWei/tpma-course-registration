@@ -1207,6 +1207,8 @@ class TPMA_Tutor_Bridge {
     public static function filter_topic_contents_for_session(array $args): array {
         if (is_admin() && !wp_doing_ajax()) return $args;
         $topic_id = (int) ($args['post_parent'] ?? 0);
+        $course_id = $topic_id > 0 ? (int) get_post_field('post_parent', $topic_id) : 0;
+        if ($course_id <= 0 || (int) get_post_meta($course_id, '_tpma_course_id', true) <= 0) return $args;
         $session_id = $topic_id > 0 ? (int) get_post_meta($topic_id, '_tpma_session_id', true) : 0;
         if ($session_id <= 0) return self::hide_closed_shared_quiz_contents($args, $topic_id);
         if (!self::user_can_access_session($session_id)) {
@@ -1317,6 +1319,7 @@ class TPMA_Tutor_Bridge {
     }
 
     public static function exclude_session_recordings_from_progress(array $conditions, int $course_id): array {
+        if ($course_id <= 0 || (int) get_post_meta($course_id, '_tpma_course_id', true) <= 0) return $conditions;
         global $wpdb;
         $conditions[] = "NOT EXISTS (SELECT 1 FROM {$wpdb->postmeta} tpma_session_topic WHERE tpma_session_topic.post_id = topic.ID AND tpma_session_topic.meta_key = '_tpma_session_id')";
         return $conditions;
@@ -1330,6 +1333,7 @@ class TPMA_Tutor_Bridge {
         $user_id = get_current_user_id();
         if ($user_id > 0 && user_can($user_id, 'manage_options')) return;
         $course_id = (int) $query->get('post_parent');
+        if ($course_id <= 0 || (int) get_post_meta($course_id, '_tpma_course_id', true) <= 0) return;
         if ($user_id > 0 && (int) get_post_field('post_author', $course_id) === $user_id) return;
         global $wpdb;
         $allowed = array();
@@ -1368,6 +1372,10 @@ class TPMA_Tutor_Bridge {
             return;
         }
         if ($post_type !== $lesson_type && $post_type !== 'tutor-google-meet') return;
+        $content_parent_id = (int) get_post_field('post_parent', $post_id);
+        $content_course_id = get_post_type($content_parent_id) === 'topics'
+            ? (int) get_post_field('post_parent', $content_parent_id) : $content_parent_id;
+        if ($content_course_id <= 0 || (int) get_post_meta($content_course_id, '_tpma_course_id', true) <= 0) return;
         $session_id = self::get_content_session_id($post_id);
         if ($session_id <= 0 && $post_type === $lesson_type) {
             $topic_id = (int)get_post_field('post_parent', $post_id);
@@ -1390,10 +1398,11 @@ class TPMA_Tutor_Bridge {
 
     public static function protect_session_lesson_output(string $html): string {
         $post_id = get_the_ID();
+        $topic_id = $post_id ? (int) get_post_field('post_parent', $post_id) : 0;
+        $tutor_course_id = $topic_id > 0 ? (int) get_post_field('post_parent', $topic_id) : 0;
+        if ($tutor_course_id <= 0 || (int) get_post_meta($tutor_course_id, '_tpma_course_id', true) <= 0) return $html;
         $session_id = $post_id ? self::get_content_session_id((int) $post_id) : 0;
         if ($session_id <= 0) {
-            $topic_id = $post_id ? (int)get_post_field('post_parent', $post_id) : 0;
-            $tutor_course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
             if (self::user_can_manage_course($tutor_course_id)) return $html;
             $resource = self::get_topic_resource_type($topic_id);
             $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
