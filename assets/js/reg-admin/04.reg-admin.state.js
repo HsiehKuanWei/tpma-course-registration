@@ -113,7 +113,7 @@ S.getCourseHoursForRow = function getCourseHoursForRow(ctx, row){
 
 S.findSessionDatetimeForRow = function findSessionDatetimeForRow(ctx, row){
   const courses = (ctx && ctx.data && ctx.data.allCourses) || [];
-  if (!courses.length || !row || !row.course_id || !row.class_date) return null;
+  if (!courses.length || !row || !row.course_id) return null;
 
   const course = courses.find(function(c){ return String(c.id) === String(row.course_id); });
   if (!course || !Array.isArray(course.sessions) || !course.sessions.length) return null;
@@ -123,6 +123,7 @@ S.findSessionDatetimeForRow = function findSessionDatetimeForRow(ctx, row){
     if (linked && linked.session_datetime) return linked.session_datetime;
   }
 
+  if (!row.class_date) return null;
   const dateOnly = String(row.class_date).substring(0,10);
   const sameDay = course.sessions.find(function(s){
     return s.session_datetime && String(s.session_datetime).substring(0,10) === dateOnly;

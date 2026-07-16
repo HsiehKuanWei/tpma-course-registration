@@ -90,6 +90,7 @@ class TPMA_Tutor_Bridge {
         // Pre-class reminders via existing daily cron hook
         add_action('tpma_cr_daily_cron', [__CLASS__, 'send_pre_class_reminders']);
         add_action('tpma_daily_cleanup', [__CLASS__, 'send_pre_class_reminders']);
+        add_action('tpma_daily_cleanup', [__CLASS__, 'cleanup_expired_session_resources']);
         add_action('init', [__CLASS__, 'run_one_time_migrations'], 100);
     }
 
@@ -499,13 +500,13 @@ class TPMA_Tutor_Bridge {
         global $wpdb;
         $rows = $wpdb->get_results($wpdb->prepare(
             "SELECT id, session_datetime, delivery_mode, tutor_topic_id, tutor_meet_post_id,
-                    recording_available_from, recording_available_until
+                    recording_available_from, recording_available_until, tutor_resources_cleaned_at
              FROM " . TPMA_CR_DB::table('sessions') . " WHERE course_id = %d ORDER BY session_datetime",
             $course_id
         ), ARRAY_A);
         foreach ((array) $rows as &$row) {
             $row['meet_url'] = self::get_session_meet_link((int) $row['id']);
-            $topic_course_id = !empty($row['tutor_topic_id']) ? (int) get_post_field('post_parent', (int) $row['tutor_topic_id']) : 0;
+            $topic_course_id = empty($row['tutor_resources_cleaned_at']) && !empty($row['tutor_topic_id']) ? (int) get_post_field('post_parent', (int) $row['tutor_topic_id']) : 0;
             $row['topic_edit_url'] = $topic_course_id > 0 ? admin_url('post.php?post=' . $topic_course_id . '&action=edit') : '';
             $row['candidates'] = self::find_meet_candidates((int) $row['id']);
         }
@@ -695,7 +696,7 @@ class TPMA_Tutor_Bridge {
             $session_id
         ), ARRAY_A);
         if (!$session) return new WP_Error('not_found', '找不到場次', array('status' => 404));
-        if ((string)($session['delivery_mode'] ?? 'live') === 'recorded') return new WP_Error('recorded_has_no_meet', '錄播場次不可建立 Meet', array('status' => 400));
+        if (!empty($session['tutor_resources_cleaned_at'])) return new WP_Error('session_resources_cleaned', '此過期場次的 Tutor 資源已清理，Google 日曆活動仍保留。請先重新啟用或改期後再建立 Meet。', array('status' => 409));
         $topic_id = self::prepare_session_topic($session_id);
         if (!$topic_id) return new WP_Error('topic_failed', '無法建立 Tutor 場次 Topic', array('status' => 500));
 
@@ -1005,24 +1006,30 @@ class TPMA_Tutor_Bridge {
         if (!self::is_active()) return true;
         global $wpdb;
         $session = $wpdb->get_row($wpdb->prepare(
-            "SELECT is_active, delivery_mode, tutor_topic_id, tutor_meet_post_id FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
+            "SELECT s.is_active, s.delivery_mode, s.tutor_topic_id, s.tutor_meet_post_id,
+                    s.tutor_resources_cleaned_at, s.session_datetime, c.duration_minutes
+             FROM " . TPMA_CR_DB::table('sessions') . " s
+             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id = s.course_id
+             WHERE s.id = %d",
             $session_id
         ), ARRAY_A);
         if (!$session || empty($session['is_active'])) return true;
 
+        $restored = self::restore_cleaned_session_resources($session_id, $session);
+        if (is_wp_error($restored)) return $restored;
+
         $topic_id = self::prepare_session_topic($session_id);
         if ($topic_id <= 0) return new WP_Error('topic_failed', '無法自動建立 Tutor 場次章節。', array('status' => 500));
 
-        $delivery_mode = (string) ($session['delivery_mode'] ?? 'live');
-        $meet_id = (int) ($session['tutor_meet_post_id'] ?? 0);
-        if ($delivery_mode === 'recorded') {
-            if ($meet_id > 0) {
-                $cleanup = self::cleanup_session_meet($session_id);
-                if (is_wp_error($cleanup)) return $cleanup;
-            }
-            return array('session_id' => $session_id, 'topic_id' => $topic_id, 'meet_post_id' => 0);
+        if (!empty($restored['meet_post_id'])) {
+            $synced = self::sync_session_meet_time($session_id, (string) $session['session_datetime'], (int) $session['duration_minutes']);
+            if (is_wp_error($synced)) return $synced;
         }
 
+        $meet_id = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT tutor_meet_post_id FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
+            $session_id
+        ));
         if ($meet_id > 0 && get_post_type($meet_id) === 'tutor-google-meet' && get_post_status($meet_id) !== 'trash') {
             return array('session_id' => $session_id, 'topic_id' => $topic_id, 'meet_post_id' => $meet_id);
         }
@@ -1032,7 +1039,7 @@ class TPMA_Tutor_Bridge {
         return self::create_or_link_session_meet($session_id);
     }
 
-    private static function cleanup_session_meet(int $session_id) {
+    private static function cleanup_session_meet(int $session_id, bool $delete_google_calendar = true) {
         global $wpdb;
         $session = $wpdb->get_row($wpdb->prepare(
             "SELECT tutor_meet_post_id FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
@@ -1043,7 +1050,7 @@ class TPMA_Tutor_Bridge {
         if ($meet_id > 0) {
             $details = json_decode((string) get_post_meta($meet_id, 'tutor-google-meet-event-details', true), true);
             $event_id = (string) ($details['id'] ?? '');
-            if ($event_id !== '') {
+            if ($delete_google_calendar && $event_id !== '') {
                 $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
                 if (!class_exists($client_class)) return new WP_Error('meet_delete_unavailable', '無法移除 Google 日曆：Tutor Pro Google Meet 模組未啟用。', array('status' => 503));
                 $client = new $client_class();
@@ -1065,7 +1072,7 @@ class TPMA_Tutor_Bridge {
         return true;
     }
 
-    public static function cleanup_session_resources(int $session_id) {
+    public static function cleanup_session_resources(int $session_id, bool $preserve_google_calendar = false) {
         global $wpdb;
         $session = $wpdb->get_row($wpdb->prepare(
             "SELECT tutor_topic_id FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
@@ -1074,7 +1081,7 @@ class TPMA_Tutor_Bridge {
         if (!$session) return true;
 
         $topic_id = (int) ($session['tutor_topic_id'] ?? 0);
-        $meet_cleanup = self::cleanup_session_meet($session_id);
+        $meet_cleanup = self::cleanup_session_meet($session_id, !$preserve_google_calendar);
         if (is_wp_error($meet_cleanup)) return $meet_cleanup;
 
         if ($topic_id > 0) {
@@ -1084,14 +1091,77 @@ class TPMA_Tutor_Bridge {
             }
             if (get_post_status($topic_id) !== 'trash') wp_trash_post($topic_id);
         }
+        $updates = array('tutor_topic_id' => 0, 'tutor_meet_post_id' => 0);
+        if ($preserve_google_calendar) {
+            $updates['tutor_resources_cleaned_at'] = current_time('mysql');
+        }
         $wpdb->update(
             TPMA_CR_DB::table('sessions'),
-            array('tutor_topic_id' => 0, 'tutor_meet_post_id' => 0),
+            $updates,
             array('id' => $session_id),
-            array('%d', '%d'),
+            $preserve_google_calendar ? array('%d', '%d', '%s') : array('%d', '%d'),
             array('%d')
         );
         return true;
+    }
+
+    /** Daily retention: keep Google Calendar, trash only Tutor-side session resources. */
+    public static function cleanup_expired_session_resources(): void {
+        if (!self::is_active()) return;
+        global $wpdb;
+        $sessions = $wpdb->get_col($wpdb->prepare(
+            "SELECT s.id
+             FROM " . TPMA_CR_DB::table('sessions') . " s
+             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id = s.course_id
+             WHERE s.tutor_resources_cleaned_at IS NULL
+               AND (COALESCE(s.tutor_topic_id, 0) > 0 OR COALESCE(s.tutor_meet_post_id, 0) > 0)
+               AND DATE_ADD(DATE_ADD(s.session_datetime, INTERVAL c.duration_minutes MINUTE), INTERVAL 3 MONTH) <= %s",
+            current_time('mysql')
+        ));
+        foreach ((array) $sessions as $session_id) {
+            $result = self::cleanup_session_resources((int) $session_id, true);
+            if (is_wp_error($result)) {
+                error_log('TPMA Tutor Bridge: expired session cleanup failed for #' . (int) $session_id . ': ' . $result->get_error_message());
+            }
+        }
+    }
+
+    /** Restore trashed Tutor posts when an expired session is scheduled again. */
+    private static function restore_cleaned_session_resources(int $session_id, array $session) {
+        if (empty($session['tutor_resources_cleaned_at'])) return array('meet_post_id' => 0);
+        global $wpdb;
+
+        $topic_ids = get_posts(array(
+            'post_type' => 'topics', 'post_status' => 'trash', 'numberposts' => 1, 'fields' => 'ids',
+            'meta_key' => '_tpma_session_id', 'meta_value' => $session_id,
+        ));
+        $topic_id = !empty($topic_ids) ? (int) $topic_ids[0] : 0;
+        if ($topic_id > 0) {
+            wp_untrash_post($topic_id);
+            $wpdb->update(TPMA_CR_DB::table('sessions'), array('tutor_topic_id' => $topic_id), array('id' => $session_id), array('%d'), array('%d'));
+        }
+
+        $topic_id = self::prepare_session_topic($session_id);
+        if ($topic_id <= 0) return new WP_Error('topic_restore_failed', '無法還原 Tutor 場次章節', array('status' => 500));
+
+        $meet_ids = get_posts(array(
+            'post_type' => 'tutor-google-meet', 'post_status' => 'trash', 'numberposts' => 1, 'fields' => 'ids',
+            'meta_key' => '_tpma_session_id', 'meta_value' => $session_id,
+        ));
+        $meet_id = !empty($meet_ids) ? (int) $meet_ids[0] : 0;
+        if ($meet_id > 0) {
+            wp_untrash_post($meet_id);
+            wp_update_post(array('ID' => $meet_id, 'post_parent' => $topic_id));
+            $wpdb->update(TPMA_CR_DB::table('sessions'), array('tutor_meet_post_id' => $meet_id), array('id' => $session_id), array('%d'), array('%d'));
+        }
+        $wpdb->update(
+            TPMA_CR_DB::table('sessions'),
+            array('tutor_resources_cleaned_at' => null),
+            array('id' => $session_id),
+            array('%s'),
+            array('%d')
+        );
+        return array('meet_post_id' => $meet_id);
     }
 
     public static function sync_session_meet_time(int $session_id, string $new_datetime, int $duration_minutes) {
@@ -1597,6 +1667,59 @@ class TPMA_Tutor_Bridge {
         }
 
         return (int)$enrolled_id;
+    }
+
+    /** Reconcile Tutor enrollment after an admin moves one registration to another TPMA course. */
+    public static function transfer_registration_enrollment(int $registration_id, int $source_course_id, int $source_enrollment_id = 0) {
+        if (!self::is_active()) return array('target_enrollment_id' => 0, 'source_enrollment_cancelled' => false);
+        global $wpdb;
+        $regs_table = TPMA_CR_DB::table('regs');
+        $reg = $wpdb->get_row($wpdb->prepare(
+            "SELECT id, course_id, wp_user_id FROM {$regs_table} WHERE id = %d",
+            $registration_id
+        ), ARRAY_A);
+        if (!$reg) return new WP_Error('registration_not_found', '找不到已更新的報名資料', array('status' => 404));
+
+        $target_course_id = (int) ($reg['course_id'] ?? 0);
+        $target_tutor_id = self::sync_course($target_course_id);
+        if ($target_tutor_id <= 0) return new WP_Error('target_tutor_sync_failed', '目標課程無法同步至 Tutor，已取消轉課。', array('status' => 503));
+
+        $wp_user_id = (int) ($reg['wp_user_id'] ?? 0);
+        $target_enrollment_id = 0;
+        if ($wp_user_id > 0) {
+            $target_enrollment_id = self::enroll_learner($wp_user_id, $target_tutor_id, $registration_id);
+            if ($target_enrollment_id <= 0) {
+                return new WP_Error('target_tutor_enrollment_failed', '目標 Tutor 課程註冊失敗，已取消轉課。', array('status' => 503));
+            }
+        }
+
+        $source_enrollment_cancelled = false;
+        if ($source_enrollment_id > 0 && $wp_user_id > 0 && $source_course_id > 0) {
+            $remaining = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(1) FROM {$regs_table}
+                 WHERE course_id = %d AND wp_user_id = %d AND id <> %d
+                   AND COALESCE(status, '') <> 'cancelled'
+                   AND COALESCE(payment_status, '') NOT IN ('cancelled', 'wc-cancelled', 'refunded', 'wc-refunded')",
+                $source_course_id,
+                $wp_user_id,
+                $registration_id
+            ));
+            if ($remaining === 0 && get_post_status($source_enrollment_id) && get_post_status($source_enrollment_id) !== 'cancel') {
+                wp_update_post(array('ID' => $source_enrollment_id, 'post_status' => 'cancel'));
+                $source_enrollment_cancelled = true;
+            }
+        }
+
+        return array(
+            'target_enrollment_id' => $target_enrollment_id,
+            'source_enrollment_cancelled' => $source_enrollment_cancelled,
+        );
+    }
+
+    public static function cancel_tutor_enrollment(int $enrollment_id): void {
+        if ($enrollment_id > 0 && get_post_status($enrollment_id) && get_post_status($enrollment_id) !== 'cancel') {
+            wp_update_post(array('ID' => $enrollment_id, 'post_status' => 'cancel'));
+        }
     }
 
     /**

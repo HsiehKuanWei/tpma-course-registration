@@ -212,9 +212,9 @@ class TPMA_CR_Admin_Woo_Service
         );
     }
 
-    private static function get_session_snapshot(int $course_id, string $class_date): array
+    private static function get_session_snapshot(int $course_id, string $class_date, int $session_id = 0): array
     {
-        if ($course_id <= 0 || $class_date === '' || !class_exists('TPMA_CR_DB')) {
+        if ($course_id <= 0 || ($class_date === '' && $session_id <= 0) || !class_exists('TPMA_CR_DB')) {
             return array();
         }
 
@@ -223,7 +223,18 @@ class TPMA_CR_Admin_Woo_Service
         $class_date = sanitize_text_field($class_date);
 
         $session = null;
-        if (strlen($class_date) > 10 && strpos($class_date, ' ') !== false) {
+        if ($session_id > 0) {
+            $session = $wpdb->get_row(
+                $wpdb->prepare(
+                    "SELECT id, session_datetime FROM {$sessions_table} WHERE id = %d AND course_id = %d LIMIT 1",
+                    $session_id,
+                    $course_id
+                ),
+                ARRAY_A
+            );
+        }
+
+        if (!$session && strlen($class_date) > 10 && strpos($class_date, ' ') !== false) {
             $session = $wpdb->get_row(
                 $wpdb->prepare(
                     "SELECT id, session_datetime FROM {$sessions_table} WHERE course_id = %d AND session_datetime = %s LIMIT 1",
@@ -305,7 +316,7 @@ class TPMA_CR_Admin_Woo_Service
         }
 
         $date_source = $raw_class_date !== '' ? $raw_class_date : (string) ($updated_row['class_date'] ?? '');
-        $session = self::get_session_snapshot($course_id, $date_source);
+        $session = self::get_session_snapshot($course_id, $date_source, (int) ($updated_row['session_id'] ?? 0));
         if (empty($session)) {
             return array('has_change' => false);
         }
@@ -338,19 +349,29 @@ class TPMA_CR_Admin_Woo_Service
             $draft['total_learners'] = count($learners);
         }
 
-        $draft['course_id'] = $course_id;
-        $draft['session_id'] = (int) $session['session_id'];
-        $draft['course_name'] = $course['course_name'];
-        $draft['lecturer'] = $course['lecturer'];
-        $draft['duration_minutes'] = (int) $course['duration_minutes'];
-        $draft['session_datetime'] = $session['session_datetime'];
-        $draft['class_date'] = $session['class_date'];
-
         $order->update_meta_data('_tpma_reg_draft_json', wp_json_encode($draft, JSON_UNESCAPED_UNICODE));
-        $order->update_meta_data('_tpma_course_id', $course_id);
-        $order->update_meta_data('_tpma_session_id', (int) $session['session_id']);
-        $order->update_meta_data('_tpma_session_datetime', $session['session_datetime']);
         $order->update_meta_data('_tpma_learner_count', count($draft['learners'] ?? array()));
+
+        $order_course_ids = array_values(array_unique(array_map('intval', wp_list_pluck($rows, 'course_id'))));
+        $order_session_ids = array_values(array_unique(array_map('intval', wp_list_pluck($rows, 'session_id'))));
+
+        // A Woo order has one legacy course/session snapshot. Do not overwrite it
+        // when its learners now belong to multiple sessions.
+        if (count($order_course_ids) === 1 && count($order_session_ids) === 1
+            && (int) $order_course_ids[0] === $course_id && (int) $order_session_ids[0] === (int) $session['session_id']
+            && (int) $order_session_ids[0] > 0) {
+            $draft['course_id'] = $course_id;
+            $draft['session_id'] = (int) $session['session_id'];
+            $draft['course_name'] = $course['course_name'];
+            $draft['lecturer'] = $course['lecturer'];
+            $draft['duration_minutes'] = (int) $course['duration_minutes'];
+            $draft['session_datetime'] = $session['session_datetime'];
+            $draft['class_date'] = $session['class_date'];
+            $order->update_meta_data('_tpma_reg_draft_json', wp_json_encode($draft, JSON_UNESCAPED_UNICODE));
+            $order->update_meta_data('_tpma_course_id', $course_id);
+            $order->update_meta_data('_tpma_session_id', (int) $session['session_id']);
+            $order->update_meta_data('_tpma_session_datetime', $session['session_datetime']);
+        }
 
         return array('has_change' => true);
     }

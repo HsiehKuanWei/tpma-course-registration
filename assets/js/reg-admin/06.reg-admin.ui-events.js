@@ -118,12 +118,56 @@ UI.getBulkValueElement = function getBulkValueElement(target){
   const map = {
     status: 'tpma-bulk-value-status',
     access_mode: 'tpma-bulk-value-access-mode',
+    session_id: 'tpma-bulk-value-session-id',
     receipt_status: 'tpma-bulk-value-receipt-status',
     receipt_type: 'tpma-bulk-value-receipt-type',
     remit_paid_at: 'tpma-bulk-value-remit-paid-at'
   };
   const id = map[target] || '';
   return id ? document.getElementById(id) : null;
+};
+
+UI.getBulkSessionContext = function getBulkSessionContext(ctx){
+  const rows = UI.getSelectedRows(ctx);
+  const courseIds = Array.from(new Set(rows.map(row => parseInt(row.course_id || '0', 10)).filter(Boolean)));
+  if (!rows.length) return { valid: false, message: '請先選擇學員。', course: null };
+  if (courseIds.length !== 1) return { valid: false, message: '批次更改場次只能選取同一課程的學員。', course: null };
+
+  const course = (ctx.data.allCourses || []).find(item => String(item.id) === String(courseIds[0]));
+  if (!course) return { valid: false, message: '找不到所選學員的課程資料，請重新載入後再試。', course: null };
+  return { valid: true, message: '', course: course };
+};
+
+UI.populateBulkSessionOptions = function populateBulkSessionOptions(ctx){
+  const select = UI.getBulkValueElement('session_id');
+  const context = UI.getBulkSessionContext(ctx);
+  if (!select) return context;
+
+  const previous = select.value;
+  select.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = context.valid ? '選擇目標課程場次' : context.message;
+  select.appendChild(placeholder);
+
+  if (!context.valid) return context;
+
+  const duration = parseInt(context.course.duration_minutes || '0', 10) || 0;
+  (context.course.sessions || []).forEach(session => {
+    if (!session || !session.id || !session.session_datetime || String(session.is_active) === '0') return;
+    const option = document.createElement('option');
+    option.value = String(session.id);
+    option.textContent = U.formatSessionDisplay(session.session_datetime, duration) || String(session.session_datetime);
+    if (String(session.id) === String(previous)) option.selected = true;
+    select.appendChild(option);
+  });
+
+  if (select.options.length === 1) {
+    context.valid = false;
+    context.message = '此課程沒有可移動至的啟用場次。';
+    placeholder.textContent = context.message;
+  }
+  return context;
 };
 
 UI.updateBulkToolbar = function updateBulkToolbar(ctx){
@@ -134,6 +178,9 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
   const target = targetEl ? (targetEl.value || '') : '';
   const hasSel = ids.length > 0;
   const requiresSelection = !!action && action !== 'export_excel';
+  const sessionContext = action === 'update_field' && target === 'session_id'
+    ? UI.populateBulkSessionOptions(ctx)
+    : null;
   if (ctx.dom.bulkCount) ctx.dom.bulkCount.textContent = '已選取 ' + ids.length + ' 筆';
 
   document.querySelectorAll('.tpma-bulk-target').forEach(el=>{
@@ -159,6 +206,10 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
     hint = '只會清除課程開放類寄件紀錄，不會清除證書或收據紀錄。';
   } else if (action === 'update_field' && target === 'status') {
     hint = '課後付款會同步影響同一 Woo 訂單狀態。';
+  } else if (action === 'update_field' && target === 'session_id') {
+    hint = sessionContext && sessionContext.valid
+      ? '僅可移動至同一課程的啟用場次；系統會重建課程入口與 Meet 連結。'
+      : ((sessionContext && sessionContext.message) || '請先選擇同一課程的學員。');
   } else if (action === 'export_excel') {
     const rows = UI.getSelectedRows(ctx);
     const count = rows.length || (ctx.data.currentRegs || []).length;
@@ -171,7 +222,8 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
   const targetReady = !targetRequired || !!target;
   const needsValue = action === 'update_field';
   const hasValue = !needsValue || (valueEl && valueEl.value !== '');
-  if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = !action || !targetReady || !hasValue || (requiresSelection && !hasSel);
+  const sessionReady = target !== 'session_id' || (sessionContext && sessionContext.valid);
+  if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = !action || !targetReady || !hasValue || !sessionReady || (requiresSelection && !hasSel);
 };
 
 UI.summarizeBulkResult = function summarizeBulkResult(data){
@@ -348,11 +400,21 @@ UI.applyBulk = async function applyBulk(ctx){
   } else if (action === 'update_field') {
     if (!target) { alert('請先選擇要更新的欄位'); return; }
     if (!value) { alert('請先選擇或輸入套用值'); return; }
-    payload.action = 'update_field';
-    payload.field = target;
-    payload.value = value;
+    if (target === 'session_id') {
+      const sessionContext = UI.getBulkSessionContext(ctx);
+      if (!sessionContext.valid) { alert(sessionContext.message || '只能選取同一課程的學員。'); return; }
+      const targetOption = valueEl && valueEl.selectedOptions ? valueEl.selectedOptions[0] : null;
+      payload.action = 'move_session';
+      payload.session_id = parseInt(value, 10) || 0;
+      if (!payload.session_id) { alert('請選擇目標課程場次'); return; }
+      if (!confirm('確定將 ' + ids.length + ' 位學員移至「' + (targetOption ? targetOption.textContent : '目標場次') + '」？')) return;
+    } else {
+      payload.action = 'update_field';
+      payload.field = target;
+      payload.value = value;
+    }
     if (target === 'status' && value === 'postpay' && !confirm('課後付款會同步套用所選資料所屬 Woo 訂單狀態。確定繼續？')) return;
-    if (!confirm('確定批次更新 ' + ids.length + ' 筆資料？')) return;
+    if (target !== 'session_id' && !confirm('確定批次更新 ' + ids.length + ' 筆資料？')) return;
   } else if (action === 'send_mail') {
     if (!target) { alert('請先選擇信件種類'); return; }
     const rows = UI.getSelectedRows(ctx);

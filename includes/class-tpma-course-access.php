@@ -35,9 +35,14 @@ class TPMA_Course_Access {
         if (!in_array($mode, array('live', 'recorded'), true)) return false;
         if ($delivery !== 'hybrid' && $mode !== $delivery) return false;
         if ($mode === 'live' && $resource === 'recording') return false;
-        if ($mode === 'recorded' && $resource === 'meet') return false;
         $now_ts = strtotime($now !== '' ? $now : current_time('mysql'));
         if (!$now_ts) return false;
+
+        $start = strtotime((string)($session['session_datetime'] ?? ''));
+        if (!$start) return false;
+        $end = $start + max(1, (int)($session['duration_minutes'] ?? 180)) * MINUTE_IN_SECONDS;
+        // Meet 是場次點名入口，錄播與混合場次也必須沿用直播時間窗。
+        if ($resource === 'meet') return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end;
 
         if ($mode === 'recorded') {
             $from = strtotime((string)($session['recording_available_from'] ?? ''));
@@ -45,11 +50,7 @@ class TPMA_Course_Access {
             return $from && $until && $now_ts >= $from && $now_ts <= $until;
         }
 
-        $start = strtotime((string)($session['session_datetime'] ?? ''));
-        if (!$start) return false;
-        $end = $start + max(1, (int)($session['duration_minutes'] ?? 180)) * MINUTE_IN_SECONDS;
-        if ($resource === 'meet') return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end;
-        if ($resource === 'quiz') return $now_ts >= $end - HOUR_IN_SECONDS && $now_ts <= $end + max(1, $days_after) * DAY_IN_SECONDS;
+        if ($resource === 'quiz') return $now_ts >= $end - (30 * MINUTE_IN_SECONDS) && $now_ts <= $end + max(1, $days_after) * DAY_IN_SECONDS;
         return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end + max(1, $days_after) * DAY_IN_SECONDS;
     }
 

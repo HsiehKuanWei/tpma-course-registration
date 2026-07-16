@@ -376,6 +376,10 @@ public static function admin_update_reg($request)
 
     $order_id = !empty($row['woocommerce_order_id']) ? (int) $row['woocommerce_order_id'] : 0;
     $order = $order_id ? wc_get_order($order_id) : null;
+    $source_course_id = (int) ($row['course_id'] ?? 0);
+    $source_session_id = (int) ($row['session_id'] ?? 0);
+    $source_enrollment_id = (int) ($row['tutor_enrolled_id'] ?? 0);
+    $target_session = null;
 
     // Detect remit_amount change; skip Woo sync if unchanged to avoid locked-order errors.
     if (array_key_exists('remit_amount', $d)) {
@@ -437,12 +441,20 @@ public static function admin_update_reg($request)
             } else {
                 $expected_course = isset($d['course_id']) ? absint($d['course_id']) : (int) $row['course_id'];
                 $session = $wpdb->get_row($wpdb->prepare(
-                    "SELECT id, course_id, session_datetime FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
+                    "SELECT s.id, s.course_id, s.session_datetime, s.is_active, s.delivery_mode, c.is_active AS course_is_active
+                     FROM " . TPMA_CR_DB::table('sessions') . " s
+                     JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id = s.course_id
+                     WHERE s.id = %d",
                     $session_id
                 ), ARRAY_A);
                 if (!$session || (int) $session['course_id'] !== $expected_course) {
                     return new WP_Error('invalid_session', '指定場次不屬於所選課程', array('status' => 400));
                 }
+                $is_target_change = $session_id !== $source_session_id || $expected_course !== $source_course_id;
+                if ($is_target_change && ((int) $session['is_active'] !== 1 || (int) $session['course_is_active'] !== 1)) {
+                    return new WP_Error('inactive_target_session', '目標課程或場次已停用，無法轉換學員', array('status' => 400));
+                }
+                $target_session = $session;
                 $tpma_update[$f] = $session_id;
                 $tpma_update['class_date'] = substr((string) $session['session_datetime'], 0, 10);
             }
@@ -475,6 +487,24 @@ public static function admin_update_reg($request)
         }
 
         $tpma_update[$f] = sanitize_text_field($d[$f]);
+    }
+
+    $target_course_id = (int) ($tpma_update['course_id'] ?? $source_course_id);
+    $target_session_id = (int) ($tpma_update['session_id'] ?? $source_session_id);
+    $is_course_transfer = $target_course_id > 0 && $target_course_id !== $source_course_id;
+    if ($is_course_transfer) {
+        if (!$target_session || $target_session_id <= 0) {
+            return new WP_Error('target_session_required', '跨課程轉換時必須指定啟用中的目標場次', array('status' => 400));
+        }
+        if (in_array((string) ($row['status'] ?? ''), array('cancelled'), true)
+            || in_array((string) ($row['payment_status'] ?? ''), array('cancelled', 'wc-cancelled', 'refunded', 'wc-refunded'), true)) {
+            return new WP_Error('transfer_not_allowed', '已取消或退款的報名不可轉換課程', array('status' => 400));
+        }
+        $target_delivery_mode = sanitize_key((string) ($target_session['delivery_mode'] ?? 'live'));
+        $requested_access_mode = sanitize_key((string) ($tpma_update['access_mode'] ?? ($row['access_mode'] ?? '')));
+        $tpma_update['access_mode'] = $target_delivery_mode === 'hybrid' && in_array($requested_access_mode, array('live', 'recorded'), true)
+            ? $requested_access_mode
+            : ($target_delivery_mode === 'recorded' ? 'recorded' : 'live');
     }
 
     $has_change = !empty($tpma_update);
@@ -516,10 +546,27 @@ public static function admin_update_reg($request)
         if (class_exists('TPMA_Tutor_Bridge')) {
             if (($tpma_update['status'] ?? '') === 'cancelled') {
                 TPMA_Tutor_Bridge::expire_tokens_for_registration($id);
-            } elseif (array_key_exists('session_id', $tpma_update)) {
-                TPMA_Tutor_Bridge::regenerate_magic_urls_for_reg($id);
             }
         }
+    }
+
+    if ($is_course_transfer && class_exists('TPMA_Tutor_Bridge')) {
+        $transfer = TPMA_Tutor_Bridge::transfer_registration_enrollment($id, $source_course_id, $source_enrollment_id);
+        if (is_wp_error($transfer)) {
+            $rollback = array(
+                'course_id' => $source_course_id,
+                'session_id' => $source_session_id ?: null,
+                'class_date' => $row['class_date'] ?? null,
+                'access_mode' => $row['access_mode'] ?? 'live',
+                'tutor_enrolled_id' => $source_enrollment_id ?: null,
+            );
+            $wpdb->update($regs_table, $rollback, array('id' => $id), array('%d', '%d', '%s', '%s', '%d'), array('%d'));
+            return $transfer;
+        }
+    }
+
+    if (!empty($tpma_update) && class_exists('TPMA_Tutor_Bridge') && array_key_exists('session_id', $tpma_update)) {
+        TPMA_Tutor_Bridge::regenerate_magic_urls_for_reg($id);
     }
 
     if ($order && !empty($tpma_update)) {
@@ -536,6 +583,10 @@ public static function admin_update_reg($request)
         if ($postpay_order_changed && class_exists('TPMA_Course_Access')) {
             TPMA_Course_Access::maybe_send_access_event_for_order($order_id);
         }
+    }
+
+    if ($order && $is_course_transfer && class_exists('TPMA_Course_Access')) {
+        TPMA_Course_Access::get_or_create_portal_url($order_id, true);
     }
 
     if ($order && class_exists('TPMA_CR_Mail_Dispatcher')) {
@@ -574,7 +625,13 @@ public static function admin_bulk_registrations($request)
     }
 
     $result = self::empty_bulk_result();
-    if ($action === 'update_field') {
+    if ($action === 'move_session') {
+        $target_session_id = absint($d['session_id'] ?? 0);
+        if ($target_session_id <= 0) {
+            return new WP_Error('missing_session', '請選擇目標課程場次', array('status' => 400));
+        }
+        $result = self::bulk_move_session($ids, $target_session_id);
+    } elseif ($action === 'update_field') {
         $allowed_fields = array('status', 'access_mode', 'receipt_status', 'receipt_type', 'remit_paid_at');
         if (!in_array($field, $allowed_fields, true)) {
             return new WP_Error('invalid_field', '不支援的批次欄位', array('status' => 400));
@@ -758,6 +815,112 @@ private static function bulk_update_field(array $ids, string $field, $value): ar
             }
             foreach (array_keys($sessions) as $session_id) {
                 TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, (int)$session_id);
+            }
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Move selected registrations to one active session in the same course.
+ */
+private static function bulk_move_session(array $ids, int $target_session_id): array
+{
+    global $wpdb;
+
+    $regs_table = TPMA_CR_DB::table('regs');
+    $sessions_table = TPMA_CR_DB::table('sessions');
+    $target = $wpdb->get_row($wpdb->prepare(
+        "SELECT id, course_id, session_datetime, is_active, delivery_mode FROM {$sessions_table} WHERE id = %d",
+        $target_session_id
+    ), ARRAY_A);
+    if (!$target || (int) $target['is_active'] !== 1) {
+        return self::bulk_add_fail(self::empty_bulk_result(), 0, 'invalid_target_session', '目標場次不存在或已停用');
+    }
+
+    $rows = self::get_registration_rows($ids);
+    $target_course_id = (int) $target['course_id'];
+    foreach ($ids as $id) {
+        $row = $rows[$id] ?? null;
+        if (!$row) {
+            return self::bulk_add_fail(self::empty_bulk_result(), $id, 'registration_not_found', '找不到所選學員資料');
+        }
+        if ((int) ($row['course_id'] ?? 0) !== $target_course_id) {
+            return self::bulk_add_fail(self::empty_bulk_result(), $id, 'course_mismatch', '只能將同一課程的學員批次移至場次');
+        }
+    }
+
+    $result = self::empty_bulk_result();
+    $result['processed'] = count($ids);
+    $orders_to_reset = array();
+    $orders_to_sync = array();
+    $target_datetime = sanitize_text_field((string) $target['session_datetime']);
+    $target_class_date = substr($target_datetime, 0, 10);
+    $target_delivery_mode = sanitize_key((string) ($target['delivery_mode'] ?? 'live'));
+
+    foreach ($ids as $id) {
+        $row = $rows[$id];
+        $old_session_id = (int) ($row['session_id'] ?? 0);
+        if ($old_session_id === $target_session_id) {
+            $result = self::bulk_add_skip($result, $id, 'already_in_session', '學員已在目標場次');
+            continue;
+        }
+
+        $current_access_mode = sanitize_key((string) ($row['access_mode'] ?? ''));
+        $access_mode = $target_delivery_mode === 'hybrid' && in_array($current_access_mode, array('live', 'recorded'), true)
+            ? $current_access_mode
+            : ($target_delivery_mode === 'recorded' ? 'recorded' : 'live');
+        $updated = $wpdb->update(
+            $regs_table,
+            array(
+                'session_id' => $target_session_id,
+                'class_date' => $target_class_date,
+                'access_mode' => $access_mode,
+            ),
+            array('id' => $id),
+            array('%d', '%s', '%s'),
+            array('%d')
+        );
+        if ($updated === false) {
+            $result = self::bulk_add_fail($result, $id, 'update_failed', '無法更新學員場次');
+            continue;
+        }
+
+        if (class_exists('TPMA_Tutor_Bridge')) {
+            TPMA_Tutor_Bridge::regenerate_magic_urls_for_reg($id);
+        }
+
+        $order_id = (int) ($row['woocommerce_order_id'] ?? 0);
+        if ($order_id > 0) {
+            $orders_to_reset[$order_id][$old_session_id] = true;
+            $orders_to_reset[$order_id][$target_session_id] = true;
+            $orders_to_sync[$order_id] = $id;
+        }
+        $result['updated']++;
+    }
+
+    if (function_exists('wc_get_order')) {
+        foreach ($orders_to_sync as $order_id => $reg_id) {
+            $order = wc_get_order((int) $order_id);
+            if (!$order) {
+                continue;
+            }
+            $snapshot = TPMA_CR_Admin_Woo_Service::sync_registration_snapshot($order, $regs_table, (int) $reg_id, $target_datetime);
+            if (!empty($snapshot['has_change'])) {
+                $order->save();
+            }
+        }
+    }
+
+    if (class_exists('TPMA_CR_Mail_Dispatcher') && function_exists('wc_get_order')) {
+        foreach ($orders_to_reset as $order_id => $sessions) {
+            $order = wc_get_order((int) $order_id);
+            if (!$order) {
+                continue;
+            }
+            foreach (array_keys($sessions) as $session_id) {
+                TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, (int) $session_id);
             }
         }
     }
@@ -1124,7 +1287,8 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
                 SELECT id, course_id, session_datetime, is_active, visibility_override,
                        tutor_topic_id, tutor_meet_post_id,
                        delivery_mode,
-                       recording_available_from, recording_available_until
+                       recording_available_from, recording_available_until,
+                       tutor_resources_cleaned_at
                 FROM {$sessions_table}
                 WHERE course_id IN ({$ids_in})
                 ORDER BY session_datetime ASC
@@ -1132,7 +1296,7 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
 
             foreach ($sessions as $s) {
                 $cid = (int)$s['course_id'];
-                $topic_course_id = !empty($s['tutor_topic_id']) ? (int) get_post_field('post_parent', (int) $s['tutor_topic_id']) : 0;
+                $topic_course_id = empty($s['tutor_resources_cleaned_at']) && !empty($s['tutor_topic_id']) ? (int) get_post_field('post_parent', (int) $s['tutor_topic_id']) : 0;
                 $s['tutor_topic_edit_url'] = $topic_course_id > 0
                     ? admin_url('post.php?post=' . $topic_course_id . '&action=edit')
                     : '';
@@ -1406,9 +1570,13 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
                 return new WP_Error('invalid_recording_window', '錄播截止時間必須晚於開始時間', array('status' => 400));
             }
 
+            $reactivate_cleaned_session = $session_id > 0
+                && isset($existing_sessions[$session_id])
+                && !empty($existing_sessions[$session_id]->tutor_resources_cleaned_at)
+                && strtotime($dt) > current_time('timestamp');
             $session_data = array(
                 'session_datetime'         => $dt,
-                'is_active'                => isset($s['is_active']) && (int) $s['is_active'] === 0 ? 0 : 1,
+                'is_active'                => $reactivate_cleaned_session ? 1 : (isset($s['is_active']) && (int) $s['is_active'] === 0 ? 0 : 1),
                 'visibility_override'      => $visibility_override,
                 'delivery_mode'            => $delivery_mode,
                 'recording_available_from' => $recording_from,
@@ -1421,8 +1589,7 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
 
             if ($session_id > 0 && isset($existing_sessions[$session_id])) {
                 $old = $existing_sessions[$session_id];
-                $switching_to_recorded = $delivery_mode === 'recorded' && !empty($old->tutor_meet_post_id);
-                if (!$switching_to_recorded && ((string) $old->session_datetime !== $dt || ($old_duration > 0 && $old_duration !== $duration)) && class_exists('TPMA_Tutor_Bridge')) {
+                if (((string) $old->session_datetime !== $dt || ($old_duration > 0 && $old_duration !== $duration)) && class_exists('TPMA_Tutor_Bridge')) {
                     $sync = TPMA_Tutor_Bridge::sync_session_meet_time($session_id, $dt, $duration);
                     if (is_wp_error($sync)) {
                         foreach (array_reverse($synced_meet_times) as $rollback) {
@@ -1885,6 +2052,14 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
         }
         $data = (array) $request->get_json_params();
         $session_id = absint($data['session_id'] ?? 0);
+        global $wpdb;
+        $cleaned_at = $session_id > 0 ? $wpdb->get_var($wpdb->prepare(
+            "SELECT tutor_resources_cleaned_at FROM " . TPMA_CR_DB::table('sessions') . " WHERE id = %d",
+            $session_id
+        )) : '';
+        if ($cleaned_at) {
+            return new WP_Error('session_resources_cleaned', '此過期場次的 Tutor 資源已清理，Google 日曆活動仍保留。請先重新啟用或改期。', array('status' => 409));
+        }
         $topic_id = TPMA_Tutor_Bridge::prepare_session_topic($session_id);
         if (!$topic_id) return new WP_Error('topic_failed', '無法建立 Tutor 場次 Topic', array('status' => 500));
         $tutor_course_id = (int) get_post_field('post_parent', $topic_id);

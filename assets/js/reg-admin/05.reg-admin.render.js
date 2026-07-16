@@ -42,14 +42,9 @@ R.getCourseHoursForRow = function getCourseHoursForRow(ctx, row){
 };
 
 R.findSessionDatetimeForRow = function findSessionDatetimeForRow(ctx, row){
-  const courses = ctx.data.allCourses || [];
-  if (!courses.length) return null;
-  if (!row.course_id || !row.class_date) return null;
-  const course = courses.find(c => String(c.id) === String(row.course_id));
-  if (!course || !Array.isArray(course.sessions) || !course.sessions.length) return null;
-  const dateOnly = String(row.class_date).substring(0,10);
-  const sameDay = course.sessions.find(s => s.session_datetime && String(s.session_datetime).substring(0,10) === dateOnly);
-  return sameDay ? sameDay.session_datetime : null;
+  return S && typeof S.findSessionDatetimeForRow === 'function'
+    ? S.findSessionDatetimeForRow(ctx, row)
+    : null;
 };
 
 R.buildClassDateRangeHtml = function buildClassDateRangeHtml(ctx, row){
@@ -363,6 +358,7 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
     group.label = lecturer;
 
     courseGroups[lecturer].forEach(c=>{
+      if (String(c.is_active) === '0' && String(c.id) !== String(row.course_id || '')) return;
       const opt = document.createElement('option');
       opt.value = c.id || '';
       opt.textContent = c.course_name || '';
@@ -401,6 +397,7 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
 
       course.sessions.forEach(s=>{
         if (!s.session_datetime) return;
+        if (String(s.is_active) === '0' && String(s.id) !== String(row.session_id || '')) return;
         const sessionValue = String(s.session_datetime);
         const opt = document.createElement('option');
         opt.value = sessionValue;
@@ -650,7 +647,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     if (statusSel && statusSel.value === 'postpay' && row.status !== 'postpay') {
       if (!global.confirm('課後付款會套用至同一 Woo 訂單的全部學員，並將訂單維持為 on-hold。確定繼續？')) return;
     }
-    await R.saveDetail(ctx, container, row.id);
+    await R.saveDetail(ctx, container, row.id, row);
   });
   actionsDiv.querySelector(`#tpma-btn-cancel-edit-${row.id}`).addEventListener('click', function(){
     R.renderDetailView(ctx, container, row);
@@ -678,7 +675,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   });
 };
 
-R.saveDetail = async function saveDetail(ctx, container, id){
+R.saveDetail = async function saveDetail(ctx, container, id, sourceRow = {}){
   const inputs = container.querySelectorAll('[data-field]');
   const payload = { id: parseInt(id,10) || 0 };
   inputs.forEach(el=>{
@@ -697,6 +694,12 @@ R.saveDetail = async function saveDetail(ctx, container, id){
     payload.session_id = parseInt(sessionSelect.selectedOptions[0].dataset.sessionId || '0', 10) || 0;
   }
   if (!payload.id) { alert('找不到這筆資料的 ID'); return; }
+  if (String(payload.course_id || '') !== String(sourceRow.course_id || '')) {
+    const courseSelect = container.querySelector('[data-field="course_id"]');
+    const courseName = courseSelect?.selectedOptions?.[0]?.textContent?.trim() || '目標課程';
+    const sessionName = sessionSelect?.selectedOptions?.[0]?.textContent?.trim() || '目標場次';
+    if (!global.confirm('確定將此學員轉至「' + courseName + '／' + sessionName + '」？\n原付款金額、退款與發票不會自動調整。')) return;
+  }
 
   try{
     await API.updateRegistration(ctx, payload);

@@ -202,7 +202,7 @@ ns.renderCourses = function renderCourses(list){
           + sessionLabelHtml
           + (s.is_active ? '' : '（已停用）')
           + `<span class="tpma-session-override-badge${visibilityClass}">${util.esc(visibilityLabel)}</span>`
-          + `<span class="tpma-session-tutor-status">${s.tutor_meet_post_id ? 'Meet 已連結' : 'Meet 未建立'}</span>`
+          + `<span class="tpma-session-tutor-status">${s.tutor_resources_cleaned_at ? 'Tutor 資源已清理，Google 日曆保留' : (s.tutor_meet_post_id ? 'Meet 已連結' : 'Meet 未建立（展開後可手動重試）')}</span>`
           + (s.recording_available_from && s.recording_available_until
             ? `<span class="tpma-session-recording-status">錄播：${util.esc(s.recording_available_from)} ～ ${util.esc(s.recording_available_until)}</span>`
             : '')
@@ -322,15 +322,18 @@ ns.renderCourses = function renderCourses(list){
     row.dataset.isActive = parseInt(session.is_active, 10) === 0 ? '0' : '1';
     row.dataset.meetLinked = session.tutor_meet_post_id ? '1' : '0';
     row.dataset.topicLinked = session.tutor_topic_id || session.tutor_topic_edit_url ? '1' : '0';
+    row.dataset.resourcesCleaned = session.tutor_resources_cleaned_at ? '1' : '0';
     const recordingFrom = (session.recording_available_from || '').replace(' ', 'T').slice(0, 16);
     const recordingUntil = (session.recording_available_until || '').replace(' ', 'T').slice(0, 16);
     const deliveryMode = ['live', 'recorded', 'hybrid'].includes(session.delivery_mode) ? session.delivery_mode : 'live';
     const inactiveBadge = row.dataset.isActive === '0'
       ? '<span class="tpma-session-badge tpma-session-badge-warning">已停用</span>'
       : '';
-    const meetBadge = session.tutor_meet_post_id
+    const meetBadge = session.tutor_resources_cleaned_at
+      ? '<span class="tpma-session-badge tpma-session-badge-warning tpma-session-meet-badge">Tutor 資源已清理，Google 日曆保留</span>'
+      : (session.tutor_meet_post_id
       ? '<span class="tpma-session-badge tpma-session-meet-badge tpma-session-badge-success">Meet 已連結</span>'
-      : '<span class="tpma-session-badge tpma-session-meet-badge">Meet 未建立</span>';
+      : '<span class="tpma-session-badge tpma-session-meet-badge">Meet 未建立（可手動重試）</span>');
     row.innerHTML = `
       <summary class="tpma-session-summary">
         <span class="tpma-session-summary-main">
@@ -376,11 +379,11 @@ ns.renderCourses = function renderCourses(list){
         <div class="tpma-session-tutor-panel" data-session-id="${util.esc(session.id || '')}">
           <div>
             <span class="tpma-session-panel-label">Tutor LMS</span>
-            <span class="tpma-session-tutor-status">${session.tutor_meet_post_id ? 'Meet 已連結' : (session.tutor_topic_edit_url ? '場次內容已準備' : '場次內容尚未準備')}</span>
+            <span class="tpma-session-tutor-status">${session.tutor_resources_cleaned_at ? 'Tutor 資源已清理，Google 日曆保留' : (session.tutor_meet_post_id ? 'Meet 已連結' : (session.tutor_topic_edit_url ? '場次內容已準備' : '場次內容尚未準備'))}</span>
           </div>
           <div class="tpma-session-tutor-actions">
-            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-prepare" ${session.id ? '' : 'disabled'} ${row.dataset.topicLinked === '1' ? 'hidden' : ''}>建立 Tutor 場次章節</button>
-            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-meet" ${session.id ? '' : 'disabled'} ${session.tutor_meet_post_id ? 'hidden' : ''}>建立／連結 Meet</button>
+            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-prepare" ${session.id ? '' : 'disabled'} ${row.dataset.topicLinked === '1' || row.dataset.resourcesCleaned === '1' ? 'hidden' : ''}>建立 Tutor 場次章節</button>
+            <button type="button" class="tpma-btn tpma-btn-outline tpma-session-meet" ${session.id ? '' : 'disabled'} ${session.tutor_meet_post_id || row.dataset.resourcesCleaned === '1' ? 'hidden' : ''}>重新嘗試建立／連結 Meet</button>
             <a class="tpma-btn tpma-btn-outline tpma-session-tutor-edit${session.tutor_topic_edit_url ? '' : ' is-disabled'}" href="${util.esc(session.tutor_topic_edit_url || '#')}" target="_blank" rel="noopener noreferrer" aria-disabled="${session.tutor_topic_edit_url ? 'false' : 'true'}">編輯 Tutor 場次</a>
           </div>
         </div>
@@ -414,7 +417,7 @@ ns.renderCourses = function renderCourses(list){
       const mode = deliverySelect ? deliverySelect.value : 'live';
       row.querySelectorAll('.tpma-session-recording-field').forEach(el => { el.hidden = mode === 'live'; });
       const meetButton = row.querySelector('.tpma-session-meet');
-      if (meetButton && row.dataset.meetLinked !== '1') meetButton.hidden = mode === 'recorded';
+      if (meetButton && row.dataset.meetLinked !== '1') meetButton.hidden = row.dataset.resourcesCleaned === '1';
     };
     if (deliverySelect) deliverySelect.addEventListener('change', updateModeFields);
     updateModeFields();

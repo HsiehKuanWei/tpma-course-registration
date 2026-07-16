@@ -105,7 +105,7 @@ class TPMA_CR_REST_Public
                     FROM {$regs_table} r
                     {$orders_join}
                     WHERE r.course_id = c.id
-                    AND r.class_date = DATE(s.session_datetime)
+                    AND r.session_id = s.id
                     AND COALESCE(r.status, '') <> 'cancelled'
                     AND COALESCE(r.payment_status, '') NOT IN ('cancelled', 'wc-cancelled')
                     {$orders_where}
@@ -118,6 +118,7 @@ class TPMA_CR_REST_Public
             WHERE
                 c.is_active = 1
                 AND s.is_active = 1
+                /* visibility_override is intentionally list-only: the form must retain future force-hidden sessions. */
                 AND s.session_datetime >= %s
             ORDER BY s.session_datetime ASC
         ", $now);

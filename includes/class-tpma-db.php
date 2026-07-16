@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
-    const SCHEMA_VERSION = '1.7.0';
+    const SCHEMA_VERSION = '1.8.0';
 
     private static $table_columns_cache = array();
 
@@ -204,6 +204,7 @@ class TPMA_CR_DB
             'tutor_meet_post_id'       => 'BIGINT UNSIGNED DEFAULT NULL',
             'recording_available_from' => 'DATETIME DEFAULT NULL',
             'recording_available_until'=> 'DATETIME DEFAULT NULL',
+            'tutor_resources_cleaned_at' => 'DATETIME DEFAULT NULL',
         ) as $column => $definition) {
             $col = $wpdb->get_results("SHOW COLUMNS FROM {$sessions_table} LIKE '{$column}'");
             if (empty($col)) {
@@ -531,6 +532,7 @@ $charset_collate = $wpdb->get_charset_collate();
             tutor_meet_post_id BIGINT UNSIGNED DEFAULT NULL,
             recording_available_from DATETIME DEFAULT NULL,
             recording_available_until DATETIME DEFAULT NULL,
+            tutor_resources_cleaned_at DATETIME DEFAULT NULL,
             created_at DATETIME NOT NULL,
             PRIMARY KEY (id),
             KEY course_datetime_idx (course_id, session_datetime)

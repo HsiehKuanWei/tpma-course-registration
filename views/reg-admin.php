@@ -320,6 +320,7 @@ $TPMA_OPTIONS_FOR_JS = [
         <option value="">選擇更新欄位</option>
         <option value="status">報名狀態</option>
         <option value="access_mode">課程型態</option>
+        <option value="session_id">課程場次</option>
         <option value="receipt_status">收據狀態</option>
         <option value="receipt_type">收據方式</option>
         <option value="remit_paid_at">匯款日期</option>
@@ -334,6 +335,9 @@ $TPMA_OPTIONS_FOR_JS = [
         <option value="">選擇型態</option>
         <option value="live">直播</option>
         <option value="recorded">錄播</option>
+      </select>
+      <select id="tpma-bulk-value-session-id" class="tpma-bulk-value" data-bulk-target="session_id">
+        <option value="">請先選擇同一課程的學員</option>
       </select>
       <select id="tpma-bulk-value-receipt-status" class="tpma-bulk-value" data-bulk-target="receipt_status">
         <option value="">選擇收據狀態</option>
