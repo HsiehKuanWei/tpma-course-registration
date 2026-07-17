@@ -92,7 +92,6 @@ class TPMA_CR_Settings {
             wp_safe_redirect(self::get_page_url());
             exit;
         }
-
         update_option(self::OPTION_SPECIAL_PRODUCT_ID, $special_id, false);
         if ($registration_id > 0) {
             update_option('tpma_cr_wc_product_id', $registration_id, false);
@@ -198,7 +197,8 @@ class TPMA_CR_Settings {
                 throw new Exception('Tutor 無法儲存新的 Google access token。');
             }
 
-            self::set_notice('Google Meet 開放權限已重新授權，請回課程管理建立 Meet。');
+            update_option(self::OPTION_TUTOR_MEET_SHARED_USER, get_current_user_id(), false);
+            self::set_notice('Google Meet 共用授權已更新，所有管理員現在都可建立與管理 Meet。');
         } catch (Throwable $e) {
             self::set_notice('Meet 權限授權失敗：' . $e->getMessage(), 'error');
         }
@@ -418,6 +418,7 @@ class TPMA_CR_Settings {
 
     const OPTION_TUTOR_ENABLED            = 'tpma_cr_tutor_enabled';
     const OPTION_TUTOR_DEFAULT_INSTRUCTOR = 'tpma_cr_tutor_default_instructor';
+    const OPTION_TUTOR_MEET_SHARED_USER   = 'tpma_cr_tutor_meet_shared_user';
     const OPTION_MAGIC_LINK_EXTRA_DAYS    = 'tpma_cr_magic_link_extra_days';
     const OPTION_LIVE_ACCESS_DAYS_BEFORE  = 'tpma_cr_live_access_days_before';
     const OPTION_LIVE_ACCESS_DAYS_AFTER   = 'tpma_cr_live_access_days_after';
@@ -434,6 +435,15 @@ class TPMA_CR_Settings {
 
     public static function get_tutor_default_instructor(): int {
         return absint(get_option(self::OPTION_TUTOR_DEFAULT_INSTRUCTOR, 0));
+    }
+
+    /**
+     * Return the WP user that most recently completed the site-wide Google
+     * Meet authorization. The value is internal; administrators never select
+     * it manually.
+     */
+    public static function get_tutor_meet_shared_user(): int {
+        return absint(get_option(self::OPTION_TUTOR_MEET_SHARED_USER, 0));
     }
 
     public static function get_magic_link_extra_days(): int {
@@ -496,13 +506,13 @@ class TPMA_CR_Settings {
         echo '</td>';
         echo '</tr>';
 
-        echo '<tr><th scope="row">Google Meet 進入權限</th><td>';
+        echo '<tr><th scope="row">Google Meet 共用授權</th><td>';
         $authorize_url = wp_nonce_url(
             admin_url('admin-post.php?action=tpma_cr_authorize_meet_settings'),
             'tpma_cr_authorize_meet_settings'
         );
-        echo '<a class="button" href="' . esc_url($authorize_url) . '">授權 Meet 開放權限</a>';
-        echo '<p class="description">首次使用或 Google 授權失效時執行一次。TPMA 建立 Meet 後會將存取類型設為「開放」，讓持有連結者可直接加入；Google Workspace 管理政策仍可能限制此設定。</p>';
+        echo '<a class="button" href="' . esc_url($authorize_url) . '">授權／更新共用 Meet</a>';
+        echo '<p class="description">首次使用或 Google 授權失效時，任一網站管理員執行一次即可。成功後全站共用該 Google Calendar 授權，其他管理員不需再授權。再次授權會改用本次登入的 Google 帳號；TPMA 建立 Meet 後會將存取類型設為「開放」，Google Workspace 管理政策仍可能限制此設定。</p>';
         echo '</td></tr>';
 
         echo '<tr><th scope="row"><label for="tpma_cr_live_access_days_before">直播課前開放</label></th><td>';

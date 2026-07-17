@@ -3,6 +3,7 @@ const Util = (window.TPMAPublic = window.TPMAPublic || {}).util || {};
 
 const TPMA_CR_API_BASE_PHP = window.TPMAPublicConfig?.apiBase || '';
 const TPMA_API_BASE = Util.getApiBase(TPMA_CR_API_BASE_PHP);
+const isAdmin = Boolean(window.TPMAPublicConfig?.isAdmin);
 
 let coursesMap = {};
 let firstErrorElement = null;
@@ -162,9 +163,16 @@ function tryPrefillFromQuery() {
   const courseSelect = document.getElementById("course-select");
   courseSelect.value = courseId;
   onCourseChange();
+  const courseWasPrefilled = courseSelect.value === String(courseId);
+  const sessionSelect = document.getElementById("session-select");
+  let sessionWasPrefilled = false;
   if (preselectParams.sessionId) {
-    const sessionSelect = document.getElementById("session-select");
     sessionSelect.value = preselectParams.sessionId;
+    sessionWasPrefilled = sessionSelect.value === String(preselectParams.sessionId);
+  }
+  if (!isAdmin) {
+    if (courseWasPrefilled) courseSelect.disabled = true;
+    if (sessionWasPrefilled) sessionSelect.disabled = true;
   }
   prefillingDone = true;
 }

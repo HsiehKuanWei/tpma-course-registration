@@ -112,6 +112,7 @@ $assets_base = isset($assets_base) ? $assets_base : TPMA_CR_URL;
 window.TPMAPublicConfig = <?php echo wp_json_encode(array(
     'apiBase'   => $api_base,
     'nonce'     => wp_create_nonce( 'wp_rest' ), // Add nonce for consistency
+    'isAdmin'   => current_user_can( 'manage_options' ),
 )); ?>;
 </script>
 <script src="<?php echo esc_url($assets_base . 'assets/js/public/00.tpma-datetime.js'); ?>"></script>

@@ -21,6 +21,7 @@ if (!defined('ABSPATH')) {
 class TPMA_Tutor_Bridge {
 
     public const MEET_SETTINGS_SCOPE = 'https://www.googleapis.com/auth/meetings.space.settings';
+    private const MEET_SERVICE_USER_META = '_tpma_google_meet_service_user_id';
 
     /** @var bool|null Cached detection result. */
     private static $tutor_active = null;
@@ -108,6 +109,94 @@ class TPMA_Tutor_Bridge {
 
     public static function refresh_active_state(): void {
         self::$tutor_active = null;
+    }
+
+    /**
+     * Tutor Pro keeps Google credentials per WP login. Resolve the account
+     * which owns a Meet before constructing its GoogleEvent client.
+     */
+    private static function get_google_meet_user_id(int $meet_post_id = 0): int {
+        if ($meet_post_id > 0) {
+            $stored_user_id = absint(get_post_meta($meet_post_id, self::MEET_SERVICE_USER_META, true));
+            if ($stored_user_id > 0) {
+                return $stored_user_id;
+            }
+
+            // Legacy events predate the ownership meta. Their post author is
+            // the only reliable record of the Tutor Pro token that created it.
+            $legacy_user_id = (int) get_post_field('post_author', $meet_post_id);
+            if ($legacy_user_id > 0) {
+                return $legacy_user_id;
+            }
+        }
+
+        return class_exists('TPMA_CR_Settings')
+            ? TPMA_CR_Settings::get_tutor_meet_shared_user()
+            : 0;
+    }
+
+    private static function get_google_meet_authorization_message(int $user_id, int $meet_post_id = 0): string {
+        if ($user_id <= 0) {
+            return '尚未完成 Google Meet 共用授權。請任一網站管理員至「設定 → TPMA Course Registration IDs」執行「授權／更新共用 Meet」。';
+        }
+
+        $user = get_user_by('id', $user_id);
+        $name = $user ? $user->display_name : ('ID ' . $user_id);
+        if ($meet_post_id > 0 && !get_post_meta($meet_post_id, self::MEET_SERVICE_USER_META, true)) {
+            return '此既有 Meet 的原建立帳號「' . $name . '」尚未授權或授權已失效。請以該帳號登入並重新授權。';
+        }
+        return 'Google Meet 共用授權已失效。請任一網站管理員至「設定 → TPMA Course Registration IDs」重新執行「授權／更新共用 Meet」。';
+    }
+
+    private static function create_google_meet_client(int $meet_post_id = 0) {
+        $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
+        if (!class_exists($client_class)) {
+            return new WP_Error('meet_unavailable', 'Tutor Pro Google Meet 模組未啟用', array('status' => 503));
+        }
+
+        $meet_user_id = self::get_google_meet_user_id($meet_post_id);
+        if ($meet_user_id <= 0) {
+            return new WP_Error('meet_shared_authorization_required', self::get_google_meet_authorization_message(0, $meet_post_id), array('status' => 503));
+        }
+        if ($meet_user_id > 0 && (!get_user_by('id', $meet_user_id) || !user_can($meet_user_id, 'manage_options'))) {
+            return new WP_Error('meet_shared_authorization_invalid', 'Google Meet 共用授權帳號不存在或已失去網站管理員權限。請任一網站管理員重新執行共用授權。', array('status' => 503));
+        }
+
+        $current_user_id = get_current_user_id();
+        try {
+            if ($meet_user_id > 0 && $meet_user_id !== $current_user_id) {
+                wp_set_current_user($meet_user_id);
+            }
+            $client = new $client_class();
+
+            // Tutor Pro writes a refreshed token, but its GoogleEvent::save_token()
+            // returns false afterwards. The first client therefore has no Calendar
+            // service even though the replacement token is already on disk. Build
+            // it once more so the new token is loaded; a genuinely invalid token
+            // still fails the validation below.
+            if (!method_exists($client, 'is_app_permitted') || !$client->is_app_permitted() || empty($client->service)) {
+                $client = new $client_class();
+            }
+        } catch (Throwable $e) {
+            return new WP_Error('meet_client_unavailable', '無法建立 Tutor Google Meet 授權用戶端：' . $e->getMessage(), array('status' => 503));
+        } finally {
+            if ($meet_user_id > 0 && $meet_user_id !== $current_user_id) {
+                wp_set_current_user($current_user_id);
+            }
+        }
+
+        if (!method_exists($client, 'is_app_permitted') || !$client->is_app_permitted() || empty($client->service)) {
+            return new WP_Error('meet_unauthorized', self::get_google_meet_authorization_message($meet_user_id, $meet_post_id), array('status' => 503));
+        }
+
+        return $client;
+    }
+
+    private static function persist_google_meet_user(int $meet_post_id): void {
+        $meet_user_id = self::get_google_meet_user_id($meet_post_id);
+        if ($meet_post_id > 0 && $meet_user_id > 0) {
+            update_post_meta($meet_post_id, self::MEET_SERVICE_USER_META, $meet_user_id);
+        }
     }
 
     // ──────────────────────────────────────────────────────────
@@ -714,11 +803,12 @@ class TPMA_Tutor_Bridge {
             if ($meet_course_id !== (int) $session['tutor_course_id'] || ($bound_session > 0 && $bound_session !== $session_id)) {
                 return new WP_Error('meet_course_mismatch', 'Meet 不屬於此課程或已連結其他場次', array('status' => 409));
             }
-            $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
             $meet_url = (string) get_post_meta($meet_post_id, 'tutor-google-meet-link', true);
-            if (!class_exists($client_class)) return new WP_Error('meet_unavailable', 'Tutor Pro Google Meet 模組未啟用', array('status' => 503));
-            $open_result = self::configure_meet_space_open($meet_url, new $client_class());
+            $client = self::create_google_meet_client($meet_post_id);
+            if (is_wp_error($client)) return $client;
+            $open_result = self::configure_meet_space_open($meet_url, $client);
             if (is_wp_error($open_result)) return $open_result;
+            self::persist_google_meet_user($meet_post_id);
             wp_update_post(array(
                 'ID' => $meet_post_id,
                 'post_parent' => $topic_id,
@@ -742,10 +832,10 @@ class TPMA_Tutor_Bridge {
     }
 
     private static function create_google_meet_for_session(array $session, int $topic_id) {
-        $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
-        if (!class_exists($client_class) || !class_exists('\\Google_Service_Calendar_Event')) return new WP_Error('meet_unavailable', 'Tutor Pro Google Meet 模組未啟用', array('status' => 503));
-        $client = new $client_class();
-        if (!method_exists($client, 'is_app_permitted') || !$client->is_app_permitted() || empty($client->service)) return new WP_Error('meet_unauthorized', '目前管理員尚未授權 Tutor Google Meet', array('status' => 503));
+        if (!class_exists('\\Google_Service_Calendar_Event')) return new WP_Error('meet_unavailable', 'Tutor Pro Google Meet 模組未啟用', array('status' => 503));
+        $meet_service_user = self::get_google_meet_user_id();
+        $client = self::create_google_meet_client();
+        if (is_wp_error($client)) return $client;
         $tz_name = wp_timezone_string() ?: 'Asia/Taipei';
         if ($tz_name !== 'UTC' && strpos($tz_name, '/') === false) $tz_name = 'Asia/Taipei';
         $tz = new DateTimeZone($tz_name);
@@ -801,16 +891,20 @@ class TPMA_Tutor_Bridge {
             'end_datetime' => $end->format('Y-m-d H:i:s'),
             'attendees' => 'No',
         );
+        $meta_input = array(
+            'tutor-google-meet-start-datetime' => $start->format('Y-m-d H:i:s'),
+            'tutor-google-meet-end-datetime' => $end->format('Y-m-d H:i:s'),
+            'tutor-google-meet-event-details' => wp_json_encode($details),
+            'tutor-google-meet-link' => (string) $created->hangoutLink,
+            '_tpma_session_id' => (int) $session['id'],
+        );
+        if ($meet_service_user > 0) {
+            $meta_input[self::MEET_SERVICE_USER_META] = $meet_service_user;
+        }
         $post_id = wp_insert_post(array(
             'post_type' => 'tutor-google-meet', 'post_parent' => $topic_id, 'post_status' => 'publish',
             'post_title' => $title, 'post_content' => '', 'post_author' => get_current_user_id(),
-            'meta_input' => array(
-                'tutor-google-meet-start-datetime' => $start->format('Y-m-d H:i:s'),
-                'tutor-google-meet-end-datetime' => $end->format('Y-m-d H:i:s'),
-                'tutor-google-meet-event-details' => wp_json_encode($details),
-                'tutor-google-meet-link' => (string) $created->hangoutLink,
-                '_tpma_session_id' => (int) $session['id'],
-            ),
+            'meta_input' => $meta_input,
         ), true);
         if (is_wp_error($post_id)) {
             try {
@@ -1051,12 +1145,8 @@ class TPMA_Tutor_Bridge {
             $details = json_decode((string) get_post_meta($meet_id, 'tutor-google-meet-event-details', true), true);
             $event_id = (string) ($details['id'] ?? '');
             if ($delete_google_calendar && $event_id !== '') {
-                $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
-                if (!class_exists($client_class)) return new WP_Error('meet_delete_unavailable', '無法移除 Google 日曆：Tutor Pro Google Meet 模組未啟用。', array('status' => 503));
-                $client = new $client_class();
-                if (!method_exists($client, 'is_app_permitted') || !$client->is_app_permitted() || empty($client->service)) {
-                    return new WP_Error('meet_delete_unauthorized', '無法移除 Google 日曆：目前管理員的 Google 授權無效。', array('status' => 503));
-                }
+                $client = self::create_google_meet_client($meet_id);
+                if (is_wp_error($client)) return $client;
                 try {
                     $client->service->events->delete($client->current_calendar, $event_id, array('sendUpdates' => 'none'));
                 } catch (Throwable $e) {
@@ -1185,10 +1275,9 @@ class TPMA_Tutor_Bridge {
         }
         $details = json_decode((string) get_post_meta($meet_id, 'tutor-google-meet-event-details', true), true);
         $event_id = (string) ($details['id'] ?? '');
-        $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
-        if ($event_id === '' || !class_exists($client_class)) return new WP_Error('meet_sync_unavailable', '無法取得 Meet Calendar 事件', array('status' => 503));
-        $client = new $client_class();
-        if (!$client->is_app_permitted() || empty($client->service)) return new WP_Error('meet_unauthorized', '目前管理員無法更新 Tutor Google Meet', array('status' => 503));
+        if ($event_id === '') return new WP_Error('meet_sync_unavailable', '無法取得 Meet Calendar 事件', array('status' => 503));
+        $client = self::create_google_meet_client($meet_id);
+        if (is_wp_error($client)) return $client;
         $tz_name = wp_timezone_string() ?: 'Asia/Taipei';
         if ($tz_name !== 'UTC' && strpos($tz_name, '/') === false) $tz_name = 'Asia/Taipei';
         $start = new DateTime($new_datetime, new DateTimeZone($tz_name));
