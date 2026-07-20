@@ -28,6 +28,16 @@ class TPMA_Course_Access {
         return in_array($status, array('processing', 'completed'), true) || ($status === 'on-hold' && $is_postpay);
     }
 
+    /** Earliest time a recorded learner may receive or use course access. */
+    public static function recorded_access_starts_at(array $session, int $days_before = 7): int {
+        $session_start = strtotime((string)($session['session_datetime'] ?? ''));
+        $recording_from = strtotime((string)($session['recording_available_from'] ?? ''));
+        if (!$session_start || !$recording_from) return 0;
+
+        $live_access_start = $session_start - max(1, $days_before) * DAY_IN_SECONDS;
+        return min($live_access_start, $recording_from);
+    }
+
     public static function resource_window_allows(array $session, string $access_mode, string $resource, string $now = '', int $days_before = 7, int $days_after = 15): bool {
         $mode = sanitize_key($access_mode);
         $resource = sanitize_key($resource);
@@ -45,7 +55,7 @@ class TPMA_Course_Access {
         if ($resource === 'meet') return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end;
 
         if ($mode === 'recorded') {
-            $from = strtotime((string)($session['recording_available_from'] ?? ''));
+            $from = self::recorded_access_starts_at($session, $days_before);
             $until = strtotime((string)($session['recording_available_until'] ?? ''));
             return $from && $until && $now_ts >= $from && $now_ts <= $until;
         }
@@ -67,7 +77,7 @@ class TPMA_Course_Access {
         return $now_ts > ($start + $duration * MINUTE_IN_SECONDS);
     }
 
-    public static function evaluate_registration(int $registration_id, string $resource = 'course', string $now = ''): array {
+    public static function evaluate_registration(int $registration_id, string $resource = 'course', string $now = '', bool $ignore_time_window = false): array {
         global $wpdb;
         $row = $wpdb->get_row($wpdb->prepare(
             "SELECT r.*, s.delivery_mode, s.session_datetime, s.recording_available_from, s.recording_available_until,
@@ -86,7 +96,7 @@ class TPMA_Course_Access {
         $mode = sanitize_key((string)($row['access_mode'] ?: 'live'));
         $before = max(1, (int)get_option('tpma_cr_live_access_days_before', 7));
         $after = max(1, (int)get_option('tpma_cr_live_access_days_after', 15));
-        if (!self::resource_window_allows($row, $mode, $resource, $now, $before, $after)) {
+        if (!$ignore_time_window && !self::resource_window_allows($row, $mode, $resource, $now, $before, $after)) {
             return array('allowed' => false, 'reason' => 'outside_access_window', 'mode' => $mode);
         }
         return array('allowed' => true, 'reason' => '', 'mode' => $mode, 'registration' => $row);

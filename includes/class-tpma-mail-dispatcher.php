@@ -1704,7 +1704,7 @@ class TPMA_CR_Mail_Dispatcher
         if (!class_exists('TPMA_Course_Access')) {
             return array('eligible' => false, 'reason' => 'course_access_unavailable');
         }
-        $result = TPMA_Course_Access::evaluate_registration($reg_id, 'course');
+        $result = TPMA_Course_Access::evaluate_registration($reg_id, 'course', '', !empty($options['manual']));
         if (empty($result['allowed'])) {
             return array('eligible' => false, 'reason' => (string)($result['reason'] ?? 'not_allowed'));
         }
