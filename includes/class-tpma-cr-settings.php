@@ -128,6 +128,10 @@ class TPMA_CR_Settings {
                 throw new Exception('無法建立 Google 授權用戶端。');
             }
             $google->client->addScope(TPMA_Tutor_Bridge::MEET_SETTINGS_SCOPE);
+            $google->client->setAccessType('offline');
+            if (method_exists($google->client, 'setPrompt')) {
+                $google->client->setPrompt('consent');
+            }
             if (method_exists($google->client, 'setIncludeGrantedScopes')) {
                 $google->client->setIncludeGrantedScopes(true);
             }
@@ -188,7 +192,14 @@ class TPMA_CR_Settings {
 
             $token_path = trailingslashit($google->upload_dir) . $google->username . '-token.json';
             $before_hash = is_readable($token_path) ? (string) hash_file('sha256', $token_path) : '';
+            $previous_token = is_readable($token_path) ? json_decode((string) file_get_contents($token_path), true) : array();
+            $previous_refresh_token = is_array($previous_token) && !empty($previous_token['refresh_token'])
+                ? (string) $previous_token['refresh_token']
+                : '';
             $google->save_token($code);
+            if ($previous_refresh_token !== '') {
+                TPMA_Tutor_Bridge::preserve_google_meet_refresh_token(get_current_user_id(), $previous_refresh_token);
+            }
             clearstatcache(true, $token_path);
             $after_hash = is_readable($token_path) ? (string) hash_file('sha256', $token_path) : '';
             $saved = $after_hash !== '' && ($before_hash === '' || !hash_equals($before_hash, $after_hash));
@@ -198,7 +209,12 @@ class TPMA_CR_Settings {
             }
 
             update_option(self::OPTION_TUTOR_MEET_SHARED_USER, get_current_user_id(), false);
-            self::set_notice('Google Meet 共用授權已更新，所有管理員現在都可建立與管理 Meet。');
+            $backup_result = TPMA_Tutor_Bridge::sync_google_meet_auth_backup(get_current_user_id());
+            if (is_wp_error($backup_result)) {
+                self::set_notice('Google Meet 共用授權已更新，但受保護備份無法建立。請確認網站上層資料夾可寫入後，再執行一次「授權／更新共用 Meet」。', 'error');
+            } else {
+                self::set_notice('Google Meet 共用授權已更新，受保護還原檔也已同步。所有管理員現在都可建立與管理 Meet。');
+            }
         } catch (Throwable $e) {
             self::set_notice('Meet 權限授權失敗：' . $e->getMessage(), 'error');
         }
@@ -419,9 +435,13 @@ class TPMA_CR_Settings {
     const OPTION_TUTOR_ENABLED            = 'tpma_cr_tutor_enabled';
     const OPTION_TUTOR_DEFAULT_INSTRUCTOR = 'tpma_cr_tutor_default_instructor';
     const OPTION_TUTOR_MEET_SHARED_USER   = 'tpma_cr_tutor_meet_shared_user';
+    const OPTION_TUTOR_MEET_DIAGNOSTICS   = 'tpma_cr_tutor_meet_diagnostics';
+    const OPTION_TUTOR_MEET_STATUS        = 'tpma_cr_tutor_meet_status';
     const OPTION_MAGIC_LINK_EXTRA_DAYS    = 'tpma_cr_magic_link_extra_days';
     const OPTION_LIVE_ACCESS_DAYS_BEFORE  = 'tpma_cr_live_access_days_before';
     const OPTION_LIVE_ACCESS_DAYS_AFTER   = 'tpma_cr_live_access_days_after';
+
+    private const TUTOR_MEET_DIAGNOSTIC_LIMIT = 30;
 
     /**
      * Returns true when Tutor LMS is active AND the integration toggle is on.
@@ -444,6 +464,57 @@ class TPMA_CR_Settings {
      */
     public static function get_tutor_meet_shared_user(): int {
         return absint(get_option(self::OPTION_TUTOR_MEET_SHARED_USER, 0));
+    }
+
+    /**
+     * Return the latest safe authorization result recorded by the Tutor bridge.
+     */
+    public static function get_tutor_meet_status(): array {
+        $status = get_option(self::OPTION_TUTOR_MEET_STATUS, array());
+        return is_array($status) ? $status : array();
+    }
+
+    /**
+     * Return the newest first, capped diagnostic history for shared Meet auth.
+     */
+    public static function get_tutor_meet_diagnostics(): array {
+        $records = get_option(self::OPTION_TUTOR_MEET_DIAGNOSTICS, array());
+        return is_array($records)
+            ? array_slice($records, 0, self::TUTOR_MEET_DIAGNOSTIC_LIMIT)
+            : array();
+    }
+
+    /**
+     * Save a display-safe Meet diagnostic result without storing OAuth secrets.
+     */
+    public static function record_tutor_meet_diagnostic(string $operation, bool $valid, string $code, string $reason): void {
+        $entry = array(
+            'checked_at' => current_time('mysql'),
+            'operation'  => substr(sanitize_text_field($operation), 0, 80),
+            'valid'      => $valid ? 1 : 0,
+            'code'       => substr(sanitize_key($code), 0, 80),
+            'reason'     => substr(sanitize_text_field($reason), 0, 250),
+        );
+
+        update_option(self::OPTION_TUTOR_MEET_STATUS, $entry, false);
+
+        $records = self::get_tutor_meet_diagnostics();
+        $latest  = $records[0] ?? array();
+        if (
+            $operation === '設定頁檢查'
+            && (int) ($latest['valid'] ?? -1) === $entry['valid']
+            && (string) ($latest['code'] ?? '') === $entry['code']
+            && (string) ($latest['reason'] ?? '') === $entry['reason']
+        ) {
+            return;
+        }
+
+        array_unshift($records, $entry);
+        update_option(
+            self::OPTION_TUTOR_MEET_DIAGNOSTICS,
+            array_slice($records, 0, self::TUTOR_MEET_DIAGNOSTIC_LIMIT),
+            false
+        );
     }
 
     public static function get_magic_link_extra_days(): int {
@@ -506,13 +577,43 @@ class TPMA_CR_Settings {
         echo '</td>';
         echo '</tr>';
 
+        $meet_status = class_exists('TPMA_Tutor_Bridge')
+            ? TPMA_Tutor_Bridge::get_google_meet_authorization_status()
+            : array('valid' => false, 'code' => 'bridge_unavailable', 'reason' => 'Tutor 整合未啟用');
+        $meet_status_record = self::get_tutor_meet_status();
+        $meet_diagnostics   = self::get_tutor_meet_diagnostics();
+        $meet_shared_user   = get_user_by('id', self::get_tutor_meet_shared_user());
+        $meet_valid         = !empty($meet_status['valid']);
+        $meet_status_color  = $meet_valid ? '#0a7a2f' : '#b32d2e';
+        $meet_status_text   = $meet_valid ? '目前有效' : '目前失效';
+        $meet_checked_at    = (string) ($meet_status_record['checked_at'] ?? '');
+
         echo '<tr><th scope="row">Google Meet 共用授權</th><td>';
+        echo '<p style="margin:0 0 6px;color:' . esc_attr($meet_status_color) . ';font-weight:600;">' . esc_html($meet_status_text) . '</p>';
+        echo '<p class="description" style="margin-top:0;">' . esc_html((string) ($meet_status['reason'] ?? '尚未檢查 Google Meet 共用授權。')) . '</p>';
+        echo '<p class="description">共用授權帳號：' . esc_html($meet_shared_user ? $meet_shared_user->display_name : '尚未設定') . '；最近檢查：' . esc_html($meet_checked_at !== '' ? $meet_checked_at : '尚未檢查') . '</p>';
         $authorize_url = wp_nonce_url(
             admin_url('admin-post.php?action=tpma_cr_authorize_meet_settings'),
             'tpma_cr_authorize_meet_settings'
         );
         echo '<a class="button" href="' . esc_url($authorize_url) . '">授權／更新共用 Meet</a>';
         echo '<p class="description">首次使用或 Google 授權失效時，任一網站管理員執行一次即可。成功後全站共用該 Google Calendar 授權，其他管理員不需再授權。再次授權會改用本次登入的 Google 帳號；TPMA 建立 Meet 後會將存取類型設為「開放」，Google Workspace 管理政策仍可能限制此設定。</p>';
+        echo '<details style="margin-top:12px;"><summary>查看診斷紀錄（最近 ' . esc_html((string) count($meet_diagnostics)) . ' 筆）</summary>';
+        if (empty($meet_diagnostics)) {
+            echo '<p class="description">尚無診斷紀錄。</p>';
+        } else {
+            echo '<table class="widefat striped" style="margin-top:8px;max-width:900px;"><thead><tr><th>時間</th><th>操作</th><th>結果</th><th>原因</th></tr></thead><tbody>';
+            foreach ($meet_diagnostics as $meet_diagnostic) {
+                echo '<tr>';
+                echo '<td>' . esc_html((string) ($meet_diagnostic['checked_at'] ?? '')) . '</td>';
+                echo '<td>' . esc_html((string) ($meet_diagnostic['operation'] ?? '')) . '</td>';
+                echo '<td>' . esc_html(!empty($meet_diagnostic['valid']) ? '有效' : '失效') . '</td>';
+                echo '<td>' . esc_html((string) ($meet_diagnostic['reason'] ?? '')) . '</td>';
+                echo '</tr>';
+            }
+            echo '</tbody></table>';
+        }
+        echo '</details>';
         echo '</td></tr>';
 
         echo '<tr><th scope="row"><label for="tpma_cr_live_access_days_before">直播課前開放</label></th><td>';

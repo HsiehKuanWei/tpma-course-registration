@@ -381,6 +381,34 @@ public static function admin_update_reg($request)
     $source_enrollment_id = (int) ($row['tutor_enrolled_id'] ?? 0);
     $target_session = null;
 
+    // 收據狀態只能由收據服務投影；舊前端若仍送出此欄位，明確拒絕而非靜默覆寫。
+    if (array_key_exists('receipt_status', $d)) {
+        return new WP_Error(
+            'tpma_receipt_status_managed',
+            '收據狀態由收據服務管理，請改用生成、重新生成、上傳掃描檔或寄發收據操作。',
+            array('status' => 400)
+        );
+    }
+
+    // 收據方式會被寫入已開立收據的快照。為避免單筆編輯顯示成功卻破壞既有收據，
+    // 只要請求帶有 receipt_type 且訂單已有有效收據，就整個請求拒絕。
+    if (array_key_exists('receipt_type', $d) && $order_id > 0) {
+        if (!class_exists('TPMA_CR_Receipt_Service')) {
+            return new WP_Error(
+                'tpma_receipt_service_unavailable',
+                '收據服務尚未載入，為避免覆寫既有收據，暫時不可修改收據方式。',
+                array('status' => 503)
+            );
+        }
+        if (TPMA_CR_Receipt_Service::get_receipt_for_order($order_id)) {
+            return new WP_Error(
+                'tpma_receipt_type_locked',
+                '此訂單已有有效收據，不可直接修改收據方式。請改由收據操作處理。',
+                array('status' => 409, 'order_id' => $order_id)
+            );
+        }
+    }
+
     // Detect remit_amount change; skip Woo sync if unchanged to avoid locked-order errors.
     if (array_key_exists('remit_amount', $d)) {
         $raw_remit_amount     = is_string($d['remit_amount']) ? trim($d['remit_amount']) : $d['remit_amount'];
@@ -410,7 +438,6 @@ public static function admin_update_reg($request)
         'emails',
         'access_mode',
         'status',          // 報名狀態
-        'receipt_status',
         'test_score',
         'certificate_id',
     );
@@ -510,11 +537,14 @@ public static function admin_update_reg($request)
     $has_change = !empty($tpma_update);
 
     $postpay_order_changed = false;
+    $postpay_requested = false;
+    $postpay_receipt_result = null;
     if ($order && array_key_exists('status', $tpma_update)) {
         $new_reg_status = (string)$tpma_update['status'];
         $was_postpay = $order->get_meta('_tpma_post_course_payment', true) === 'yes';
         if ($new_reg_status === 'postpay') {
             $postpay_order_changed = true;
+            $postpay_requested = true;
             $order->update_meta_data('_tpma_post_course_payment', 'yes');
             if ($order->get_status() !== 'on-hold') $order->set_status('on-hold', 'TPMA 後台標記為課後付款');
             $wpdb->update($regs_table, array('status'=>'postpay','payment_status'=>'on-hold'), array('woocommerce_order_id'=>$order_id), array('%s','%s'), array('%d'));
@@ -585,6 +615,37 @@ public static function admin_update_reg($request)
         }
     }
 
+    // 課後付款在資料與 Woo 訂單保存成功後立即嘗試開立；失敗只回報，不回滾已完成的狀態操作。
+    if ($order && $postpay_requested && class_exists('TPMA_CR_Receipt_Service')) {
+        $generated_receipt = TPMA_CR_Receipt_Service::generate_for_order($order_id);
+        if (is_wp_error($generated_receipt)) {
+            $existing_receipt = TPMA_CR_Receipt_Service::get_receipt_for_order($order_id);
+            if ($existing_receipt) {
+                $postpay_receipt_result = array(
+                    'success' => true,
+                    'existing' => true,
+                    'receipt_id' => (int) $existing_receipt['id'],
+                    'serial' => (string) $existing_receipt['serial'],
+                    'status' => (string) $existing_receipt['status'],
+                );
+            } else {
+                $postpay_receipt_result = array(
+                    'success' => false,
+                    'code' => $generated_receipt->get_error_code(),
+                    'message' => $generated_receipt->get_error_message(),
+                );
+            }
+        } else {
+            $postpay_receipt_result = array(
+                'success' => true,
+                'existing' => false,
+                'receipt_id' => (int) $generated_receipt['id'],
+                'serial' => (string) $generated_receipt['serial'],
+                'status' => (string) $generated_receipt['status'],
+            );
+        }
+    }
+
     if ($order && $is_course_transfer && class_exists('TPMA_Course_Access')) {
         TPMA_Course_Access::get_or_create_portal_url($order_id, true);
     }
@@ -601,7 +662,11 @@ public static function admin_update_reg($request)
         }
     }
 
-    return rest_ensure_response(array('success' => true));
+    $response = array('success' => true);
+    if ($postpay_receipt_result !== null) {
+        $response['receipt'] = $postpay_receipt_result;
+    }
+    return rest_ensure_response($response);
 }
 
 public static function admin_bulk_registrations($request)
@@ -632,12 +697,25 @@ public static function admin_bulk_registrations($request)
         }
         $result = self::bulk_move_session($ids, $target_session_id);
     } elseif ($action === 'update_field') {
-        $allowed_fields = array('status', 'access_mode', 'receipt_status', 'receipt_type', 'remit_paid_at');
+        if ($field === 'receipt_status') {
+            return new WP_Error(
+                'tpma_receipt_status_managed',
+                '收據狀態由收據服務管理，請改用生成、重新生成、上傳掃描檔或寄發收據操作。',
+                array('status' => 400)
+            );
+        }
+        $allowed_fields = array('status', 'access_mode', 'receipt_type', 'remit_paid_at');
         if (!in_array($field, $allowed_fields, true)) {
             return new WP_Error('invalid_field', '不支援的批次欄位', array('status' => 400));
         }
         if ($value === '' || $value === null) {
             return new WP_Error('missing_value', '缺少批次套用值', array('status' => 400));
+        }
+        if ($field === 'receipt_type') {
+            $receipt_type_validation = self::validate_bulk_receipt_type_update($ids);
+            if (is_wp_error($receipt_type_validation)) {
+                return $receipt_type_validation;
+            }
         }
         $result = self::bulk_update_field($ids, $field, $value);
     } elseif ($action === 'send_course_mail') {
@@ -665,6 +743,8 @@ private static function empty_bulk_result(): array
         'sent'      => 0,
         'skipped'   => array(),
         'failed'    => array(),
+        'receipts'  => array(),
+        'receipt_errors' => array(),
     );
 }
 
@@ -693,7 +773,7 @@ private static function merge_bulk_result(array $base, array $part): array
     foreach (array('processed', 'updated', 'sent') as $key) {
         $base[$key] += (int)($part[$key] ?? 0);
     }
-    foreach (array('skipped', 'failed') as $key) {
+    foreach (array('skipped', 'failed', 'receipts', 'receipt_errors') as $key) {
         if (!empty($part[$key]) && is_array($part[$key])) {
             $base[$key] = array_merge($base[$key], $part[$key]);
         }
@@ -720,6 +800,47 @@ private static function get_registration_rows(array $ids): array
     return $by_id;
 }
 
+/**
+ * Receipt type is part of the immutable receipt snapshot. Reject the entire
+ * batch before any update when an included Woo order already has an active
+ * receipt, so the old UI cannot create a mixed partial update.
+ */
+private static function validate_bulk_receipt_type_update(array $ids)
+{
+    if (!class_exists('TPMA_CR_Receipt_Service')) {
+        return new WP_Error(
+            'tpma_receipt_service_unavailable',
+            '收據服務尚未載入，為避免覆寫既有收據，暫時不可批次修改收據方式。',
+            array('status' => 503)
+        );
+    }
+
+    $rows = self::get_registration_rows($ids);
+    $blocked_order_ids = array();
+    foreach ($ids as $id) {
+        $order_id = (int) ($rows[$id]['woocommerce_order_id'] ?? 0);
+        if ($order_id <= 0 || isset($blocked_order_ids[$order_id])) {
+            continue;
+        }
+        // get_receipt_for_order() excludes void receipts by default.
+        if (TPMA_CR_Receipt_Service::get_receipt_for_order($order_id)) {
+            $blocked_order_ids[$order_id] = true;
+        }
+    }
+    if (!$blocked_order_ids) {
+        return true;
+    }
+
+    $numbers = array_map(static function ($order_id) {
+        return '#' . (int) $order_id;
+    }, array_keys($blocked_order_ids));
+    return new WP_Error(
+        'tpma_receipt_type_locked',
+        '所選訂單已有有效收據（' . implode('、', $numbers) . '），不可直接批次修改收據方式。請改由收據操作處理。',
+        array('status' => 409, 'order_ids' => array_map('intval', array_keys($blocked_order_ids)))
+    );
+}
+
 private static function bulk_update_field(array $ids, string $field, $value): array
 {
     global $wpdb;
@@ -728,6 +849,7 @@ private static function bulk_update_field(array $ids, string $field, $value): ar
     $result = self::empty_bulk_result();
     $result['processed'] = count($ids);
     $orders_to_reset = array();
+    $postpay_orders = array();
 
     foreach ($ids as $id) {
         $row = $rows[$id] ?? null;
@@ -766,6 +888,7 @@ private static function bulk_update_field(array $ids, string $field, $value): ar
                     }
                     $order->save();
                     $wpdb->update($regs_table, array('status' => 'postpay', 'payment_status' => 'on-hold'), array('woocommerce_order_id' => $order_id), array('%s', '%s'), array('%d'));
+                    $postpay_orders[$order_id] = true;
                 } else {
                     if ($order && $order->get_meta('_tpma_post_course_payment', true) === 'yes' && $status !== 'postpay') {
                         $order->delete_meta_data('_tpma_post_course_payment');
@@ -781,8 +904,12 @@ private static function bulk_update_field(array $ids, string $field, $value): ar
             }
 
             if ($field === 'receipt_status') {
-                $wpdb->update($regs_table, array('receipt_status' => sanitize_key((string)$value)), array('id' => $id), array('%s'), array('%d'));
-                $result['updated']++;
+                $result = self::bulk_add_fail(
+                    $result,
+                    $id,
+                    'tpma_receipt_status_managed',
+                    '收據狀態由收據服務管理，請改用收據操作。'
+                );
                 continue;
             }
 
@@ -816,6 +943,37 @@ private static function bulk_update_field(array $ids, string $field, $value): ar
             foreach (array_keys($sessions) as $session_id) {
                 TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, (int)$session_id);
             }
+        }
+    }
+
+    // 每張 Woo 訂單只嘗試一次，並保留批次狀態更新成功的結果；收據失敗另列可辨識訊息。
+    if (!empty($postpay_orders) && class_exists('TPMA_CR_Receipt_Service')) {
+        foreach (array_keys($postpay_orders) as $postpay_order_id) {
+            $existing_receipt = TPMA_CR_Receipt_Service::get_receipt_for_order((int) $postpay_order_id);
+            if ($existing_receipt) {
+                $result['receipts'][] = array(
+                    'order_id' => (int) $postpay_order_id,
+                    'receipt_id' => (int) $existing_receipt['id'],
+                    'serial' => (string) $existing_receipt['serial'],
+                    'existing' => true,
+                );
+                continue;
+            }
+            $generated_receipt = TPMA_CR_Receipt_Service::generate_for_order((int) $postpay_order_id);
+            if (is_wp_error($generated_receipt)) {
+                $result['receipt_errors'][] = array(
+                    'order_id' => (int) $postpay_order_id,
+                    'code' => $generated_receipt->get_error_code(),
+                    'message' => $generated_receipt->get_error_message(),
+                );
+                continue;
+            }
+            $result['receipts'][] = array(
+                'order_id' => (int) $postpay_order_id,
+                'receipt_id' => (int) $generated_receipt['id'],
+                'serial' => (string) $generated_receipt['serial'],
+                'existing' => false,
+            );
         }
     }
 
@@ -937,6 +1095,7 @@ private static function bulk_send_mail(array $ids, string $event_key, bool $forc
     $rows = self::get_registration_rows($ids);
     $result = self::empty_bulk_result();
     $orders = array();
+    $receipt_orders = array();
     $course_groups = array();
 
     foreach ($ids as $id) {
@@ -954,7 +1113,16 @@ private static function bulk_send_mail(array $ids, string $event_key, bool $forc
         }
 
         if ($event_key === 'receipt_notice') {
-            $orders[$order_id] = true;
+            $receipt = class_exists('TPMA_CR_Receipt_Service')
+                ? TPMA_CR_Receipt_Service::get_receipt_for_order($order_id)
+                : null;
+            if (is_array($receipt) && !empty($receipt['id'])) {
+                // 合併收據可對應多筆訂單；同一張只允許寄送一次。
+                $receipt_orders[(int) $receipt['id']] = $order_id;
+            } else {
+                // 尚未開立收據的訂單仍交由 dispatcher 產生可讀的略過原因。
+                $orders[$order_id] = true;
+            }
             continue;
         }
 
@@ -982,9 +1150,26 @@ private static function bulk_send_mail(array $ids, string $event_key, bool $forc
     }
 
     if ($event_key === 'receipt_notice') {
+        foreach ($receipt_orders as $receipt_id => $order_id) {
+            $eligibility = TPMA_CR_Receipt_Service::receipt_send_eligibility_for_receipt($receipt_id);
+            if (is_wp_error($eligibility)) {
+                $result['processed']++;
+                $result = self::bulk_add_skip($result, $receipt_id, 'receipt_source_order_not_sendable', $eligibility->get_error_message());
+                continue;
+            }
+            $order = wc_get_order((int) $order_id);
+            if (!$order) {
+                $result['processed']++;
+                $result = self::bulk_add_skip($result, $receipt_id, 'order_not_found');
+                continue;
+            }
+            $part = TPMA_CR_Mail_Dispatcher::send_receipt_notice($order, array('force' => $force));
+            $result = self::merge_bulk_result($result, $part);
+        }
         foreach (array_keys($orders) as $order_id) {
             $order = wc_get_order((int)$order_id);
             if (!$order) {
+                $result['processed']++;
                 $result = self::bulk_add_skip($result, $order_id, 'order_not_found');
                 continue;
             }

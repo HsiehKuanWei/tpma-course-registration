@@ -148,26 +148,284 @@ class TPMA_Tutor_Bridge {
         return 'Google Meet 共用授權已失效。請任一網站管理員至「設定 → TPMA Course Registration IDs」重新執行「授權／更新共用 Meet」。';
     }
 
-    private static function create_google_meet_client(int $meet_post_id = 0) {
+    /**
+     * Return the non-public directory used to preserve Tutor Pro's OAuth files
+     * when a host-level cleanup removes uploads/tutor-json.
+     */
+    private static function get_google_meet_auth_backup_directory(): string {
+        if (defined('TPMA_MEET_AUTH_BACKUP_DIR')) {
+            $configured = trim((string) constant('TPMA_MEET_AUTH_BACKUP_DIR'));
+            if ($configured !== '') {
+                return rtrim($configured, '/\\');
+            }
+        }
+
+        $document_root = isset($_SERVER['DOCUMENT_ROOT']) ? trim((string) $_SERVER['DOCUMENT_ROOT']) : '';
+        if ($document_root !== '') {
+            return dirname(rtrim($document_root, '/\\')) . DIRECTORY_SEPARATOR . '.tpma-meet-auth';
+        }
+
+        return dirname(rtrim((string) ABSPATH, '/\\')) . DIRECTORY_SEPARATOR . '.tpma-meet-auth';
+    }
+
+    /**
+     * Resolve the live Tutor Pro files and their protected backup counterparts.
+     * OAuth file contents and filesystem locations must never be stored in WP options.
+     */
+    private static function get_google_meet_auth_file_paths(int $user_id): array {
+        $user = get_user_by('id', $user_id);
+        $upload = wp_upload_dir();
+        $basedir = is_array($upload) ? (string) ($upload['basedir'] ?? '') : '';
+        $login = $user ? (string) ($user->user_login ?? '') : '';
+        $backup_directory = self::get_google_meet_auth_backup_directory();
+        if ($basedir === '' || $login === '' || $backup_directory === '') {
+            return array();
+        }
+
+        $prefix = md5($login);
+        $live_directory = rtrim($basedir, '/\\') . DIRECTORY_SEPARATOR . 'tutor-json';
+        return array(
+            'live_directory'   => $live_directory,
+            'backup_directory' => $backup_directory,
+            'credential'       => array(
+                'live'   => $live_directory . DIRECTORY_SEPARATOR . $prefix . '-credential.json',
+                'backup' => $backup_directory . DIRECTORY_SEPARATOR . $prefix . '-credential.json',
+            ),
+            'token'            => array(
+                'live'   => $live_directory . DIRECTORY_SEPARATOR . $prefix . '-token.json',
+                'backup' => $backup_directory . DIRECTORY_SEPARATOR . $prefix . '-token.json',
+            ),
+        );
+    }
+
+    /**
+     * Atomically write a sensitive OAuth file without exposing its contents or
+     * path in diagnostics.
+     */
+    private static function write_google_meet_auth_file(string $destination, string $contents): bool {
+        $temporary = $destination . '.tmp-' . uniqid('', true);
+        if (@file_put_contents($temporary, $contents, LOCK_EX) === false) {
+            return false;
+        }
+        @chmod($temporary, 0600);
+
+        if (!@rename($temporary, $destination)) {
+            // Windows cannot always replace an existing target atomically. This
+            // fallback keeps local development and cPanel/Linux behavior aligned.
+            if (!@unlink($destination) || !@rename($temporary, $destination)) {
+                @unlink($temporary);
+                return false;
+            }
+        }
+        @chmod($destination, 0600);
+        return true;
+    }
+
+    /**
+     * Copy a sensitive OAuth file without exposing its contents or path in logs.
+     */
+    private static function copy_google_meet_auth_file(string $source, string $destination): bool {
+        $contents = @file_get_contents($source);
+        return $contents !== false && self::write_google_meet_auth_file($destination, $contents);
+    }
+
+    /**
+     * Read the durable refresh token before Tutor Pro attempts a token refresh.
+     */
+    private static function get_google_meet_refresh_token(int $user_id): string {
+        $paths = self::get_google_meet_auth_file_paths($user_id);
+        if (empty($paths) || !is_readable($paths['token']['live'])) {
+            return '';
+        }
+        $token = json_decode((string) file_get_contents($paths['token']['live']), true);
+        return is_array($token) && !empty($token['refresh_token']) && is_string($token['refresh_token'])
+            ? $token['refresh_token']
+            : '';
+    }
+
+    /**
+     * Tutor Pro overwrites its token file with a refresh response that normally
+     * has no refresh_token. Put the still-valid durable token back before the
+     * replacement GoogleEvent client is constructed.
+     */
+    public static function preserve_google_meet_refresh_token(int $user_id, string $refresh_token): bool {
+        if ($refresh_token === '') {
+            return false;
+        }
+        $paths = self::get_google_meet_auth_file_paths($user_id);
+        if (empty($paths) || !is_readable($paths['token']['live'])) {
+            return false;
+        }
+        $token = json_decode((string) file_get_contents($paths['token']['live']), true);
+        if (!is_array($token) || !empty($token['refresh_token'])) {
+            return false;
+        }
+        $token['refresh_token'] = $refresh_token;
+        $encoded = json_encode($token);
+        return is_string($encoded) && self::write_google_meet_auth_file($paths['token']['live'], $encoded);
+    }
+
+    /**
+     * Update the protected copy after OAuth authorization or a token refresh.
+     * This method deliberately copies both files as a matching credential/token pair.
+     *
+     * @return true|WP_Error
+     */
+    public static function sync_google_meet_auth_backup(int $user_id = 0) {
+        $user_id = $user_id > 0 ? $user_id : get_current_user_id();
+        $paths = self::get_google_meet_auth_file_paths($user_id);
+        if (empty($paths)) {
+            return new WP_Error('meet_backup_unavailable', '無法準備 Google Meet 授權檔的受保護備份。');
+        }
+        foreach (array('credential', 'token') as $type) {
+            if (!is_readable($paths[$type]['live'])) {
+                return new WP_Error('meet_backup_source_missing', 'Google Meet 授權檔不完整，無法更新受保護備份。');
+            }
+        }
+        if (!is_dir($paths['backup_directory']) && !wp_mkdir_p($paths['backup_directory'])) {
+            return new WP_Error('meet_backup_write_failed', '無法建立 Google Meet 授權檔的受保護備份。');
+        }
+        @chmod($paths['backup_directory'], 0700);
+
+        foreach (array('credential', 'token') as $type) {
+            if (!self::copy_google_meet_auth_file($paths[$type]['live'], $paths[$type]['backup'])) {
+                return new WP_Error('meet_backup_write_failed', '無法更新 Google Meet 授權檔的受保護備份。');
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Restore only missing Tutor Pro files. Existing live files always win so
+     * a current authorization can never be replaced by an older backup.
+     *
+     * @return array<int,string>|WP_Error Restored file labels, or an error.
+     */
+    private static function restore_google_meet_auth_files(int $user_id) {
+        $paths = self::get_google_meet_auth_file_paths($user_id);
+        if (empty($paths)) {
+            return new WP_Error('meet_auth_restore_unavailable', '無法檢查 Google Meet 授權檔。');
+        }
+        if (!is_dir($paths['live_directory']) && !wp_mkdir_p($paths['live_directory'])) {
+            return new WP_Error('meet_auth_restore_failed', '無法建立 Tutor Google Meet 授權檔目錄。');
+        }
+
+        $restored = array();
+        foreach (array('credential' => 'credential', 'token' => 'token') as $type => $label) {
+            if (is_readable($paths[$type]['live'])) {
+                continue;
+            }
+            if (!is_readable($paths[$type]['backup'])) {
+                continue;
+            }
+            if (!self::copy_google_meet_auth_file($paths[$type]['backup'], $paths[$type]['live'])) {
+                return new WP_Error('meet_auth_restore_failed', '無法從受保護備份還原 Google Meet 授權檔。');
+            }
+            $restored[] = $label;
+        }
+        return $restored;
+    }
+
+    /**
+     * Tutor Pro stores each WP user's Google files in uploads/tutor-json.
+     * Check their presence before GoogleEvent hides the distinction behind a
+     * generic authorization failure.
+     */
+    private static function get_google_meet_auth_file_diagnostic(int $user_id): array {
+        $paths = self::get_google_meet_auth_file_paths($user_id);
+        if (empty($paths)) {
+            return array();
+        }
+
+        if (!file_exists($paths['credential']['live'])) {
+            return array(
+                'code'   => 'meet_credential_missing',
+                'reason' => 'Google Meet credential 檔遺失，且受保護備份中也找不到可還原的檔案',
+            );
+        }
+        if (!file_exists($paths['token']['live'])) {
+            return array(
+                'code'   => 'meet_token_missing',
+                'reason' => 'Google Meet token 檔遺失，且受保護備份中也找不到可還原的檔案',
+            );
+        }
+        return array();
+    }
+
+    private static function record_google_meet_diagnostic(string $operation, bool $valid, string $code, string $reason): void {
+        if (class_exists('TPMA_CR_Settings')) {
+            TPMA_CR_Settings::record_tutor_meet_diagnostic($operation, $valid, $code, $reason);
+        }
+    }
+
+    /**
+     * Run a live authorization check for the shared Meet account.
+     * The client factory records the safe result for the settings diagnostics.
+     */
+    public static function get_google_meet_authorization_status(): array {
+        $client = self::create_google_meet_client(0, '設定頁檢查');
+        if (is_wp_error($client)) {
+            $record = class_exists('TPMA_CR_Settings')
+                ? TPMA_CR_Settings::get_tutor_meet_status()
+                : array();
+            return array(
+                'valid'  => false,
+                'code'   => (string) ($record['code'] ?? $client->get_error_code()),
+                'reason' => (string) ($record['reason'] ?? 'Google Meet 共用授權目前無法使用。'),
+            );
+        }
+        return array(
+            'valid'  => true,
+            'code'   => 'authorized',
+            'reason' => 'Google Meet 共用授權可使用。',
+        );
+    }
+
+    private static function create_google_meet_client(int $meet_post_id = 0, string $operation = 'Google Meet 操作') {
         $client_class = '\\TutorPro\\GoogleMeet\\GoogleEvent\\GoogleEvent';
         if (!class_exists($client_class)) {
+            self::record_google_meet_diagnostic($operation, false, 'meet_unavailable', 'Tutor Pro Google Meet 模組未啟用');
             return new WP_Error('meet_unavailable', 'Tutor Pro Google Meet 模組未啟用', array('status' => 503));
         }
 
         $meet_user_id = self::get_google_meet_user_id($meet_post_id);
         if ($meet_user_id <= 0) {
+            self::record_google_meet_diagnostic($operation, false, 'meet_shared_authorization_required', '尚未完成 Google Meet 共用授權');
             return new WP_Error('meet_shared_authorization_required', self::get_google_meet_authorization_message(0, $meet_post_id), array('status' => 503));
         }
         if ($meet_user_id > 0 && (!get_user_by('id', $meet_user_id) || !user_can($meet_user_id, 'manage_options'))) {
+            self::record_google_meet_diagnostic($operation, false, 'meet_shared_authorization_invalid', '共用授權帳號不存在或已失去管理員權限');
             return new WP_Error('meet_shared_authorization_invalid', 'Google Meet 共用授權帳號不存在或已失去網站管理員權限。請任一網站管理員重新執行共用授權。', array('status' => 503));
         }
 
+        $restore_result = self::restore_google_meet_auth_files($meet_user_id);
+        if (is_wp_error($restore_result)) {
+            self::record_google_meet_diagnostic($operation, false, 'meet_auth_restore_failed', '無法從受保護備份還原 Google Meet 授權檔');
+            return new WP_Error('meet_auth_restore_failed', self::get_google_meet_authorization_message($meet_user_id, $meet_post_id), array('status' => 503));
+        }
+        if (!empty($restore_result)) {
+            self::record_google_meet_diagnostic($operation, true, 'meet_auth_restored', '已從受保護備份自動還原 Google Meet ' . implode(' 與 ', $restore_result) . ' 檔');
+        }
+
+        $file_diagnostic = self::get_google_meet_auth_file_diagnostic($meet_user_id);
+        if (!empty($file_diagnostic)) {
+            $diagnostic_code = (string) ($file_diagnostic['code'] ?? 'meet_auth_file_missing');
+            $diagnostic_reason = (string) ($file_diagnostic['reason'] ?? 'Google Meet 授權檔遺失');
+            self::record_google_meet_diagnostic($operation, false, $diagnostic_code, $diagnostic_reason);
+            return new WP_Error($diagnostic_code, self::get_google_meet_authorization_message($meet_user_id, $meet_post_id), array('status' => 503));
+        }
+
+        $refresh_token_before_client = self::get_google_meet_refresh_token($meet_user_id);
         $current_user_id = get_current_user_id();
         try {
             if ($meet_user_id > 0 && $meet_user_id !== $current_user_id) {
                 wp_set_current_user($meet_user_id);
             }
             $client = new $client_class();
+
+            if (self::preserve_google_meet_refresh_token($meet_user_id, $refresh_token_before_client)) {
+                self::record_google_meet_diagnostic($operation, true, 'meet_refresh_token_preserved', 'Tutor 刷新 Google token 時遺漏 refresh token，已自動保留');
+            }
 
             // Tutor Pro writes a refreshed token, but its GoogleEvent::save_token()
             // returns false afterwards. The first client therefore has no Calendar
@@ -178,6 +436,7 @@ class TPMA_Tutor_Bridge {
                 $client = new $client_class();
             }
         } catch (Throwable $e) {
+            self::record_google_meet_diagnostic($operation, false, 'meet_client_unavailable', '無法建立 Tutor Google Meet 授權用戶端');
             return new WP_Error('meet_client_unavailable', '無法建立 Tutor Google Meet 授權用戶端：' . $e->getMessage(), array('status' => 503));
         } finally {
             if ($meet_user_id > 0 && $meet_user_id !== $current_user_id) {
@@ -186,9 +445,23 @@ class TPMA_Tutor_Bridge {
         }
 
         if (!method_exists($client, 'is_app_permitted') || !$client->is_app_permitted() || empty($client->service)) {
-            return new WP_Error('meet_unauthorized', self::get_google_meet_authorization_message($meet_user_id, $meet_post_id), array('status' => 503));
+            $error_code = 'meet_unauthorized';
+            $reason = 'Google token 無法使用或無法刷新';
+            if (self::get_google_meet_refresh_token($meet_user_id) === '') {
+                $error_code = 'meet_refresh_token_missing';
+                $reason = 'Google token 缺少 refresh token，必須重新執行共用 Meet 授權';
+            }
+            self::record_google_meet_diagnostic($operation, false, $error_code, $reason);
+            return new WP_Error($error_code, self::get_google_meet_authorization_message($meet_user_id, $meet_post_id), array('status' => 503));
         }
 
+        $backup_result = self::sync_google_meet_auth_backup($meet_user_id);
+        if (is_wp_error($backup_result)) {
+            self::record_google_meet_diagnostic($operation, true, 'meet_backup_sync_failed', 'Google Meet 共用授權可使用，但受保護備份無法更新');
+            return $client;
+        }
+
+        self::record_google_meet_diagnostic($operation, true, 'authorized', 'Google Meet 共用授權可使用。');
         return $client;
     }
 
@@ -804,10 +1077,13 @@ class TPMA_Tutor_Bridge {
                 return new WP_Error('meet_course_mismatch', 'Meet 不屬於此課程或已連結其他場次', array('status' => 409));
             }
             $meet_url = (string) get_post_meta($meet_post_id, 'tutor-google-meet-link', true);
-            $client = self::create_google_meet_client($meet_post_id);
+            $client = self::create_google_meet_client($meet_post_id, '連結既有 Meet');
             if (is_wp_error($client)) return $client;
             $open_result = self::configure_meet_space_open($meet_url, $client);
-            if (is_wp_error($open_result)) return $open_result;
+            if (is_wp_error($open_result)) {
+                self::record_google_meet_diagnostic('連結既有 Meet', false, 'meet_link_access_failed', 'Google Meet 開放權限設定失敗');
+                return $open_result;
+            }
             self::persist_google_meet_user($meet_post_id);
             wp_update_post(array(
                 'ID' => $meet_post_id,
@@ -834,7 +1110,7 @@ class TPMA_Tutor_Bridge {
     private static function create_google_meet_for_session(array $session, int $topic_id) {
         if (!class_exists('\\Google_Service_Calendar_Event')) return new WP_Error('meet_unavailable', 'Tutor Pro Google Meet 模組未啟用', array('status' => 503));
         $meet_service_user = self::get_google_meet_user_id();
-        $client = self::create_google_meet_client();
+        $client = self::create_google_meet_client(0, '建立 Meet');
         if (is_wp_error($client)) return $client;
         $tz_name = wp_timezone_string() ?: 'Asia/Taipei';
         if ($tz_name !== 'UTC' && strpos($tz_name, '/') === false) $tz_name = 'Asia/Taipei';
@@ -853,6 +1129,7 @@ class TPMA_Tutor_Bridge {
         try {
             $created = $client->service->events->insert($client->current_calendar, $event, array('conferenceDataVersion' => 1, 'sendUpdates' => 'none'));
         } catch (Throwable $e) {
+            self::record_google_meet_diagnostic('建立 Meet', false, 'calendar_create_failed', 'Google Calendar 無法建立 Meet 活動');
             return new WP_Error('meet_create_failed', $e->getMessage(), array('status' => 502));
         }
         $ready_event = self::wait_for_calendar_conference($client, $created);
@@ -862,6 +1139,7 @@ class TPMA_Tutor_Bridge {
             } catch (Throwable $cleanup_error) {
                 error_log('TPMA Tutor Bridge: failed to clean pending Google event: ' . $cleanup_error->getMessage());
             }
+            self::record_google_meet_diagnostic('建立 Meet', false, 'conference_create_failed', 'Google Calendar 無法完成 Meet 會議空間建立');
             return $ready_event;
         }
         $created = $ready_event;
@@ -872,6 +1150,7 @@ class TPMA_Tutor_Bridge {
             } catch (Throwable $cleanup_error) {
                 error_log('TPMA Tutor Bridge: failed to clean Google event after Meet access error: ' . $cleanup_error->getMessage());
             }
+            self::record_google_meet_diagnostic('建立 Meet', false, 'meet_access_update_failed', 'Google Meet 開放權限設定失敗');
             return $open_result;
         }
         $details = array(
@@ -1145,12 +1424,13 @@ class TPMA_Tutor_Bridge {
             $details = json_decode((string) get_post_meta($meet_id, 'tutor-google-meet-event-details', true), true);
             $event_id = (string) ($details['id'] ?? '');
             if ($delete_google_calendar && $event_id !== '') {
-                $client = self::create_google_meet_client($meet_id);
+                $client = self::create_google_meet_client($meet_id, '刪除 Google Calendar 活動');
                 if (is_wp_error($client)) return $client;
                 try {
                     $client->service->events->delete($client->current_calendar, $event_id, array('sendUpdates' => 'none'));
                 } catch (Throwable $e) {
                     if ((int) $e->getCode() !== 404) {
+                        self::record_google_meet_diagnostic('刪除 Google Calendar 活動', false, 'calendar_delete_failed', 'Google Calendar 無法刪除 Meet 活動');
                         return new WP_Error('meet_delete_failed', 'Google 日曆事件移除失敗：' . $e->getMessage(), array('status' => 502));
                     }
                 }
@@ -1276,7 +1556,7 @@ class TPMA_Tutor_Bridge {
         $details = json_decode((string) get_post_meta($meet_id, 'tutor-google-meet-event-details', true), true);
         $event_id = (string) ($details['id'] ?? '');
         if ($event_id === '') return new WP_Error('meet_sync_unavailable', '無法取得 Meet Calendar 事件', array('status' => 503));
-        $client = self::create_google_meet_client($meet_id);
+        $client = self::create_google_meet_client($meet_id, '更新 Meet 時間');
         if (is_wp_error($client)) return $client;
         $tz_name = wp_timezone_string() ?: 'Asia/Taipei';
         if ($tz_name !== 'UTC' && strpos($tz_name, '/') === false) $tz_name = 'Asia/Taipei';
@@ -1291,6 +1571,7 @@ class TPMA_Tutor_Bridge {
             $event->setEnd(new \Google_Service_Calendar_EventDateTime(array('dateTime' => $end->format('c'), 'timeZone' => $tz_name)));
             $client->service->events->update($client->current_calendar, $event_id, $event, array('sendUpdates' => 'none'));
         } catch (Throwable $e) {
+            self::record_google_meet_diagnostic('更新 Meet 時間', false, 'calendar_update_failed', 'Google Calendar 無法更新 Meet 時間');
             return new WP_Error('meet_sync_failed', 'Meet 時間更新失敗：' . $e->getMessage(), array('status' => 502));
         }
         $details['start_datetime'] = $start->format('Y-m-d H:i:s');

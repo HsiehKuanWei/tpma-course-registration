@@ -39,6 +39,7 @@ $TPMA_ENUM = [
 
   // Woo 訂單狀態（付款狀態）
   'wcStatus' => [
+    'pending'        => '待付款 (WC)',
     'on-hold'        => '未付款 (WC)',  // Woo on-hold → 尚未付款
     'processing'     => '待核帳 (WC)',    // Woo processing → 待核帳
     'completed'      => '已付款 (WC)',
@@ -50,10 +51,12 @@ $TPMA_ENUM = [
 
   // 收據狀態
   'receiptStatus' => [
-    'pending' => '待開立',
-    'auto'    => '已開立待寄（自動）',
-    'manual'  => '已開立待寄（手動）',
-    'sent'    => '已寄出',
+    'pending'       => '待開',
+    'generated'     => '待寄',
+    'awaiting_scan' => '待掃描',
+    'scanned'       => '待寄',
+    'sent'          => '已寄',
+    'void'          => '作廢',
   ],
 
   // 收據方式
@@ -309,6 +312,10 @@ $TPMA_OPTIONS_FOR_JS = [
       <select id="tpma-bulk-action" class="tpma-bulk-control">
         <option value="">選擇操作</option>
         <option value="update_field">更新欄位</option>
+        <option value="receipt_generate">批次生成收據</option>
+        <option value="receipt_regenerate">批次重新生成收據</option>
+        <option value="receipt_print">批次列印收據</option>
+        <option value="receipt_merge">合併開立收據</option>
         <option value="send_mail">批次寄信</option>
         <option value="reset_course_mail_meta">重置課程寄件紀錄</option>
         <option value="export_excel">匯出 Excel</option>
@@ -321,8 +328,6 @@ $TPMA_OPTIONS_FOR_JS = [
         <option value="status">報名狀態</option>
         <option value="access_mode">課程型態</option>
         <option value="session_id">課程場次</option>
-        <option value="receipt_status">收據狀態</option>
-        <option value="receipt_type">收據方式</option>
         <option value="remit_paid_at">匯款日期</option>
       </select>
       <select id="tpma-bulk-value-status" class="tpma-bulk-value" data-bulk-target="status">
@@ -338,18 +343,6 @@ $TPMA_OPTIONS_FOR_JS = [
       </select>
       <select id="tpma-bulk-value-session-id" class="tpma-bulk-value" data-bulk-target="session_id">
         <option value="">請先選擇同一課程的學員</option>
-      </select>
-      <select id="tpma-bulk-value-receipt-status" class="tpma-bulk-value" data-bulk-target="receipt_status">
-        <option value="">選擇收據狀態</option>
-        <?php foreach ($TPMA_ENUM['receiptStatus'] as $v => $label): ?>
-          <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
-        <?php endforeach; ?>
-      </select>
-      <select id="tpma-bulk-value-receipt-type" class="tpma-bulk-value" data-bulk-target="receipt_type">
-        <option value="">選擇收據方式</option>
-        <?php foreach ($TPMA_ENUM['receiptType'] as $v => $label): ?>
-          <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
-        <?php endforeach; ?>
       </select>
       <input type="date" id="tpma-bulk-value-remit-paid-at" class="tpma-bulk-value" data-bulk-target="remit_paid_at">
       <select id="tpma-bulk-mail-event" class="tpma-bulk-target" data-bulk-for="send_mail">

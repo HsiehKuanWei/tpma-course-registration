@@ -1735,31 +1735,11 @@ class TPMA_CR_Mail_Dispatcher
         return array('eligible' => true, 'reason' => '');
     }
 
-    private static function order_has_postpay_registration(WC_Order $order): bool {
-        if ($order->get_meta('_tpma_post_course_payment', true) === 'yes') {
-            return true;
-        }
-        global $wpdb;
-        $order_id = (int)$order->get_id();
-        if ($order_id <= 0) {
-            return false;
-        }
-        return (bool)$wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(*) FROM " . TPMA_CR_DB::table('regs') . " WHERE woocommerce_order_id=%d AND status='postpay'",
-            $order_id
-        ));
-    }
-
     private static function receipt_eligibility(WC_Order $order): array {
-        $status = $order->get_status();
-        $postpay = self::order_has_postpay_registration($order);
-        if (in_array($status, array('completed', 'processing'), true) || ($status === 'on-hold' && $postpay)) {
-            return array('eligible' => true, 'reason' => '');
+        if (!class_exists('TPMA_CR_Receipt_Service')) {
+            return array('eligible' => false, 'reason' => 'receipt_service_unavailable', 'message' => '收據服務尚未載入。');
         }
-        if (in_array($status, array('cancelled', 'refunded', 'failed'), true)) {
-            return array('eligible' => false, 'reason' => 'order_closed');
-        }
-        return array('eligible' => false, 'reason' => $postpay ? 'postpay_status_not_allowed' : 'payment_required');
+        return TPMA_CR_Receipt_Service::receipt_send_order_eligibility($order);
     }
 
     /**
@@ -1983,16 +1963,50 @@ class TPMA_CR_Mail_Dispatcher
         if (!class_exists('TPMA_Mailer')) {
             return self::result_fail($result, $order_id, 'mailer_unavailable', 'TPMA Mailer 未載入');
         }
+        if (!class_exists('TPMA_CR_Receipt_Service')) {
+            return self::result_fail($result, $order_id, 'receipt_service_unavailable', '收據服務尚未載入');
+        }
         $eligible = self::receipt_eligibility($order);
         if (empty($eligible['eligible'])) {
-            return self::result_skip($result, $order_id, (string)$eligible['reason']);
+            return self::result_skip($result, $order_id, (string)$eligible['reason'], (string)($eligible['message'] ?? '此訂單目前不可寄發收據。'));
         }
-        if (empty($options['force']) && $order->get_meta('_tpma_receipt_notice_sent', true) === 'yes') {
+
+        $receipt = TPMA_CR_Receipt_Service::get_receipt_for_order($order_id);
+        if (!is_array($receipt)) {
+            return self::result_skip($result, $order_id, 'receipt_not_found', '此訂單尚未有可寄發的收據。');
+        }
+        $receipt_id = (int)($receipt['id'] ?? 0);
+        if ($receipt_id <= 0 || ($receipt['status'] ?? '') === TPMA_CR_Receipt_Service::STATUS_VOID) {
+            return self::result_skip($result, $order_id, 'receipt_not_sendable', '此收據已作廢或不可寄發。');
+        }
+        $receipt_eligibility = TPMA_CR_Receipt_Service::receipt_send_eligibility_for_receipt($receipt_id);
+        if (is_wp_error($receipt_eligibility)) {
+            return self::result_skip($result, $order_id, 'receipt_source_order_not_sendable', $receipt_eligibility->get_error_message());
+        }
+        if (($receipt['receipt_type'] ?? '') === 'paper' && ($receipt['status'] ?? '') !== TPMA_CR_Receipt_Service::STATUS_SCANNED) {
+            return self::result_skip($result, $order_id, 'receipt_scan_required', '紙本收據須先上傳加蓋實印的掃描檔，才可寄發。');
+        }
+        if (($receipt['receipt_type'] ?? '') !== 'paper' && !in_array(($receipt['status'] ?? ''), array(TPMA_CR_Receipt_Service::STATUS_GENERATED, TPMA_CR_Receipt_Service::STATUS_SENT), true)) {
+            return self::result_skip($result, $order_id, 'receipt_not_generated', '電子收據尚未生成有效 PDF，無法寄發。');
+        }
+        $attachment = TPMA_CR_Receipt_Service::get_effective_file($receipt_id);
+        if (is_wp_error($attachment)) {
+            return self::result_fail($result, $order_id, 'receipt_attachment_unavailable', '收據附件無法使用：' . $attachment->get_error_message());
+        }
+        if (empty($options['force']) && !empty($receipt['sent_at'])) {
             return self::result_skip($result, $order_id, 'already_sent');
+        }
+
+        $recipients = TPMA_CR_Receipt_Service::get_recipient_emails($receipt_id);
+        if (empty($recipients)) {
+            return self::result_skip($result, $order_id, 'receipt_no_recipients', '來源訂單沒有可用的承辦人 Email，未寄出收據。');
         }
 
         $draft = self::apply_default_templates(self::get_draft_from_order($order));
         $ctx = self::build_context($order, $draft);
+        $ctx['receipt_id'] = $receipt_id;
+        $ctx['receipt_serial'] = (string)($receipt['serial'] ?? '');
+        $ctx['receipt_status'] = (string)($receipt['status'] ?? '');
         $route_context = array(
             'event_key'   => 'receipt_notice',
             'order'       => $order,
@@ -2009,36 +2023,81 @@ class TPMA_CR_Mail_Dispatcher
             return self::result_skip($result, $order_id, 'no_route');
         }
 
-        $sent = false;
+        $template_key = '';
+        $has_template_without_order_contact = false;
         foreach ($routes as $route) {
-            $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
-            $sources = self::extract_route_sources(is_array($route) ? $route : array());
-            if (in_array('tpma_cr_learner', $sources, true)) {
-                $result = self::result_skip($result, $order_id, 'learner_route_ignored', '收據為訂單層級事件，已略過 tpma_cr_learner 收件來源');
-                $sources = array_values(array_diff($sources, array('tpma_cr_learner')));
+            $route = is_array($route) ? $route : array();
+            $candidate = self::resolve_existing_template_key(self::extract_route_template($route));
+            if ($candidate !== '') {
+                $sources = self::extract_route_sources($route);
+                if (!in_array('tpma_cr_order_contact', $sources, true)) {
+                    $has_template_without_order_contact = true;
+                    continue;
+                }
+                $template_key = $candidate;
+                break;
             }
-            if ($tpl === '' || empty($sources)) {
-                continue;
+        }
+        if ($template_key === '') {
+            if ($has_template_without_order_contact) {
+                return self::result_skip(
+                    $result,
+                    $order_id,
+                    'receipt_route_not_order_contact',
+                    '收據寄件模板必須設定為「只寄承辦」（tpma_cr_order_contact），目前沒有符合設定的可用模板，未寄出收據。'
+                );
             }
-            $recipients = self::get_route_recipients($sources, $route_context);
-            if (empty($recipients) && empty(self::get_copy_recipients_from_config($tpl))) {
-                continue;
-            }
-            if (self::send_route_with_copy_fallback($tpl, $recipients, $ctx)) {
-                $sent = true;
-            }
-            if (self::send_route_copies_if_primary_sent($tpl, $recipients, $ctx)) {
-                $sent = true;
+            return self::result_skip($result, $order_id, 'no_route', '收據寄件設定沒有可用的信件模板。');
+        }
+
+        $sent = false;
+        $all_deliveries_succeeded = true;
+        $had_delivery_attempt = false;
+
+        // A receipt is sent through only the first matching route. Multiple
+        // configured receipt routes used to create duplicate attachments for
+        // the same contact; configured copy recipients are handled below.
+        foreach ($recipients as $to) {
+            $had_delivery_attempt = true;
+            try {
+                $delivered = TPMA_Mailer::send_template($template_key, $to, array(
+                    'reg_context' => $ctx,
+                    'attachments' => array($attachment),
+                ));
+                if ($delivered) {
+                    $sent = true;
+                } else {
+                    $all_deliveries_succeeded = false;
+                }
+            } catch (Throwable $e) {
+                $all_deliveries_succeeded = false;
+                error_log('[TPMA CR Mail] receipt send failed receipt=' . $receipt_id . ': ' . $e->getMessage());
             }
         }
 
-        if (!$sent) {
+        if (!$had_delivery_attempt || !$sent || !$all_deliveries_succeeded) {
             self::notify_admin_unmatched_event('receipt_notice', array('reason' => 'routes_matched_but_no_mail_sent'), $order);
-            return self::result_skip($result, $order_id, 'no_recipients_or_send_failed');
+            return self::result_fail($result, $order_id, 'receipt_send_failed', '收據信件未能全部成功寄出，收據狀態未標記為已寄發。');
         }
 
-        $order->update_meta_data('_tpma_receipt_notice_sent', 'yes');
-        $order->save();
+        // Preserve the existing configured-copy behavior, with the same
+        // private attachment. Copy delivery does not alter the successful
+        // primary-recipient state, matching other TPMA Mailer events.
+        foreach (array_diff(self::get_copy_recipients_from_config($template_key), $recipients) as $copy_to) {
+            try {
+                TPMA_Mailer::send_template($template_key, $copy_to, array(
+                    'reg_context' => $ctx,
+                    'attachments' => array($attachment),
+                ));
+            } catch (Throwable $e) {
+                error_log('[TPMA CR Mail] receipt copy send failed receipt=' . $receipt_id . ': ' . $e->getMessage());
+            }
+        }
+
+        $marked = TPMA_CR_Receipt_Service::mark_sent($receipt_id);
+        if (is_wp_error($marked)) {
+            return self::result_fail($result, $order_id, 'receipt_mark_sent_failed', '信件已送出，但無法更新收據寄發狀態：' . $marked->get_error_message());
+        }
         $result['sent'] = 1;
         return $result;
     }

@@ -56,4 +56,107 @@ API.regeneratePortal = async function regeneratePortal(ctx, regId, regenerate){
   }, ctx.nonce);
 };
 
+API.getOrderReceipt = async function getOrderReceipt(ctx, orderId){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/order/' + (parseInt(orderId, 10) || 0), {
+    method: 'GET'
+  }, ctx.nonce);
+  return data && data.receipt ? data.receipt : null;
+};
+
+API.generateReceipt = async function generateReceipt(ctx, orderId){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/generate', {
+    method: 'POST', body: JSON.stringify({ order_id: parseInt(orderId, 10) || 0 })
+  }, ctx.nonce);
+  return data && data.receipt ? data.receipt : null;
+};
+
+API.mergeReceipts = async function mergeReceipts(ctx, orderIds){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/merge', {
+    method: 'POST', body: JSON.stringify({ order_ids: orderIds })
+  }, ctx.nonce);
+  return data && data.receipt ? data.receipt : null;
+};
+
+API.regenerateReceipt = async function regenerateReceipt(ctx, receiptId){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/' + (parseInt(receiptId, 10) || 0) + '/regenerate', {
+    method: 'POST', body: JSON.stringify({})
+  }, ctx.nonce);
+  return data && data.receipt ? data.receipt : null;
+};
+
+API.sendReceipt = async function sendReceipt(ctx, receiptId, force){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/' + (parseInt(receiptId, 10) || 0) + '/send', {
+    method: 'POST', body: JSON.stringify({ force: !!force })
+  }, ctx.nonce);
+  if (!data || !data.success || !data.receipt) {
+    throw new Error((data && data.message) ? data.message : '收據寄發失敗');
+  }
+  return data.receipt;
+};
+
+API.uploadReceiptScan = async function uploadReceiptScan(ctx, receiptId, file){
+  const form = new FormData();
+  form.append('scan', file);
+  const res = await fetch(ctx.apiBase + '/admin/receipts/' + (parseInt(receiptId, 10) || 0) + '/scan', {
+    method: 'POST', credentials: 'include', headers: { 'X-WP-Nonce': ctx.nonce }, body: form
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data || data.success === false) {
+    throw new Error((data && data.message) ? data.message : '上傳收據掃描檔失敗');
+  }
+  return data.receipt || null;
+};
+
+API.receiptBlob = async function receiptBlob(ctx, receiptId, download){
+  const suffix = download ? '?download=1' : '';
+  const res = await fetch(ctx.apiBase + '/admin/receipts/' + (parseInt(receiptId, 10) || 0) + '/file' + suffix, {
+    method: 'GET', credentials: 'include', headers: { 'X-WP-Nonce': ctx.nonce }
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data && data.message) ? data.message : ('無法讀取收據檔案（HTTP ' + res.status + '）'));
+  }
+  return await res.blob();
+};
+
+API.receiptBulk = async function receiptBulk(ctx, payload){
+  const res = await fetch(ctx.apiBase + '/admin/receipts/bulk', {
+    method: 'POST', credentials: 'include', headers: {
+      'X-WP-Nonce': ctx.nonce,
+      'Content-Type': 'application/json'
+    }, body: JSON.stringify(payload)
+  });
+  const type = res.headers.get('content-type') || '';
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data && data.message) ? data.message : '批次收據操作失敗');
+  }
+  if (type.indexOf('application/pdf') !== -1) return { blob: await res.blob() };
+  // 批次生成／重生成可能部分成功；保留伺服器回傳明細讓 UI 顯示失敗項目。
+  return await res.json();
+};
+
+API.preparePdfWindow = function preparePdfWindow(){
+  const popup = global.open('', '_blank');
+  if (!popup) {
+    throw new Error('瀏覽器封鎖了預覽視窗，請允許此網站開啟新視窗後再試。');
+  }
+  try { popup.opener = null; } catch (e) {}
+  return popup;
+};
+
+API.closePdfWindow = function closePdfWindow(popup){
+  try {
+    if (popup && !popup.closed) popup.close();
+  } catch (e) {}
+};
+
+API.openPdfBlob = function openPdfBlob(blob, popup){
+  if (!(blob instanceof Blob)) throw new Error('收據檔案格式錯誤');
+  if (!popup || popup.closed) throw new Error('預覽視窗已關閉，請重新操作。');
+  const url = URL.createObjectURL(blob);
+  popup.location.href = url;
+  global.setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+};
+
 })(window);

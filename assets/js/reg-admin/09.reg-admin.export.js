@@ -53,9 +53,29 @@ function getStudentExportRows(ctx){
 // ------------------------------------------------------------
 // Modal 開關
 // ------------------------------------------------------------
+EXP.exportModalPlaceholder = null;
+
+EXP.mountModal = function mountModal(overlay){
+  if (!overlay || overlay.parentNode === document.body) return;
+  const placeholder = document.createComment('tpma export modal placeholder');
+  overlay.parentNode.insertBefore(placeholder, overlay);
+  document.body.appendChild(overlay);
+  EXP.exportModalPlaceholder = placeholder;
+};
+
+EXP.restoreModal = function restoreModal(overlay){
+  const placeholder = EXP.exportModalPlaceholder;
+  if (overlay && placeholder && placeholder.parentNode) {
+    placeholder.parentNode.insertBefore(overlay, placeholder);
+    placeholder.remove();
+  }
+  EXP.exportModalPlaceholder = null;
+};
+
 EXP.openModal = function openModal(ctx, defaultType){
   const overlay = document.getElementById('tpma-export-modal');
   if (!overlay) return;
+  EXP.mountModal(overlay);
   defaultType = defaultType === 'statistics' ? 'statistics' : 'students';
 
   // 更新筆數顯示
@@ -70,11 +90,14 @@ EXP.openModal = function openModal(ctx, defaultType){
   if (statsOpts) statsOpts.style.display = defaultType === 'statistics' ? '' : 'none';
 
   overlay.classList.add('open');
+  document.body.classList.add('tpma-reg-modal-open');
 };
 
 EXP.closeModal = function closeModal(){
   const overlay = document.getElementById('tpma-export-modal');
   if (overlay) overlay.classList.remove('open');
+  document.body.classList.remove('tpma-reg-modal-open');
+  EXP.restoreModal(overlay);
 };
 
 // ------------------------------------------------------------

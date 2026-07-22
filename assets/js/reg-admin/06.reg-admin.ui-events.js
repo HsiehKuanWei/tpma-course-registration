@@ -119,8 +119,6 @@ UI.getBulkValueElement = function getBulkValueElement(target){
     status: 'tpma-bulk-value-status',
     access_mode: 'tpma-bulk-value-access-mode',
     session_id: 'tpma-bulk-value-session-id',
-    receipt_status: 'tpma-bulk-value-receipt-status',
-    receipt_type: 'tpma-bulk-value-receipt-type',
     remit_paid_at: 'tpma-bulk-value-remit-paid-at'
   };
   const id = map[target] || '';
@@ -206,6 +204,14 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
     hint = '只會清除課程開放類寄件紀錄，不會清除證書或收據紀錄。';
   } else if (action === 'update_field' && target === 'status') {
     hint = '課後付款會同步影響同一 Woo 訂單狀態。';
+  } else if (action === 'receipt_generate') {
+    hint = '依每筆唯一 Woo 訂單生成一張收據；已開立訂單會保留既有收據。';
+  } else if (action === 'receipt_regenerate') {
+    hint = '以目前訂單資料重新生成所選收據，保留原流水號並建立修訂歷程。';
+  } else if (action === 'receipt_print') {
+    hint = '只列印具有效 PDF 的收據，並在新視窗開啟多頁 A5 橫向 PDF。';
+  } else if (action === 'receipt_merge') {
+    hint = '所選資料會去重成 Woo 訂單；需至少兩筆訂單，且付款人、統編、收據方式及開立資格皆須相符。';
   } else if (action === 'update_field' && target === 'session_id') {
     hint = sessionContext && sessionContext.valid
       ? '僅可移動至同一課程的啟用場次；系統會重建課程入口與 Meet 連結。'
@@ -422,12 +428,84 @@ UI.applyBulk = async function applyBulk(ctx){
     payload.action = 'send_course_mail';
     payload.event_key = target;
     payload.force = false;
-    const scope = target === 'receipt_notice' ? ('將按 ' + orderIds.size + ' 筆 Woo 訂單去重寄送') : ('將檢查 ' + ids.length + ' 位學員');
+    const scope = target === 'receipt_notice' ? ('將依收據去重寄送；合併收據只會寄送一次') : ('將檢查 ' + ids.length + ' 位學員');
     if (!confirm(scope + '，伺服器會自動排除不符合資格或無有效路由者。確定寄送？')) return;
   } else if (action === 'reset_course_mail_meta') {
     payload.action = 'reset_course_mail_meta';
     payload.event_key = target;
     if (!confirm('確定重置所選資料對應訂單 / 場次的課程寄件紀錄？')) return;
+  } else if (['receipt_generate', 'receipt_regenerate', 'receipt_print', 'receipt_merge'].indexOf(action) !== -1) {
+    const rows = UI.getSelectedRows(ctx);
+    const orderIds = Array.from(new Set(rows.map(row => parseInt(row.woocommerce_order_id || '0', 10)).filter(Boolean)));
+    if (!orderIds.length) { alert('所選資料沒有可用的 WooCommerce 訂單。'); return; }
+    if (action === 'receipt_merge' && orderIds.length < 2) {
+      alert('合併開立至少需選取兩筆不同的 WooCommerce 訂單。');
+      return;
+    }
+    const labelMap = {
+      receipt_generate: '批次生成收據',
+      receipt_regenerate: '批次重新生成收據',
+      receipt_print: '批次列印收據',
+      receipt_merge: '合併開立收據'
+    };
+    if (!confirm('確定要' + labelMap[action] + '（共 ' + orderIds.length + ' 筆 Woo 訂單）？')) return;
+    const printWindow = action === 'receipt_print' ? R.prepareReceiptPreviewWindow() : null;
+    if (action === 'receipt_print' && !printWindow) return;
+    if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = true;
+    if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '處理中...';
+    try {
+      if (action === 'receipt_generate') {
+        const data = await API.receiptBulk(ctx, { action: 'generate', order_ids: orderIds });
+        UI.openBulkResultModal({
+          processed: data.processed || orderIds.length,
+          updated: (data.generated || []).length,
+          sent: 0,
+          skipped: [],
+          failed: (data.failed || []).map(item => ({ id: item.order_id || '-', reason: item.code || '', message: item.message || '' }))
+        }, '批次生成收據結果');
+      } else if (action === 'receipt_merge') {
+        const receipt = await API.mergeReceipts(ctx, orderIds);
+        UI.openBulkResultModal({
+          processed: orderIds.length,
+          updated: receipt ? 1 : 0,
+          sent: 0,
+          skipped: [],
+          failed: []
+        }, '合併開立完成：' + (receipt?.serial || '收據'));
+      } else {
+        const receipts = await Promise.all(orderIds.map(async orderId => ({
+          order_id: orderId,
+          receipt: await API.getOrderReceipt(ctx, orderId)
+        })));
+        const receiptIds = Array.from(new Set(receipts.map(item => item.receipt && item.receipt.id).filter(Boolean)));
+        const missing = receipts.filter(item => !item.receipt).map(item => ({ id: item.order_id, reason: 'receipt_missing', message: '尚未開立收據' }));
+        if (!receiptIds.length) throw new Error('所選訂單尚未有可處理的收據。');
+        if (action === 'receipt_print') {
+          const result = await API.receiptBulk(ctx, { action: 'print', receipt_ids: receiptIds });
+          API.openPdfBlob(result.blob, printWindow);
+          UI.openBulkResultModal({ processed: receiptIds.length, updated: 0, sent: 0, skipped: missing, failed: [] }, '批次列印已開啟');
+        } else {
+          const data = await API.receiptBulk(ctx, { action: 'regenerate', receipt_ids: receiptIds });
+          UI.openBulkResultModal({
+            processed: data.processed || receiptIds.length,
+            updated: (data.regenerated || []).length,
+            sent: 0,
+            skipped: missing,
+            failed: (data.failed || []).map(item => ({ id: item.receipt_id || '-', reason: item.code || '', message: item.message || '' }))
+          }, '批次重新生成結果');
+        }
+      }
+      if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+      await UI.refreshFromServer(ctx);
+    } catch (e) {
+      console.error(e);
+      API.closePdfWindow(printWindow);
+      if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+      UI.openBulkResultModal({ processed: 0, updated: 0, sent: 0, skipped: [], failed: [{ id: '-', reason: 'exception', message: e.message || '批次收據操作失敗' }] }, '批次收據操作失敗');
+    } finally {
+      UI.updateBulkToolbar(ctx);
+    }
+    return;
   } else {
     return;
   }

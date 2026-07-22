@@ -158,6 +158,33 @@ R.buildAccessModeSummaryHtml = function buildAccessModeSummaryHtml(rows){
   return badges.join(' ');
 };
 
+R.receiptTypeText = function receiptTypeText(type){
+  return String(type || '').toLowerCase() === 'paper' ? '紙本' : '電子';
+};
+
+R.receiptStatusText = function receiptStatusText(status){
+  const labels = {
+    pending: '待開',
+    generated: '待寄',
+    awaiting_scan: '待掃描',
+    scanned: '待寄',
+    sent: '已寄',
+    void: '作廢'
+  };
+  return labels[String(status || 'pending')] || '待開';
+};
+
+R.receiptCompactText = function receiptCompactText(type, status){
+  return R.receiptTypeText(type) + '／' + R.receiptStatusText(status);
+};
+
+R.receiptIsPreviewable = function receiptIsPreviewable(type, status){
+  const receiptType = String(type || '').toLowerCase();
+  const receiptStatus = String(status || 'pending');
+  if (receiptType === 'paper') return receiptStatus === 'scanned' || receiptStatus === 'sent';
+  return receiptStatus === 'generated' || receiptStatus === 'sent';
+};
+
 R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
   const icons = [];
   if (!row.session_id) {
@@ -206,17 +233,14 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
     icons.push('<span class="tpma-status-pill '+sClass+'" title="報名狀態: '+U.esc(sLabel)+'">'+U.esc(sLabel)+'</span>');
   }
 
-  const rCode = row.receipt_status || '';
-  let rLabel = '';
-  if (rCode === 'sent') rLabel = '已寄出';
-  else if (rCode === 'pending') rLabel = '待開立';
-  else if (rCode === 'auto' || rCode === 'manual') rLabel = '已開立待寄';
-  const hideG2 = (sCode === 'cancelled' || sCode === 'completed');
-  if (!hideG2 && rLabel) {
-    let g2Class='tpma-status-pill-g2-pending';
-    if (rCode === 'sent') g2Class='tpma-status-pill-g2-sent';
-    else if (rCode === 'auto' || rCode === 'manual') g2Class='tpma-status-pill-g2-opened';
-    icons.push('<span class="tpma-status-pill '+g2Class+'" title="收據狀態: '+U.esc(rLabel)+'">'+U.esc(rLabel)+'</span>');
+  const rCode = row.receipt_status || 'pending';
+  const rType = row.receipt_type || 'electronic';
+  const rText = R.receiptCompactText(rType, rCode);
+  const previewable = row.woocommerce_order_id && R.receiptIsPreviewable(rType, rCode);
+  if (previewable) {
+    icons.push('<a href="#" class="tpma-receipt-link tpma-receipt-status-link" data-receipt-preview-order="'+U.esc(row.woocommerce_order_id)+'" title="預覽收據">'+U.esc(rText)+'</a>');
+  } else {
+    icons.push('<span class="tpma-receipt-state" title="收據方式／狀態: '+U.esc(rText)+'">'+U.esc(rText)+'</span>');
   }
 
   const tLabel = (testState === 'done') ? '已測驗' : '待測驗';
@@ -271,6 +295,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
     }
     item.appendChild(valueDiv);
     grid.appendChild(item);
+    return item;
   };
 
   appendField('課程名稱', courseText);
@@ -296,7 +321,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField('場次關聯', row.session_id ? ('#' + row.session_id) : '待指定場次');
   appendField('報名狀態', L.statusLabel(row.status));
   appendField('付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
-  appendField('收據方式 / 狀態', [L.receiptTypeLabel(row.receipt_type), L.receiptStatusLabel(row.receipt_status)].filter(Boolean).join(' / '));
+  const receiptInfo = appendField('收據方式 / 狀態', R.receiptDisplayHtml(row, null), { html: true });
   appendField('測驗成績', row.test_score);
   appendField('證書編號', row.certificate_id);
   appendField('匯款金額（元）', U.formatAmount(row.remit_amount));
@@ -313,6 +338,7 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
 
   appendField('備註', row.note, { span: 'span-all' });
   detailContainer.appendChild(grid);
+  R.bindReceiptPreviewLink(ctx, receiptInfo.querySelector('[data-receipt-preview], [data-receipt-preview-order]'), row.woocommerce_order_id);
 
   const actionsDiv = document.createElement('div');
   actionsDiv.className = 'tpma-reg-detail-actions tpma-reg-detail-view-actions';
@@ -446,6 +472,125 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
   dateSel.addEventListener('change', updateAccessMode);
 };
 
+R.receiptDisplayHtml = function receiptDisplayHtml(row, receipt){
+  const type = receipt?.receipt_type || row.receipt_type || 'electronic';
+  const status = receipt?.status || row.receipt_status || 'pending';
+  const text = R.receiptCompactText(type, status);
+  if (receipt && receipt.id && R.receiptIsPreviewable(type, status)) {
+    return '<a href="#" class="tpma-receipt-link" data-receipt-preview="'+U.esc(receipt.id)+'" title="預覽收據">'+U.esc(text)+'</a>';
+  }
+  if (!receipt && row.woocommerce_order_id && R.receiptIsPreviewable(type, status)) {
+    return '<a href="#" class="tpma-receipt-link" data-receipt-preview-order="'+U.esc(row.woocommerce_order_id)+'" title="預覽收據">'+U.esc(text)+'</a>';
+  }
+  return '<span class="tpma-receipt-state">'+U.esc(text)+'</span>';
+};
+
+R.bindReceiptPreviewLink = function bindReceiptPreviewLink(ctx, link, fallbackOrderId){
+  if (!link) return;
+  link.addEventListener('click', async function(event){
+    event.preventDefault();
+    event.stopPropagation();
+    const previewWindow = R.prepareReceiptPreviewWindow();
+    if (!previewWindow) return;
+    try {
+      const receiptId = parseInt(link.getAttribute('data-receipt-preview') || '0', 10) || 0;
+      const orderId = parseInt(link.getAttribute('data-receipt-preview-order') || fallbackOrderId || '0', 10) || 0;
+      const receipt = receiptId ? { id: receiptId } : await R.loadReceiptForOrder(ctx, orderId);
+      if (!receipt || !receipt.id) throw new Error('此訂單尚未有可預覽的收據。');
+      await R.openReceiptPreview(ctx, receipt.id, previewWindow);
+    } catch (error) {
+      API.closePdfWindow(previewWindow);
+      global.alert(error.message || '無法預覽收據');
+    }
+  });
+};
+
+R.prepareReceiptPreviewWindow = function prepareReceiptPreviewWindow(){
+  try {
+    return API.preparePdfWindow();
+  } catch (e) {
+    global.alert(e.message || '無法開啟收據預覽視窗');
+    return null;
+  }
+};
+
+R.openReceiptPreview = async function openReceiptPreview(ctx, receiptId, popup){
+  const previewWindow = popup || R.prepareReceiptPreviewWindow();
+  if (!previewWindow) return;
+  try {
+    const blob = await API.receiptBlob(ctx, receiptId, false);
+    API.openPdfBlob(blob, previewWindow);
+  } catch (e) {
+    API.closePdfWindow(previewWindow);
+    global.alert(e.message || '無法預覽收據');
+  }
+};
+
+R.loadReceiptForOrder = async function loadReceiptForOrder(ctx, orderId){
+  if (!orderId) return null;
+  return await API.getOrderReceipt(ctx, orderId);
+};
+
+R.closeReceiptActionMenus = function closeReceiptActionMenus(except){
+  document.querySelectorAll('.tpma-receipt-action-menu.is-open').forEach(function(menu){
+    if (menu === except) return;
+    menu.classList.remove('is-open');
+    const toggle = menu.querySelector('.tpma-receipt-menu-toggle');
+    const panel = menu.querySelector('.tpma-receipt-menu-panel');
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    if (panel) panel.hidden = true;
+  });
+};
+
+R.bindReceiptActionMenu = function bindReceiptActionMenu(menu, handlers){
+  if (!menu) return;
+  const toggle = menu.querySelector('.tpma-receipt-menu-toggle');
+  const panel = menu.querySelector('.tpma-receipt-menu-panel');
+  const items = Array.from(menu.querySelectorAll('[data-receipt-action]'));
+  const setOpen = function(open){
+    R.closeReceiptActionMenus(open ? menu : null);
+    menu.classList.toggle('is-open', open);
+    if (toggle) toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (panel) panel.hidden = !open;
+  };
+  if (toggle) {
+    toggle.addEventListener('click', function(event){
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(!menu.classList.contains('is-open'));
+    });
+    toggle.addEventListener('keydown', function(event){
+      if (event.key === 'Escape') {
+        setOpen(false);
+      } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setOpen(true);
+        if (items[0]) items[0].focus();
+      }
+    });
+  }
+  items.forEach(function(item){
+    item.addEventListener('click', async function(){
+      const handler = handlers[item.getAttribute('data-receipt-action') || ''];
+      setOpen(false);
+      if (typeof handler === 'function') await handler();
+    });
+    item.addEventListener('keydown', function(event){
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOpen(false);
+        if (toggle) toggle.focus();
+      }
+    });
+  });
+  if (!R._receiptActionMenuOutsideBound) {
+    R._receiptActionMenuOutsideBound = true;
+    document.addEventListener('click', function(event){
+      if (!event.target.closest('.tpma-receipt-action-menu')) R.closeReceiptActionMenus();
+    });
+  }
+};
+
 R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   container.innerHTML = '';
 
@@ -556,10 +701,16 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     { value: '', label: '請選擇' },
     ...(O.receiptType || [])
   ]);
-  appendEditField(receiptSection, '收據狀態', 'receipt_status', 'select', row.receipt_status, [
-    { value: '', label: '請選擇' },
-    ...(O.receiptStatus || [])
-  ]);
+  const receiptTypeSelect = receiptSection.querySelector('[data-field="receipt_type"]');
+  if (receiptTypeSelect && row.woocommerce_order_id) {
+    receiptTypeSelect.disabled = true;
+    receiptTypeSelect.dataset.receiptLoading = '1';
+    receiptTypeSelect.title = '正在讀取收據狀態。';
+  }
+  const receiptManagedField = document.createElement('div');
+  receiptManagedField.className = 'tpma-detail-field';
+  receiptManagedField.innerHTML = '<label>收據方式 / 狀態</label><div class="tpma-receipt-admin-state">讀取收據中…</div>';
+  receiptSection.appendChild(receiptManagedField);
   
   appendEditField(receiptSection, '匯款金額（元）', 'remit_amount', 'text', U.formatAmount(row.remit_amount));
   appendEditField(receiptSection, '匯款帳號', 'remit_account', 'text', row.remit_account);
@@ -586,12 +737,17 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
 
   // 操作按鈕
   const actionsDiv = document.createElement('div');
-  actionsDiv.className = 'tpma-reg-detail-actions';
+  actionsDiv.className = 'tpma-reg-detail-actions tpma-reg-edit-actions';
   actionsDiv.innerHTML = `
-    <button class="tpma-btn" id="tpma-btn-save-detail-${row.id}">儲存變更</button>
-    ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-${row.id}">複製共用入口</button>` : ''}
-    ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-reset-${row.id}">重置入口</button>` : ''}
-    <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit-${row.id}">取消編輯</button>
+    <div class="tpma-reg-edit-actions-primary">
+      <button class="tpma-btn" id="tpma-btn-save-detail-${row.id}">儲存變更</button>
+      ${row.woocommerce_order_id ? `<span class="tpma-receipt-action-slot" aria-live="polite">讀取收據中…</span>` : ''}
+    </div>
+    <div class="tpma-reg-edit-actions-secondary">
+      ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-${row.id}">複製共用入口</button>` : ''}
+      ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-reset-${row.id}">重置入口</button>` : ''}
+      <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit-${row.id}">取消編輯</button>
+    </div>
   `;
   detailContainer.appendChild(actionsDiv);
 
@@ -673,28 +829,157 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
       global.alert('新的訂單共用入口已複製。');
     } catch (e) { global.alert(e.message || '無法重置共用入口'); }
   });
+
+  const receiptActionSlot = actionsDiv.querySelector('.tpma-receipt-action-slot');
+  let currentReceipt = null;
+
+  const refreshReceipt = async function(message){
+    if (message) global.alert(message);
+    await ctx.actions.refresh();
+  };
+  const withReceipt = async function(){
+    if (currentReceipt) return currentReceipt;
+    if (!row.woocommerce_order_id) throw new Error('此報名沒有對應的 WooCommerce 訂單。');
+    currentReceipt = await R.loadReceiptForOrder(ctx, row.woocommerce_order_id);
+    return currentReceipt;
+  };
+  const actionGenerate = async function(){
+    try {
+      if (await withReceipt()) throw new Error('此訂單已有收據，請改用重新生成。');
+      const receipt = await API.generateReceipt(ctx, row.woocommerce_order_id);
+      syncReceiptControls(receipt);
+      await refreshReceipt('已生成收據。');
+    } catch (error) { global.alert(error.message || '無法生成收據'); }
+  };
+  const actionRegenerate = async function(){
+    try {
+      const receipt = await withReceipt();
+      if (!receipt || receipt.status === 'void') throw new Error('此訂單尚未有可重新生成的有效收據。');
+      if (!global.confirm('會以目前訂單資料重建收據，並保留原流水號。確定繼續？')) return;
+      const updated = await API.regenerateReceipt(ctx, receipt.id);
+      syncReceiptControls(updated);
+      await refreshReceipt('收據已重新生成。');
+    } catch (error) { global.alert(error.message || '無法重新生成收據'); }
+  };
+  const actionUploadScan = async function(){
+    try {
+      const receipt = await withReceipt();
+      if (!receipt || receipt.receipt_type !== 'paper' || receipt.status !== 'awaiting_scan') {
+        throw new Error('目前沒有待上傳的紙本收據掃描檔。');
+      }
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png';
+      input.addEventListener('change', async function(){
+        const file = input.files && input.files[0];
+        if (!file) return;
+        try {
+          const updated = await API.uploadReceiptScan(ctx, receipt.id, file);
+          syncReceiptControls(updated);
+          await refreshReceipt('紙本收據掃描檔已上傳。');
+        } catch (error) { global.alert(error.message || '上傳掃描檔失敗'); }
+      });
+      input.click();
+    } catch (error) { global.alert(error.message || '無法上傳掃描檔'); }
+  };
+  const actionSend = async function(){
+    try {
+      const receipt = await withReceipt();
+      if (!receipt || !R.receiptIsPreviewable(receipt.receipt_type, receipt.status) || receipt.status === 'sent') {
+        throw new Error('此收據目前不可寄發。');
+      }
+      if (!global.confirm('將依 receipt_notice 模板寄給此收據所有來源訂單的承辦人，並附上目前有效收據。確定寄發？')) return;
+      const updated = await API.sendReceipt(ctx, receipt.id, false);
+      syncReceiptControls(updated);
+      await refreshReceipt('收據已寄發給來源訂單承辦人。');
+    } catch (error) { global.alert(error.message || '收據寄發失敗'); }
+  };
+  const renderReceiptMenu = function(receipt){
+    if (!receiptActionSlot) return;
+    receiptActionSlot.innerHTML = '';
+    if (receipt && receipt.status === 'void') return;
+    const actions = [];
+    if (!receipt) actions.push({ key: 'generate', label: '生成收據' });
+    else {
+      actions.push({ key: 'regenerate', label: '重新生成收據' });
+      if (receipt.receipt_type === 'paper' && receipt.status === 'awaiting_scan') {
+        actions.push({ key: 'upload_scan', label: '上傳紙本掃描檔' });
+      }
+      if (R.receiptIsPreviewable(receipt.receipt_type, receipt.status) && receipt.status !== 'sent') {
+        actions.push({ key: 'send', label: '寄發收據' });
+      }
+    }
+    if (!actions.length) return;
+    const menu = document.createElement('div');
+    menu.className = 'tpma-receipt-action-menu';
+    const menuId = 'tpma-receipt-menu-' + row.id;
+    menu.innerHTML = '<button type="button" class="tpma-btn tpma-btn-secondary tpma-receipt-menu-toggle" aria-expanded="false" aria-controls="'+U.esc(menuId)+'">收據操作 <span aria-hidden="true">▾</span></button>' +
+      '<div id="'+U.esc(menuId)+'" class="tpma-receipt-menu-panel" role="group" aria-label="收據操作" hidden>' +
+      actions.map(function(action){ return '<button type="button" class="tpma-receipt-menu-item" data-receipt-action="'+U.esc(action.key)+'">'+U.esc(action.label)+'</button>'; }).join('') +
+      '</div>';
+    receiptActionSlot.appendChild(menu);
+    R.bindReceiptActionMenu(menu, { generate: actionGenerate, regenerate: actionRegenerate, upload_scan: actionUploadScan, send: actionSend });
+  };
+  const syncReceiptControls = function(receipt){
+    currentReceipt = receipt || null;
+    const statusEl = receiptManagedField.querySelector('.tpma-receipt-admin-state');
+    if (statusEl) {
+      statusEl.innerHTML = R.receiptDisplayHtml(row, receipt);
+      R.bindReceiptPreviewLink(ctx, statusEl.querySelector('[data-receipt-preview]'), row.woocommerce_order_id);
+    }
+    if (receiptTypeSelect) {
+      const locked = !!(receipt && receipt.status !== 'void');
+      receiptTypeSelect.disabled = locked;
+      delete receiptTypeSelect.dataset.receiptLoading;
+      receiptTypeSelect.title = locked ? '已開立收據的方式已鎖定。' : '';
+    }
+    renderReceiptMenu(receipt);
+  };
+  if (!row.woocommerce_order_id) {
+    syncReceiptControls(null);
+  } else {
+    const isCurrentEdit = function(){
+      return detailContainer.isConnected && container.contains(detailContainer);
+    };
+    R.loadReceiptForOrder(ctx, row.woocommerce_order_id).then(function(receipt){
+      if (!isCurrentEdit()) return;
+      syncReceiptControls(receipt);
+    }).catch(function(error){
+      if (!isCurrentEdit()) return;
+      const statusEl = receiptManagedField.querySelector('.tpma-receipt-admin-state');
+      if (statusEl) statusEl.textContent = '無法讀取收據：' + (error.message || '請稍後再試');
+      if (receiptActionSlot) receiptActionSlot.textContent = '';
+    });
+  }
 };
 
 R.saveDetail = async function saveDetail(ctx, container, id, sourceRow = {}){
   const inputs = container.querySelectorAll('[data-field]');
   const payload = { id: parseInt(id,10) || 0 };
+  const ignoredFields = new Set(['woocommerce_order_id', 'created_at', 'receipt_status']);
+  const normaliseFieldValue = function(field, value){
+    let normalized = value == null ? '' : String(value).trim();
+    if (field === 'course_id' && normalized === ADJUSTING_VALUE) normalized = '0';
+    if (field === 'class_date' && normalized === ADJUSTING_VALUE) normalized = '';
+    if (field === 'remit_amount' && normalized !== '') normalized = String(parseInt(normalized.replace(/,/g,''), 10) || 0);
+    return normalized;
+  };
   inputs.forEach(el=>{
     const f = el.dataset.field;
-    if (!f) return;
-    let v = el.value;
-    if (v == null) v = '';
-    v = v.trim();
-    if (f === 'course_id' && v === ADJUSTING_VALUE) v = '0';
-    if (f === 'class_date' && v === ADJUSTING_VALUE) v = '';
-    if (f === 'remit_amount' && v !== '') v = String(parseInt(v.replace(/,/g,''), 10) || 0);
-    payload[f] = v;
+    if (!f || ignoredFields.has(f)) return;
+    if (f === 'receipt_type' && (el.disabled || el.dataset.receiptLoading === '1')) return;
+    const v = normaliseFieldValue(f, el.value);
+    const previous = normaliseFieldValue(f, sourceRow[f]);
+    if (v !== previous) payload[f] = v;
   });
   const sessionSelect = container.querySelector('[data-field="class_date"]');
   if (sessionSelect && sessionSelect.selectedOptions && sessionSelect.selectedOptions[0]) {
-    payload.session_id = parseInt(sessionSelect.selectedOptions[0].dataset.sessionId || '0', 10) || 0;
+    const sessionId = parseInt(sessionSelect.selectedOptions[0].dataset.sessionId || '0', 10) || 0;
+    if (String(sessionId || '') !== String(sourceRow.session_id || '')) payload.session_id = sessionId;
   }
   if (!payload.id) { alert('找不到這筆資料的 ID'); return; }
-  if (String(payload.course_id || '') !== String(sourceRow.course_id || '')) {
+  if (Object.keys(payload).length === 1) { alert('沒有可儲存的變更。'); return; }
+  if (Object.prototype.hasOwnProperty.call(payload, 'course_id')) {
     const courseSelect = container.querySelector('[data-field="course_id"]');
     const courseName = courseSelect?.selectedOptions?.[0]?.textContent?.trim() || '目標課程';
     const sessionName = sessionSelect?.selectedOptions?.[0]?.textContent?.trim() || '目標場次';
@@ -811,6 +1096,7 @@ R.createFlatRowCard = function createFlatRowCard(ctx, row, seq){
   cStatus.className = 'tpma-reg-cell';
   cStatus.setAttribute('data-label', '狀態');
   cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
+  R.bindReceiptPreviewLink(ctx, cStatus.querySelector('[data-receipt-preview-order]'), row.woocommerce_order_id);
   summary.appendChild(cStatus);
 
   const cAct = document.createElement('div');
@@ -876,6 +1162,7 @@ R.createNestedStudentRow = function createNestedStudentRow(ctx, row, seq){
   cStatus.className = 'tpma-reg-cell';
   cStatus.setAttribute('data-label', '狀態');
   cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
+  R.bindReceiptPreviewLink(ctx, cStatus.querySelector('[data-receipt-preview-order]'), row.woocommerce_order_id);
   summary.appendChild(cStatus);
 
   const cAct = document.createElement('div');

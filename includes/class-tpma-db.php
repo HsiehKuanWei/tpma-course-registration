@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
-    const SCHEMA_VERSION = '1.8.0';
+    const SCHEMA_VERSION = '1.9.1';
 
     private static $table_columns_cache = array();
 
@@ -51,6 +51,15 @@ class TPMA_CR_DB
 
             case 'portal_audit':
                 return $wpdb->prefix . 'tpma_portal_audit';
+
+            case 'receipts':
+                return $wpdb->prefix . 'tpma_receipts';
+
+            case 'receipt_orders':
+                return $wpdb->prefix . 'tpma_receipt_orders';
+
+            case 'receipt_revisions':
+                return $wpdb->prefix . 'tpma_receipt_revisions';
 
         }
 
@@ -275,6 +284,56 @@ class TPMA_CR_DB
             ip_hash VARCHAR(64) NOT NULL,
             created_at DATETIME NOT NULL,
             PRIMARY KEY (id), KEY order_created_idx (order_id, created_at)
+        ) {$charset_collate};");
+
+        // ── receipts: immutable serials, current snapshot, and source-order links ──
+        $receipts_table = self::table('receipts');
+        $receipt_orders_table = self::table('receipt_orders');
+        $receipt_revisions_table = self::table('receipt_revisions');
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$receipts_table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            serial VARCHAR(24) NOT NULL,
+            receipt_type VARCHAR(20) NOT NULL DEFAULT 'electronic',
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            revision INT UNSIGNED NOT NULL DEFAULT 0,
+            snapshot LONGTEXT NOT NULL,
+            generated_file VARCHAR(255) DEFAULT NULL,
+            scanned_file VARCHAR(255) DEFAULT NULL,
+            generated_at DATETIME DEFAULT NULL,
+            scanned_at DATETIME DEFAULT NULL,
+            sent_at DATETIME DEFAULT NULL,
+            voided_at DATETIME DEFAULT NULL,
+            created_by BIGINT UNSIGNED DEFAULT NULL,
+            updated_by BIGINT UNSIGNED DEFAULT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY serial_unique (serial),
+            KEY status_idx (status),
+            KEY receipt_type_idx (receipt_type)
+        ) {$charset_collate};");
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$receipt_orders_table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            receipt_id BIGINT UNSIGNED NOT NULL,
+            order_id BIGINT UNSIGNED NOT NULL,
+            active_slot TINYINT UNSIGNED DEFAULT 1,
+            created_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY order_active_receipt_unique (order_id, active_slot),
+            UNIQUE KEY receipt_order_unique (receipt_id, order_id),
+            KEY receipt_idx (receipt_id)
+        ) {$charset_collate};");
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$receipt_revisions_table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            receipt_id BIGINT UNSIGNED NOT NULL,
+            revision INT UNSIGNED NOT NULL,
+            snapshot LONGTEXT NOT NULL,
+            generated_file VARCHAR(255) DEFAULT NULL,
+            created_by BIGINT UNSIGNED DEFAULT NULL,
+            created_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY receipt_revision_unique (receipt_id, revision),
+            KEY receipt_idx (receipt_id)
         ) {$charset_collate};");
         if (!(bool)get_option('tpma_cr_portal_tokens_migrated_v1', false)) {
             $wpdb->query($wpdb->prepare("UPDATE {$tokens_table} SET expires_at=%s WHERE expires_at>%s", current_time('mysql'), current_time('mysql')));

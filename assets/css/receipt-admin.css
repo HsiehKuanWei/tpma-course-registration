@@ -1,0 +1,30 @@
+.tpma-receipt-admin { max-width: 1440px; }
+.tpma-receipt-filters,
+.tpma-receipt-bulk { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:14px 0; }
+.tpma-receipt-filters input { min-width:300px; }
+.tpma-receipt-filters input,
+.tpma-receipt-filters select,
+.tpma-receipt-bulk select { min-height:32px; }
+.tpma-receipt-bulk { padding:10px 12px; background:#f6f7f7; border:1px solid #dcdcde; }
+#tpma-receipt-selection-count { color:#50575e; margin-left:4px; }
+.tpma-receipt-table { margin-top:14px; }
+.tpma-receipt-table td,
+.tpma-receipt-table th { vertical-align:top; padding-top:11px; padding-bottom:11px; }
+.tpma-receipt-table .column-amount { text-align:right; width:110px; }
+.tpma-receipt-table td.amount { text-align:right; white-space:nowrap; }
+.tpma-receipt-lines { margin:0; padding:0; list-style:none; }
+.tpma-receipt-lines li + li { margin-top:5px; }
+.tpma-receipt-orders a { text-decoration:none; }
+.tpma-receipt-orders a:hover { text-decoration:underline; }
+.tpma-receipt-pending { color:#646970; font-weight:600; }
+.tpma-receipt-status { white-space:nowrap; }
+.tpma-receipt-status .separator { color:#8c8f94; padding:0 2px; }
+.tpma-receipt-heading small { color:#646970; }
+.tpma-receipt-pagination { margin-top:12px; }
+.tpma-receipt-pagination button { margin-left:4px; }
+.tpma-receipt-pagination button[disabled] { opacity:.5; }
+@media (max-width: 782px) {
+  .tpma-receipt-filters input { min-width:100%; flex-basis:100%; }
+  .tpma-receipt-table { min-width:780px; }
+  .tpma-receipt-table-wrap { overflow-x:auto; }
+}
