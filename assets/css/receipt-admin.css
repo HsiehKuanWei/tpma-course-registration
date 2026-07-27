@@ -1,30 +1,134 @@
-.tpma-receipt-admin { max-width: 1440px; }
+.tpma-receipt-admin { max-width:1440px; color:#172033; }
 .tpma-receipt-filters,
 .tpma-receipt-bulk { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:14px 0; }
 .tpma-receipt-filters input { min-width:300px; }
 .tpma-receipt-filters input,
 .tpma-receipt-filters select,
-.tpma-receipt-bulk select { min-height:32px; }
-.tpma-receipt-bulk { padding:10px 12px; background:#f6f7f7; border:1px solid #dcdcde; }
-#tpma-receipt-selection-count { color:#50575e; margin-left:4px; }
-.tpma-receipt-table { margin-top:14px; }
+.tpma-receipt-bulk select { min-height:36px; border-radius:7px; }
+.tpma-receipt-bulk { min-height:56px; margin-top:16px; padding:9px 12px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; box-shadow:0 1px 2px rgba(15,23,42,.03); }
+.tpma-receipt-bulk label { padding:5px 9px; border-radius:999px; background:#eff6ff; color:#1d4ed8; font-size:12px; font-weight:700; }
+.tpma-receipt-bulk .button-primary { min-height:36px; padding:0 14px; border-radius:7px; font-weight:700; }
+.tpma-receipt-mobile-sort { display:none; }
+.tpma-receipt-mobile-filters { display:none; }
+#tpma-receipt-selection-count { margin-left:auto; padding:5px 10px; border-radius:999px; background:#f1f5f9; color:#475569; font-size:12px; font-weight:600; }
+.tpma-receipt-table-wrap { overflow:hidden; border:1px solid #e2e8f0; border-radius:10px; background:#fff; box-shadow:0 1px 2px rgba(15,23,42,.03); }
+.tpma-receipt-table { margin-top:0; border:0; box-shadow:none; }
 .tpma-receipt-table td,
-.tpma-receipt-table th { vertical-align:top; padding-top:11px; padding-bottom:11px; }
+.tpma-receipt-table th { border-color:#e2e8f0; }
+.tpma-receipt-table td { padding:14px 16px; border-color:#edf2f7; vertical-align:middle; font-size:15px; line-height:1.55; }
+.tpma-receipt-table thead { background:#f8fafc; }
+.tpma-receipt-table thead th { height:54px; padding:0 16px; color:#475569; font-size:14px; font-weight:700; letter-spacing:.01em; vertical-align:middle; }
+.tpma-receipt-table tbody tr:hover td { background:#fbfdff; }
+.tpma-receipt-header-controls { position:relative; display:flex; align-items:center; gap:4px; min-width:0; }
+.tpma-receipt-sort-button { display:inline-flex; align-items:center; gap:5px; min-width:0; padding:0; border:0; background:transparent; color:#475569; font:inherit; font-weight:700; text-align:inherit; cursor:pointer; }
+.tpma-receipt-sort-button:hover { color:#1d4ed8; }
+.tpma-receipt-sort-indicator { width:12px; height:16px; overflow:hidden; color:transparent; font-size:0; white-space:nowrap; }
+.tpma-receipt-sort-indicator::before { content:'↑'; color:#94a3b8; font-size:15px; font-weight:700; line-height:16px; }
+.tpma-receipt-sort-button[aria-pressed="true"][data-sort-order="asc"] .tpma-receipt-sort-indicator::before { content:'↑'; color:#2563eb; }
+.tpma-receipt-sort-button[aria-pressed="true"][data-sort-order="desc"] .tpma-receipt-sort-indicator::before { content:'↓'; color:#2563eb; }
 .tpma-receipt-table .column-amount { text-align:right; width:110px; }
-.tpma-receipt-table td.amount { text-align:right; white-space:nowrap; }
+.tpma-receipt-table .column-amount .tpma-receipt-header-controls { justify-content:flex-end; }
+.tpma-receipt-table .column-amount .tpma-receipt-sort-button { justify-content:flex-end; }
+.tpma-receipt-filter-toggle { display:inline-flex; align-items:center; justify-content:center; flex:0 0 auto; width:24px; height:24px; padding:0; border:0; border-radius:6px; background:transparent; color:#64748b; cursor:pointer; }
+.tpma-receipt-filter-toggle svg { width:16px; height:16px; }
+.tpma-receipt-filter-toggle:hover,
+.tpma-receipt-filter-toggle.is-active { background:#e2e8f0; color:#1d4ed8; }
+.tpma-receipt-filter-toggle.is-active::after { content:""; position:absolute; top:3px; right:3px; width:5px; height:5px; border-radius:50%; background:#d63638; }
+.tpma-receipt-filter-menu { position:absolute; z-index:20; top:calc(100% + 7px); left:0; box-sizing:border-box; width:280px; padding:12px; border:1px solid #8c8f94; border-radius:4px; background:#fff; box-shadow:0 4px 12px rgba(0,0,0,.18); text-align:left; }
+.tpma-receipt-filter-menu-end { right:0; left:auto; }
+.tpma-receipt-filter-menu label { display:block; margin:0 0 4px; color:#1d2327; font-size:12px; font-weight:600; }
+.tpma-receipt-filter-menu input,
+.tpma-receipt-filter-menu select { box-sizing:border-box; width:100%; min-height:32px; margin:0 0 10px; }
+.tpma-receipt-filter-date-range { display:grid; grid-template-columns:1fr; gap:0; }
+.tpma-receipt-filter-menu-actions { display:flex; align-items:center; justify-content:space-between; gap:8px; padding-top:2px; }
+.tpma-receipt-filter-menu-actions .button-link { min-height:30px; padding:0 4px; color:#2271b1; cursor:pointer; }
+.tpma-receipt-table td.amount { color:#1e3a5f; text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; font-weight:700; }
 .tpma-receipt-lines { margin:0; padding:0; list-style:none; }
 .tpma-receipt-lines li + li { margin-top:5px; }
-.tpma-receipt-orders a { text-decoration:none; }
-.tpma-receipt-orders a:hover { text-decoration:underline; }
-.tpma-receipt-pending { color:#646970; font-weight:600; }
-.tpma-receipt-status { white-space:nowrap; }
-.tpma-receipt-status .separator { color:#8c8f94; padding:0 2px; }
-.tpma-receipt-heading small { color:#646970; }
+.tpma-receipt-table small,
+.tpma-receipt-orders a { color:#64748b; font-size:13px; text-decoration:none; }
+.tpma-receipt-orders a:hover { color:#1d4ed8; text-decoration:underline; }
+.tpma-receipt-serial-link,
+.tpma-receipt-serial { color:#1e3a8a; font-weight:700; text-decoration:none; }
+.tpma-receipt-serial-link:hover { color:#1d4ed8; text-decoration:underline; }
+.tpma-receipt-pending { color:#64748b; font-weight:700; }
+.tpma-receipt-status { white-space:normal; }
+.tpma-receipt-heading small { color:#64748b; }
+.tpma-receipt-status-badges { display:flex; flex-wrap:wrap; align-items:center; gap:5px; }
+.tpma-receipt-badge { display:inline-flex; align-items:center; min-height:23px; padding:3px 7px; border-radius:999px; background:#f1f5f9; color:#475569; font-size:11px; font-weight:700; line-height:1.2; white-space:nowrap; }
+.tpma-receipt-type-switch { border:0; cursor:pointer; }
+.tpma-receipt-type-switch:hover { background:#dbeafe; color:#1d4ed8; }
+.tpma-receipt-badge.is-pending { background:#eff6ff; color:#1d4ed8; }
+.tpma-receipt-badge.is-awaiting-scan { background:#fff7ed; color:#b45309; }
+.tpma-receipt-badge.is-ready { background:#ecfdf5; color:#047857; }
+.tpma-receipt-badge.is-sent { background:#ecfdf5; color:#047857; }
+.tpma-receipt-badge.is-void { background:#fef2f2; color:#b91c1c; }
+.tpma-receipt-status-upload { position:relative; display:inline-flex; align-items:center; justify-content:center; width:23px; height:23px; padding:0; border:0; border-radius:999px; background:#fff7ed; color:#b45309; cursor:pointer; }
+.tpma-receipt-status-upload:hover { background:#ffedd5; color:#9a3412; }
+.tpma-receipt-action-icon { width:13px; height:13px; }
+.tpma-receipt-action-label { position:absolute; z-index:21; bottom:calc(100% + 7px); left:50%; display:block; max-width:0; overflow:hidden; padding:0; border-radius:5px; background:#172033; color:#fff; font-size:11px; line-height:24px; white-space:nowrap; opacity:0; pointer-events:none; transform:translate(-50%,3px); transition:max-width .18s ease, padding .18s ease, opacity .18s ease, transform .18s ease; }
+.tpma-receipt-status-upload:hover .tpma-receipt-action-label,
+.tpma-receipt-status-upload:focus-visible .tpma-receipt-action-label { max-width:140px; padding:0 7px; opacity:1; transform:translate(-50%,0); }
 .tpma-receipt-pagination { margin-top:12px; }
 .tpma-receipt-pagination button { margin-left:4px; }
 .tpma-receipt-pagination button[disabled] { opacity:.5; }
+.tpma-receipt-admin button:not([disabled]),
+.tpma-receipt-admin a.button { cursor:pointer; }
+.tpma-receipt-admin button:focus-visible,
+.tpma-receipt-admin a:focus-visible,
+.tpma-receipt-admin input:focus-visible,
+.tpma-receipt-admin select:focus-visible { outline:2px solid #2271b1; outline-offset:2px; }
+.tpma-receipt-scan-dialog { width:min(100% - 32px, 520px); padding:0; border:1px solid #8c8f94; border-radius:4px; color:#1d2327; box-shadow:0 8px 24px rgba(0, 0, 0, .2); }
+.tpma-receipt-scan-dialog::backdrop { background:rgba(29, 35, 39, .45); }
+.tpma-receipt-scan-dialog form { padding:24px; }
+.tpma-receipt-scan-dialog h2 { margin:0 0 12px; }
+.tpma-receipt-scan-dialog label { display:block; margin:18px 0 6px; font-weight:600; }
+.tpma-receipt-scan-dialog input[type="file"] { max-width:100%; }
+.tpma-receipt-dialog-error { margin:12px 0 0; color:#b32d2e; font-weight:600; }
+.tpma-receipt-dialog-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:20px; }
+.tpma-receipt-scan-dialog button[disabled] { cursor:wait; }
 @media (max-width: 782px) {
-  .tpma-receipt-filters input { min-width:100%; flex-basis:100%; }
-  .tpma-receipt-table { min-width:780px; }
-  .tpma-receipt-table-wrap { overflow-x:auto; }
+  .tpma-receipt-admin { overflow-x:hidden; }
+  .tpma-receipt-filters,
+  .tpma-receipt-bulk,
+  .tpma-receipt-mobile-sort { align-items:stretch; flex-direction:column; }
+  .tpma-receipt-filters input,
+  .tpma-receipt-filters select,
+  .tpma-receipt-bulk select,
+  .tpma-receipt-bulk .button,
+  .tpma-receipt-mobile-sort select,
+  .tpma-receipt-mobile-sort .button { box-sizing:border-box; width:100%; min-width:0; }
+  .tpma-receipt-filters input { flex-basis:auto; }
+  #tpma-receipt-selection-count { margin-left:0; }
+  .tpma-receipt-mobile-sort { display:flex; gap:8px; margin:14px 0; padding:10px 12px; border:1px solid #dcdcde; background:#fff; }
+  .tpma-receipt-mobile-sort label { color:#50575e; font-weight:600; }
+  .tpma-receipt-mobile-filters { display:block; margin:14px 0; border:1px solid #dcdcde; background:#fff; }
+  .tpma-receipt-mobile-filters summary { padding:11px 12px; color:#1d2327; font-weight:600; cursor:pointer; }
+  .tpma-receipt-mobile-filters-content { display:grid; gap:6px; padding:4px 12px 12px; border-top:1px solid #dcdcde; }
+  .tpma-receipt-mobile-filters-content label { margin-top:6px; color:#50575e; font-weight:600; }
+  .tpma-receipt-mobile-filters-content input,
+  .tpma-receipt-mobile-filters-content select { box-sizing:border-box; width:100%; min-height:38px; }
+  .tpma-receipt-mobile-filter-actions { display:grid; gap:8px; margin-top:8px; }
+  .tpma-receipt-mobile-filter-actions .button { width:100%; }
+  .tpma-receipt-table-wrap { overflow:visible; }
+  .tpma-receipt-table,
+  .tpma-receipt-table tbody { display:block; width:100%; min-width:0; }
+  .tpma-receipt-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(1px, 1px, 1px, 1px); white-space:nowrap; }
+  .tpma-receipt-table tr { display:block; margin:0 0 12px; border:1px solid #c3c4c7; border-radius:4px; background:#fff; }
+  .tpma-receipt-table tr:nth-child(2n) { background:#fff; }
+  .tpma-receipt-table td,
+  .tpma-receipt-table th.check-column { display:grid; grid-template-columns:minmax(108px, 38%) minmax(0, 1fr); gap:10px; box-sizing:border-box; width:100%; min-width:0; padding:10px 12px; border:0; border-bottom:1px solid #dcdcde; text-align:left; white-space:normal; }
+  .tpma-receipt-table td::before { content:attr(data-label); color:#50575e; font-weight:600; overflow-wrap:anywhere; }
+  .tpma-receipt-table th.check-column { display:flex; justify-content:flex-end; padding-bottom:4px; border-bottom:0; }
+  .tpma-receipt-table th.check-column::before { content:attr(data-label); margin-right:auto; color:#50575e; font-weight:600; }
+  .tpma-receipt-table td:last-child { border-bottom:0; }
+  .tpma-receipt-table td.amount { text-align:left; }
+  .tpma-receipt-lines,
+  .tpma-receipt-heading,
+  .tpma-receipt-status,
+  .tpma-receipt-status-badges { min-width:0; overflow-wrap:anywhere; word-break:break-word; }
+  .tpma-receipt-status-upload { width:auto; min-width:23px; padding:0 8px; gap:4px; }
+  .tpma-receipt-action-label { position:static; max-width:none; padding:0; background:transparent; color:inherit; font-size:inherit; line-height:normal; opacity:1; transform:none; pointer-events:auto; }
+  .tpma-receipt-pagination .tablenav-pages { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+  .tpma-receipt-pagination button { margin-left:0; }
 }

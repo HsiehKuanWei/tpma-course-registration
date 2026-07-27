@@ -283,6 +283,87 @@ class TPMA_CR_Receipt_Service {
         return is_wp_error($rendered) ? $rendered : self::get_receipt((int) $receipt['id']);
     }
 
+    /**
+     * Switch an unissued receipt between electronic and paper delivery.
+     * The serial is retained, while the prior generated document remains in
+     * the revision history and the new type is rendered immediately.
+     */
+    public static function change_receipt_type($receipt_id, $receipt_type) {
+        $receipt = self::get_receipt($receipt_id);
+        $receipt_type = sanitize_key((string) $receipt_type);
+        if (!$receipt) {
+            return new WP_Error('tpma_receipt_not_found', '找不到收據。', array('status' => 404));
+        }
+        if (!in_array($receipt_type, array('electronic', 'paper'), true)) {
+            return new WP_Error('tpma_receipt_type_invalid', '收據方式必須是電子或紙本。', array('status' => 400));
+        }
+        if ($receipt['status'] === self::STATUS_VOID) {
+            return new WP_Error('tpma_receipt_type_void', '已作廢收據不可變更收據方式。請重新開立收據。', array('status' => 409));
+        }
+        if ($receipt['status'] === self::STATUS_SENT) {
+            return new WP_Error('tpma_receipt_type_sent', '已寄收據已鎖定；請先作廢後重新開立。', array('status' => 409));
+        }
+        if ($receipt['receipt_type'] === $receipt_type) {
+            return $receipt;
+        }
+
+        $orders = self::validate_orders_for_regeneration(self::get_receipt_orders((int) $receipt['id']));
+        if (is_wp_error($orders)) {
+            return $orders;
+        }
+        $snapshot = self::build_snapshot($orders, (string) $receipt['serial']);
+        if (is_wp_error($snapshot)) {
+            return $snapshot;
+        }
+        $snapshot['receipt_type'] = $receipt_type;
+
+        global $wpdb;
+        $now = current_time('mysql');
+        $wpdb->insert(TPMA_CR_DB::table('receipt_revisions'), array(
+            'receipt_id' => (int) $receipt['id'], 'revision' => (int) $receipt['revision'],
+            'snapshot' => wp_json_encode($receipt['snapshot'], JSON_UNESCAPED_UNICODE),
+            'generated_file' => (string) $receipt['generated_file'], 'created_by' => get_current_user_id(), 'created_at' => $now,
+        ), array('%d', '%d', '%s', '%s', '%d', '%s'));
+
+        if (!empty($receipt['scanned_file'])) {
+            self::delete_private_file((string) $receipt['scanned_file']);
+        }
+        $new_status = $receipt_type === 'paper' ? self::STATUS_AWAITING_SCAN : self::STATUS_PENDING;
+        $wpdb->update(TPMA_CR_DB::table('receipts'), array(
+            'receipt_type' => $receipt_type, 'snapshot' => wp_json_encode($snapshot, JSON_UNESCAPED_UNICODE),
+            'revision' => (int) $receipt['revision'] + 1, 'generated_file' => null, 'scanned_file' => null,
+            'generated_at' => null, 'scanned_at' => null, 'sent_at' => null, 'status' => $new_status,
+            'updated_by' => get_current_user_id(), 'updated_at' => $now,
+        ), array('id' => (int) $receipt['id']), array('%s', '%s', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%s'), array('%d'));
+        self::project_receipt_type((int) $receipt['id'], $receipt_type);
+        self::project_receipt_status((int) $receipt['id'], $new_status);
+        $rendered = self::render_current_pdf((int) $receipt['id']);
+        return is_wp_error($rendered) ? $rendered : self::get_receipt((int) $receipt['id']);
+    }
+
+    /** Mark an issued receipt void so its linked orders can be issued again. */
+    public static function void_receipt($receipt_id) {
+        $receipt = self::get_receipt($receipt_id);
+        if (!$receipt) {
+            return new WP_Error('tpma_receipt_not_found', '找不到收據。', array('status' => 404));
+        }
+        if ($receipt['status'] === self::STATUS_VOID) {
+            return new WP_Error('tpma_receipt_already_void', '此收據已作廢。', array('status' => 409));
+        }
+        if ($receipt['status'] !== self::STATUS_SENT) {
+            return new WP_Error('tpma_receipt_void_not_sent', '僅已寄收據可由後台手動作廢。', array('status' => 409));
+        }
+        global $wpdb;
+        $now = current_time('mysql');
+        $wpdb->update(TPMA_CR_DB::table('receipts'), array(
+            'status' => self::STATUS_VOID, 'voided_at' => $now,
+            'updated_by' => get_current_user_id(), 'updated_at' => $now,
+        ), array('id' => (int) $receipt['id']), array('%s', '%s', '%d', '%s'), array('%d'));
+        $wpdb->query($wpdb->prepare('UPDATE ' . TPMA_CR_DB::table('receipt_orders') . ' SET active_slot=NULL WHERE receipt_id=%d', (int) $receipt['id']));
+        self::project_receipt_status((int) $receipt['id'], self::STATUS_VOID);
+        return self::get_receipt((int) $receipt['id']);
+    }
+
     public static function render_current_pdf($receipt_id) {
         $available = self::mpdf_available();
         if (is_wp_error($available)) {
@@ -380,6 +461,29 @@ class TPMA_CR_Receipt_Service {
             return new WP_Error('tpma_receipt_file_unavailable', '此收據沒有可用檔案。');
         }
         $file = $receipt['receipt_type'] === 'paper' ? $receipt['scanned_file'] : $receipt['generated_file'];
+        if (empty($file)) {
+            return new WP_Error('tpma_receipt_file_unavailable', '收據檔案尚未準備完成。');
+        }
+        $dir = self::private_dir();
+        if (is_wp_error($dir)) {
+            return $dir;
+        }
+        $path = trailingslashit($dir) . basename((string) $file);
+        if (!is_readable($path)) {
+            return new WP_Error('tpma_receipt_file_missing', '收據檔案不存在。');
+        }
+        return wp_normalize_path($path);
+    }
+
+    /** Resolve a receipt file for management preview/download without relaxing mail attachment rules. */
+    public static function get_preview_file($receipt_id) {
+        $receipt = self::get_receipt($receipt_id);
+        if (!$receipt || $receipt['status'] === self::STATUS_VOID) {
+            return new WP_Error('tpma_receipt_file_unavailable', '此收據沒有可用檔案。');
+        }
+        $file = $receipt['receipt_type'] === 'paper' && !empty($receipt['scanned_file'])
+            ? $receipt['scanned_file']
+            : $receipt['generated_file'];
         if (empty($file)) {
             return new WP_Error('tpma_receipt_file_unavailable', '收據檔案尚未準備完成。');
         }
@@ -863,6 +967,27 @@ class TPMA_CR_Receipt_Service {
         $placeholders = implode(',', array_fill(0, count($orders), '%d'));
         $sql = $wpdb->prepare('UPDATE ' . TPMA_CR_DB::table('regs') . " SET receipt_status=%s WHERE woocommerce_order_id IN ({$placeholders})", array_merge(array($status), $orders));
         $wpdb->query($sql);
+    }
+
+    private static function project_receipt_type($receipt_id, $receipt_type): void {
+        global $wpdb;
+        $orders = self::get_receipt_orders($receipt_id);
+        if (!$orders) return;
+        $placeholders = implode(',', array_fill(0, count($orders), '%d'));
+        $sql = $wpdb->prepare('UPDATE ' . TPMA_CR_DB::table('regs') . " SET receipt_type=%s WHERE woocommerce_order_id IN ({$placeholders})", array_merge(array($receipt_type), $orders));
+        $wpdb->query($sql);
+
+        // reg-admin also enriches rows from Woo order meta. Keep that source in
+        // sync so a later refresh cannot overwrite the receipt service result.
+        if (!function_exists('wc_get_order')) return;
+        foreach ($orders as $order_id) {
+            $order = wc_get_order($order_id);
+            if (!$order || (string) $order->get_meta('_tpma_receipt_type', true) === (string) $receipt_type) {
+                continue;
+            }
+            $order->update_meta_data('_tpma_receipt_type', $receipt_type);
+            $order->save();
+        }
     }
 
     private static function delete_private_file($file): void {

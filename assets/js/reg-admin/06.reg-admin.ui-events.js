@@ -119,6 +119,7 @@ UI.getBulkValueElement = function getBulkValueElement(target){
     status: 'tpma-bulk-value-status',
     access_mode: 'tpma-bulk-value-access-mode',
     session_id: 'tpma-bulk-value-session-id',
+    receipt_type: 'tpma-bulk-value-receipt-type',
     remit_paid_at: 'tpma-bulk-value-remit-paid-at'
   };
   const id = map[target] || '';
@@ -171,18 +172,19 @@ UI.populateBulkSessionOptions = function populateBulkSessionOptions(ctx){
 UI.updateBulkToolbar = function updateBulkToolbar(ctx){
   if (!ctx || !ctx.dom || !ctx.dom.bulkToolbar) return;
   const ids = UI.getSelectedRegistrationIds();
-  const action = ctx.dom.bulkAction ? (ctx.dom.bulkAction.value || '') : '';
-  const targetEl = UI.getBulkTargetElement(action);
+  const primaryAction = ctx.dom.bulkAction ? (ctx.dom.bulkAction.value || '') : '';
+  const targetEl = UI.getBulkTargetElement(primaryAction);
   const target = targetEl ? (targetEl.value || '') : '';
+  const action = primaryAction === 'receipt' ? target : primaryAction;
   const hasSel = ids.length > 0;
-  const requiresSelection = !!action && action !== 'export_excel';
+  const requiresSelection = !!primaryAction && primaryAction !== 'export_excel';
   const sessionContext = action === 'update_field' && target === 'session_id'
     ? UI.populateBulkSessionOptions(ctx)
     : null;
   if (ctx.dom.bulkCount) ctx.dom.bulkCount.textContent = '已選取 ' + ids.length + ' 筆';
 
   document.querySelectorAll('.tpma-bulk-target').forEach(el=>{
-    const show = action && el.getAttribute('data-bulk-for') === action;
+    const show = primaryAction && el.getAttribute('data-bulk-for') === primaryAction;
     el.style.display = show ? '' : 'none';
     el.disabled = !show || (requiresSelection && !hasSel);
   });
@@ -204,12 +206,18 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
     hint = '只會清除課程開放類寄件紀錄，不會清除證書或收據紀錄。';
   } else if (action === 'update_field' && target === 'status') {
     hint = '課後付款會同步影響同一 Woo 訂單狀態。';
+  } else if (action === 'update_field' && target === 'receipt_type') {
+    hint = '未寄收據會保留流水號並自動重新生成；已寄收據會略過，需先作廢後重新開立。';
   } else if (action === 'receipt_generate') {
     hint = '依每筆唯一 Woo 訂單生成一張收據；已開立訂單會保留既有收據。';
   } else if (action === 'receipt_regenerate') {
     hint = '以目前訂單資料重新生成所選收據，保留原流水號並建立修訂歷程。';
   } else if (action === 'receipt_print') {
     hint = '只列印具有效 PDF 的收據，並在新視窗開啟多頁 A5 橫向 PDF。';
+  } else if (action === 'receipt_download') {
+    hint = '下載所選已開立收據；紙本待掃描會下載已填資料的生成 PDF。';
+  } else if (action === 'receipt_void') {
+    hint = '僅作廢已開立收據；作廢後可重新開立，已作廢項目會略過。';
   } else if (action === 'receipt_merge') {
     hint = '所選資料會去重成 Woo 訂單；需至少兩筆訂單，且付款人、統編、收據方式及開立資格皆須相符。';
   } else if (action === 'update_field' && target === 'session_id') {
@@ -224,12 +232,12 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
   if (ctx.dom.bulkHint) ctx.dom.bulkHint.textContent = hint;
 
   const valueEl = UI.getBulkValueElement(target);
-  const targetRequired = action === 'update_field' || action === 'send_mail';
+  const targetRequired = primaryAction === 'receipt' || action === 'update_field' || action === 'send_mail';
   const targetReady = !targetRequired || !!target;
   const needsValue = action === 'update_field';
   const hasValue = !needsValue || (valueEl && valueEl.value !== '');
   const sessionReady = target !== 'session_id' || (sessionContext && sessionContext.valid);
-  if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = !action || !targetReady || !hasValue || !sessionReady || (requiresSelection && !hasSel);
+  if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = !primaryAction || !action || !targetReady || !hasValue || !sessionReady || (requiresSelection && !hasSel);
 };
 
 UI.summarizeBulkResult = function summarizeBulkResult(data){
@@ -277,6 +285,11 @@ UI.bulkReasonLabel = function bulkReasonLabel(reason, fallback){
     postpay_status_not_allowed: '課後付款訂單狀態不符合寄送條件',
     registration_cancelled: '報名已取消',
     registration_not_found: '找不到報名資料',
+    receipt_change_not_applied: '同一張收據未完成變更',
+    receipt_missing: '尚未開立收據',
+    merged_receipt_partial_selection: '合併收據須一併選取所有來源訂單',
+    tpma_receipt_type_sent: '已寄收據已鎖定，請先作廢後重新開立',
+    tpma_receipt_void_not_sent: '僅已寄收據可由後台手動作廢',
     route_invalid: '寄件路由設定不合法',
     routes_matched_but_no_mail_sent: '路由已命中，但沒有成功寄出',
     session_finished: '場次已授課完畢'
@@ -386,11 +399,12 @@ UI.openBulkResultModal = function openBulkResultModal(data, title){
 
 UI.applyBulk = async function applyBulk(ctx){
   const ids = UI.getSelectedRegistrationIds();
-  const action = ctx.dom.bulkAction ? (ctx.dom.bulkAction.value || '') : '';
-  if (!action) return;
-  const targetEl = UI.getBulkTargetElement(action);
+  const primaryAction = ctx.dom.bulkAction ? (ctx.dom.bulkAction.value || '') : '';
+  if (!primaryAction) return;
+  const targetEl = UI.getBulkTargetElement(primaryAction);
   const target = targetEl ? (targetEl.value || '') : '';
-  if (action !== 'export_excel' && !ids.length) return;
+  const action = primaryAction === 'receipt' ? target : primaryAction;
+  if (!action || (action !== 'export_excel' && !ids.length)) return;
   const valueEl = UI.getBulkValueElement(target);
   const value = valueEl ? (valueEl.value || '') : '';
 
@@ -420,7 +434,8 @@ UI.applyBulk = async function applyBulk(ctx){
       payload.value = value;
     }
     if (target === 'status' && value === 'postpay' && !confirm('課後付款會同步套用所選資料所屬 Woo 訂單狀態。確定繼續？')) return;
-    if (target !== 'session_id' && !confirm('確定批次更新 ' + ids.length + ' 筆資料？')) return;
+    if (target === 'receipt_type' && !confirm('未寄收據會保留流水號並自動重新生成；已寄收據會略過。確定批次變更收據類型？')) return;
+    if (target !== 'session_id' && target !== 'receipt_type' && !confirm('確定批次更新 ' + ids.length + ' 筆資料？')) return;
   } else if (action === 'send_mail') {
     if (!target) { alert('請先選擇信件種類'); return; }
     const rows = UI.getSelectedRows(ctx);
@@ -434,7 +449,7 @@ UI.applyBulk = async function applyBulk(ctx){
     payload.action = 'reset_course_mail_meta';
     payload.event_key = target;
     if (!confirm('確定重置所選資料對應訂單 / 場次的課程寄件紀錄？')) return;
-  } else if (['receipt_generate', 'receipt_regenerate', 'receipt_print', 'receipt_merge'].indexOf(action) !== -1) {
+  } else if (['receipt_generate', 'receipt_regenerate', 'receipt_print', 'receipt_download', 'receipt_void', 'receipt_merge'].indexOf(action) !== -1) {
     const rows = UI.getSelectedRows(ctx);
     const orderIds = Array.from(new Set(rows.map(row => parseInt(row.woocommerce_order_id || '0', 10)).filter(Boolean)));
     if (!orderIds.length) { alert('所選資料沒有可用的 WooCommerce 訂單。'); return; }
@@ -446,6 +461,8 @@ UI.applyBulk = async function applyBulk(ctx){
       receipt_generate: '批次生成收據',
       receipt_regenerate: '批次重新生成收據',
       receipt_print: '批次列印收據',
+      receipt_download: '批次下載收據',
+      receipt_void: '批次作廢收據',
       receipt_merge: '合併開立收據'
     };
     if (!confirm('確定要' + labelMap[action] + '（共 ' + orderIds.length + ' 筆 Woo 訂單）？')) return;
@@ -483,7 +500,29 @@ UI.applyBulk = async function applyBulk(ctx){
         if (action === 'receipt_print') {
           const result = await API.receiptBulk(ctx, { action: 'print', receipt_ids: receiptIds });
           API.openPdfBlob(result.blob, printWindow);
-          UI.openBulkResultModal({ processed: receiptIds.length, updated: 0, sent: 0, skipped: missing, failed: [] }, '批次列印已開啟');
+          const skipped = result.skipped ? missing.concat([{ id: '-', reason: 'ineligible', message: '另略過 ' + result.skipped + ' 筆不適用或無有效檔案的收據' }]) : missing;
+          UI.openBulkResultModal({ processed: receiptIds.length, updated: 0, sent: 0, skipped, failed: [] }, '批次列印已開啟');
+        } else if (action === 'receipt_download') {
+          const result = await API.receiptBulk(ctx, { action: 'download', receipt_ids: receiptIds });
+          const url = URL.createObjectURL(result.blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = 'tpma-receipts.pdf';
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          global.setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+          const skipped = result.skipped ? missing.concat([{ id: '-', reason: 'ineligible', message: '另略過 ' + result.skipped + ' 筆不適用或無檔案的收據' }]) : missing;
+          UI.openBulkResultModal({ processed: receiptIds.length, updated: 0, sent: 0, skipped, failed: [] }, '批次收據下載已開始');
+        } else if (action === 'receipt_void') {
+          const data = await API.receiptBulk(ctx, { action: 'void', receipt_ids: receiptIds });
+          UI.openBulkResultModal({
+            processed: data.processed || receiptIds.length,
+            updated: (data.voided || []).length,
+            sent: 0,
+            skipped: missing,
+            failed: (data.failed || []).map(item => ({ id: item.receipt_id || '-', reason: item.code || '', message: item.message || '' }))
+          }, '批次作廢收據結果');
         } else {
           const data = await API.receiptBulk(ctx, { action: 'regenerate', receipt_ids: receiptIds });
           UI.openBulkResultModal({

@@ -181,6 +181,13 @@ R.receiptCompactText = function receiptCompactText(type, status){
 R.receiptIsPreviewable = function receiptIsPreviewable(type, status){
   const receiptType = String(type || '').toLowerCase();
   const receiptStatus = String(status || 'pending');
+  if (receiptType === 'paper') return receiptStatus === 'awaiting_scan' || receiptStatus === 'scanned' || receiptStatus === 'sent';
+  return receiptStatus === 'generated' || receiptStatus === 'sent';
+};
+
+R.receiptIsSendable = function receiptIsSendable(type, status){
+  const receiptType = String(type || '').toLowerCase();
+  const receiptStatus = String(status || 'pending');
   if (receiptType === 'paper') return receiptStatus === 'scanned' || receiptStatus === 'sent';
   return receiptStatus === 'generated' || receiptStatus === 'sent';
 };
@@ -697,7 +704,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   }
   appendEditField(receiptSection, '付款狀態 (WC)', 'payment_status', 'select', row.payment_status, (O.wcStatus || []));
   appendEditField(receiptSection, '報名時間', 'created_at', 'text', U.trimToMinute(row.created_at), [], true);
-  appendEditField(receiptSection, '收據方式', 'receipt_type', 'select', row.receipt_type, [
+  appendEditField(receiptSection, '變更收據方式', 'receipt_type', 'select', row.receipt_type, [
     { value: '', label: '請選擇' },
     ...(O.receiptType || [])
   ]);
@@ -709,7 +716,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   }
   const receiptManagedField = document.createElement('div');
   receiptManagedField.className = 'tpma-detail-field';
-  receiptManagedField.innerHTML = '<label>收據方式 / 狀態</label><div class="tpma-receipt-admin-state">讀取收據中…</div>';
+  receiptManagedField.innerHTML = '<label>目前收據方式 / 狀態</label><div class="tpma-receipt-admin-state">讀取收據中…</div>';
   receiptSection.appendChild(receiptManagedField);
   
   appendEditField(receiptSection, '匯款金額（元）', 'remit_amount', 'text', U.formatAmount(row.remit_amount));
@@ -845,7 +852,8 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   };
   const actionGenerate = async function(){
     try {
-      if (await withReceipt()) throw new Error('此訂單已有收據，請改用重新生成。');
+      const existing = await withReceipt();
+      if (existing && existing.status !== 'void') throw new Error('此訂單已有收據，請改用重新生成。');
       const receipt = await API.generateReceipt(ctx, row.woocommerce_order_id);
       syncReceiptControls(receipt);
       await refreshReceipt('已生成收據。');
@@ -885,7 +893,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   const actionSend = async function(){
     try {
       const receipt = await withReceipt();
-      if (!receipt || !R.receiptIsPreviewable(receipt.receipt_type, receipt.status) || receipt.status === 'sent') {
+      if (!receipt || !R.receiptIsSendable(receipt.receipt_type, receipt.status) || receipt.status === 'sent') {
         throw new Error('此收據目前不可寄發。');
       }
       if (!global.confirm('將依 receipt_notice 模板寄給此收據所有來源訂單的承辦人，並附上目前有效收據。確定寄發？')) return;
@@ -894,18 +902,47 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
       await refreshReceipt('收據已寄發給來源訂單承辦人。');
     } catch (error) { global.alert(error.message || '收據寄發失敗'); }
   };
+  const actionChangeReceiptType = async function(receiptType){
+    const receipt = await withReceipt();
+    if (!receipt || receipt.status === 'sent' || receipt.status === 'void') {
+      throw new Error('只有未寄收據可變更方式；已寄收據請先作廢後重新開立。');
+    }
+    if (receipt.receipt_type === receiptType) return receipt;
+    const typeLabel = receiptType === 'paper' ? '紙本' : '電子';
+    if (!global.confirm('確定改為' + typeLabel + '收據嗎？會保留收據號並自動重新生成。')) {
+      return null;
+    }
+    const updated = await API.changeReceiptType(ctx, receipt.id, receiptType);
+    row.receipt_type = updated.receipt_type;
+    row.receipt_status = updated.status;
+    syncReceiptControls(updated);
+    await refreshReceipt('收據已改為' + typeLabel + '並重新生成。');
+    return updated;
+  };
+  const actionVoid = async function(){
+    try {
+      const receipt = await withReceipt();
+      if (!receipt || receipt.status !== 'sent') throw new Error('只有已寄收據可作廢。');
+      if (!global.confirm('確定作廢收據 ' + receipt.serial + ' 嗎？作廢後可重新開立。')) return;
+      const updated = await API.voidReceipt(ctx, receipt.id);
+      row.receipt_status = updated.status;
+      syncReceiptControls(updated);
+      await refreshReceipt('收據已作廢，可重新開立。');
+    } catch (error) { global.alert(error.message || '收據作廢失敗'); }
+  };
   const renderReceiptMenu = function(receipt){
     if (!receiptActionSlot) return;
     receiptActionSlot.innerHTML = '';
-    if (receipt && receipt.status === 'void') return;
     const actions = [];
     if (!receipt) actions.push({ key: 'generate', label: '生成收據' });
+    else if (receipt.status === 'void') actions.push({ key: 'generate', label: '重新開立收據' });
+    else if (receipt.status === 'sent') actions.push({ key: 'void', label: '作廢收據' });
     else {
       actions.push({ key: 'regenerate', label: '重新生成收據' });
       if (receipt.receipt_type === 'paper' && receipt.status === 'awaiting_scan') {
         actions.push({ key: 'upload_scan', label: '上傳紙本掃描檔' });
       }
-      if (R.receiptIsPreviewable(receipt.receipt_type, receipt.status) && receipt.status !== 'sent') {
+      if (R.receiptIsSendable(receipt.receipt_type, receipt.status) && receipt.status !== 'sent') {
         actions.push({ key: 'send', label: '寄發收據' });
       }
     }
@@ -918,7 +955,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
       actions.map(function(action){ return '<button type="button" class="tpma-receipt-menu-item" data-receipt-action="'+U.esc(action.key)+'">'+U.esc(action.label)+'</button>'; }).join('') +
       '</div>';
     receiptActionSlot.appendChild(menu);
-    R.bindReceiptActionMenu(menu, { generate: actionGenerate, regenerate: actionRegenerate, upload_scan: actionUploadScan, send: actionSend });
+    R.bindReceiptActionMenu(menu, { generate: actionGenerate, regenerate: actionRegenerate, upload_scan: actionUploadScan, send: actionSend, void: actionVoid });
   };
   const syncReceiptControls = function(receipt){
     currentReceipt = receipt || null;
@@ -928,13 +965,31 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
       R.bindReceiptPreviewLink(ctx, statusEl.querySelector('[data-receipt-preview]'), row.woocommerce_order_id);
     }
     if (receiptTypeSelect) {
-      const locked = !!(receipt && receipt.status !== 'void');
+      if (receipt && receipt.receipt_type) receiptTypeSelect.value = receipt.receipt_type;
+      const locked = !!(receipt && (receipt.status === 'sent' || receipt.status === 'void'));
       receiptTypeSelect.disabled = locked;
       delete receiptTypeSelect.dataset.receiptLoading;
-      receiptTypeSelect.title = locked ? '已開立收據的方式已鎖定。' : '';
+      if (receipt) receiptTypeSelect.dataset.receiptManaged = '1';
+      else delete receiptTypeSelect.dataset.receiptManaged;
+      receiptTypeSelect.title = locked ? '已寄或已作廢收據的方式已鎖定。' : (receipt ? '選擇後會自動重新生成收據。' : '選擇後按儲存即可套用。');
     }
     renderReceiptMenu(receipt);
   };
+  if (receiptTypeSelect) receiptTypeSelect.addEventListener('change', async function(){
+    const selectedType = this.value;
+    const beforeType = currentReceipt && currentReceipt.receipt_type ? currentReceipt.receipt_type : row.receipt_type;
+    if (!currentReceipt || !selectedType || selectedType === beforeType) return;
+    this.disabled = true;
+    try {
+      const updated = await actionChangeReceiptType(selectedType);
+      if (!updated) this.value = beforeType || '';
+    } catch (error) {
+      global.alert(error.message || '收據方式變更失敗');
+      this.value = beforeType || '';
+    } finally {
+      if (detailContainer.isConnected) this.disabled = !!(currentReceipt && (currentReceipt.status === 'sent' || currentReceipt.status === 'void'));
+    }
+  });
   if (!row.woocommerce_order_id) {
     syncReceiptControls(null);
   } else {
@@ -967,7 +1022,7 @@ R.saveDetail = async function saveDetail(ctx, container, id, sourceRow = {}){
   inputs.forEach(el=>{
     const f = el.dataset.field;
     if (!f || ignoredFields.has(f)) return;
-    if (f === 'receipt_type' && (el.disabled || el.dataset.receiptLoading === '1')) return;
+    if (f === 'receipt_type' && (el.disabled || el.dataset.receiptLoading === '1' || el.dataset.receiptManaged === '1')) return;
     const v = normaliseFieldValue(f, el.value);
     const previous = normaliseFieldValue(f, sourceRow[f]);
     if (v !== previous) payload[f] = v;

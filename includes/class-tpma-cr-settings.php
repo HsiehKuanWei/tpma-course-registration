@@ -18,6 +18,9 @@ class TPMA_CR_Settings {
             add_action('admin_init', array(__CLASS__, 'handle_meet_settings_callback'), 1);
             add_action('admin_post_tpma_cr_save_settings', array(__CLASS__, 'handle_save'));
             add_action('admin_post_tpma_cr_authorize_meet_settings', array(__CLASS__, 'handle_authorize_meet_settings'));
+            add_action('admin_post_tpma_cr_backfill_tutor_enrollments', array(__CLASS__, 'handle_backfill_tutor_enrollments'));
+            add_action('admin_post_tpma_cr_repair_unsafe_learner_binding', array(__CLASS__, 'handle_repair_unsafe_learner_binding'));
+            add_action('admin_post_tpma_cr_repair_all_unsafe_learner_bindings', array(__CLASS__, 'handle_bulk_repair_unsafe_learner_bindings'));
         }
     }
 
@@ -146,6 +149,125 @@ class TPMA_CR_Settings {
             wp_safe_redirect(self::get_page_url());
             exit;
         }
+    }
+
+    /** Build missing Tutor enrollments for registrations created before the bridge existed. */
+    public static function handle_backfill_tutor_enrollments() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        check_admin_referer('tpma_cr_backfill_tutor_enrollments');
+
+        if (!class_exists('TPMA_Tutor_Bridge')) {
+            self::set_notice('Tutor 整合未載入，無法補建既有學員權限。', 'error');
+        } else {
+            $result = TPMA_Tutor_Bridge::backfill_legacy_enrollments();
+            if (is_wp_error($result)) {
+                self::set_notice($result->get_error_message(), 'error');
+            } else {
+                self::set_notice(sprintf(
+                    '既有學員 Tutor 權限補建完成：已檢查 %d 筆、補建 %d 筆、跳過 %d 筆、失敗 %d 筆。',
+                    (int) ($result['scanned'] ?? 0),
+                    (int) ($result['enrolled'] ?? 0),
+                    (int) ($result['skipped'] ?? 0),
+                    (int) ($result['failed'] ?? 0)
+                ), !empty($result['failed']) ? 'error' : 'success');
+            }
+        }
+
+        wp_safe_redirect(self::get_page_url());
+        exit;
+    }
+
+    /** Create a dedicated virtual learner for one registration that is bound to staff. */
+    public static function handle_repair_unsafe_learner_binding() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        $registration_id = absint(wp_unslash($_POST['registration_id'] ?? 0));
+        check_admin_referer('tpma_cr_repair_unsafe_learner_binding_' . $registration_id);
+        if (!class_exists('TPMA_Course_Access')) {
+            self::set_notice('課程入口模組未載入，無法修正帳號綁定。', 'error');
+        } else {
+            $result = TPMA_Course_Access::repair_unsafe_learner_binding($registration_id);
+            if (is_wp_error($result)) {
+                self::set_notice($result->get_error_message(), 'error');
+            } else {
+                self::set_notice('學員帳號已改綁專用帳號，並已同步處理 Tutor 課程權限。');
+            }
+        }
+        wp_safe_redirect(self::get_page_url());
+        exit;
+    }
+
+    /** Repair every registration that is currently bound to a privileged account. */
+    public static function handle_bulk_repair_unsafe_learner_bindings() {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        check_admin_referer('tpma_cr_repair_all_unsafe_learner_bindings');
+
+        $result = self::bulk_repair_unsafe_learner_bindings();
+        if (is_wp_error($result)) {
+            self::set_notice($result->get_error_message(), 'error');
+        } else {
+            self::set_bulk_unsafe_repair_result($result);
+            self::set_notice(sprintf(
+                '批次修正完成：成功 %d 筆、略過 %d 筆、失敗 %d 筆。',
+                (int) ($result['success'] ?? 0),
+                (int) ($result['skipped'] ?? 0),
+                count((array) ($result['failed'] ?? array()))
+            ), !empty($result['failed']) ? 'error' : 'success');
+        }
+
+        wp_safe_redirect(self::get_page_url());
+        exit;
+    }
+
+    /** Run the established single-registration repair logic for current unsafe bindings. */
+    public static function bulk_repair_unsafe_learner_bindings() {
+        if (!class_exists('TPMA_Course_Access')) {
+            return new WP_Error('course_access_unavailable', '課程入口模組未載入，無法批次修正帳號綁定。');
+        }
+
+        $summary = array(
+            'scanned' => 0,
+            'success' => 0,
+            'skipped' => 0,
+            'failed'  => array(),
+        );
+        $bindings = (array) TPMA_Course_Access::get_unsafe_learner_bindings();
+        $summary['scanned'] = count($bindings);
+
+        foreach ($bindings as $binding) {
+            $registration_id = absint($binding['id'] ?? 0);
+            $failure = array(
+                'registration_id' => $registration_id,
+                'reg_no'          => (string) ($binding['reg_no'] ?? $registration_id),
+                'student_name'    => (string) ($binding['student_name'] ?? ''),
+            );
+            if ($registration_id <= 0) {
+                $failure['message'] = '報名資料 ID 無效。';
+                $summary['failed'][] = $failure;
+                continue;
+            }
+
+            $result = TPMA_Course_Access::repair_unsafe_learner_binding($registration_id);
+            if (!is_wp_error($result)) {
+                $summary['success']++;
+                continue;
+            }
+
+            if ($result->get_error_code() === 'binding_not_unsafe') {
+                $summary['skipped']++;
+                continue;
+            }
+
+            $failure['message'] = $result->get_error_message();
+            $summary['failed'][] = $failure;
+        }
+
+        return $summary;
     }
 
     private static function get_meet_oauth_state_key(): string {
@@ -428,6 +550,23 @@ class TPMA_CR_Settings {
         return is_array($notice) ? $notice : null;
     }
 
+    private static function set_bulk_unsafe_repair_result(array $result): void {
+        set_transient(
+            'tpma_cr_bulk_unsafe_repair_result_' . get_current_user_id(),
+            $result,
+            10 * MINUTE_IN_SECONDS
+        );
+    }
+
+    private static function get_bulk_unsafe_repair_result(): ?array {
+        $key = 'tpma_cr_bulk_unsafe_repair_result_' . get_current_user_id();
+        $result = get_transient($key);
+        if ($result) {
+            delete_transient($key);
+        }
+        return is_array($result) ? $result : null;
+    }
+
     // ──────────────────────────────────────────────────────────
     // Tutor LMS Integration Settings
     // ──────────────────────────────────────────────────────────
@@ -614,6 +753,66 @@ class TPMA_CR_Settings {
             echo '</tbody></table>';
         }
         echo '</details>';
+        echo '</td></tr>';
+
+        $backfill_url = wp_nonce_url(
+            admin_url('admin-post.php?action=tpma_cr_backfill_tutor_enrollments'),
+            'tpma_cr_backfill_tutor_enrollments'
+        );
+        echo '<tr><th scope="row">既有學員 Tutor 權限</th><td>';
+        echo '<a class="button button-secondary" href="' . esc_url($backfill_url) . '" onclick="return confirm(\'將補建上線前既有報名但尚未建立 Tutor 課程權限的學員。已存在的 enrollment 不會重複建立。是否繼續？\');">補建既有學員 Tutor 權限</a>';
+        echo '<p class="description">只處理有學員帳號、已連結 Tutor 課程、未取消／退款且缺少 Tutor enrollment 的報名資料。此操作可重複執行，已建立的學員會自動跳過。</p>';
+        echo '</td></tr>';
+
+        $unsafe_bindings = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::get_unsafe_learner_bindings() : array();
+        $bulk_repair_result = self::get_bulk_unsafe_repair_result();
+        echo '<tr><th scope="row">學員帳號安全檢查</th><td>';
+        if ($bulk_repair_result) {
+            $bulk_failed = (array) ($bulk_repair_result['failed'] ?? array());
+            $bulk_class = empty($bulk_failed) ? 'notice-success' : 'notice-warning';
+            echo '<div class="notice inline ' . esc_attr($bulk_class) . '"><p>' . esc_html(sprintf(
+                '本次批次處理：檢查 %d 筆、成功 %d 筆、略過 %d 筆、失敗 %d 筆。',
+                (int) ($bulk_repair_result['scanned'] ?? 0),
+                (int) ($bulk_repair_result['success'] ?? 0),
+                (int) ($bulk_repair_result['skipped'] ?? 0),
+                count($bulk_failed)
+            )) . '</p>';
+            if (!empty($bulk_failed)) {
+                echo '<ul style="list-style:disc;margin:0 0 10px 28px;">';
+                foreach ($bulk_failed as $failure) {
+                    $label = trim((string) ($failure['reg_no'] ?? '') . ' ' . (string) ($failure['student_name'] ?? ''));
+                    echo '<li>' . esc_html(($label !== '' ? $label . '：' : '') . (string) ($failure['message'] ?? '修正失敗。')) . '</li>';
+                }
+                echo '</ul>';
+            }
+            echo '</div>';
+        }
+        if (empty($unsafe_bindings)) {
+            echo '<p style="color:#008a20;font-weight:600;margin:0;">目前沒有報名資料綁定網站管理員或課程作者帳號。</p>';
+        } else {
+            echo '<p style="color:#b32d2e;font-weight:600;">發現 ' . esc_html((string)count($unsafe_bindings)) . ' 筆報名誤綁管理帳號。入口已拒絕登入這些帳號；可一鍵批次修正，或逐筆建立專用學員帳號並修正。</p>';
+            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0 0 12px;">';
+            echo '<input type="hidden" name="action" value="tpma_cr_repair_all_unsafe_learner_bindings">';
+            wp_nonce_field('tpma_cr_repair_all_unsafe_learner_bindings');
+            echo '<button type="submit" class="button button-primary" onclick="return confirm(\'將修正全部目前偵測到的錯綁報名。每筆會建立專用學員帳號並同步 Tutor 權限；失敗項目不會中斷其他資料。是否繼續？\');">一鍵修正全部 ' . esc_html((string) count($unsafe_bindings)) . ' 筆錯綁紀錄</button>';
+            echo '</form>';
+            echo '<table class="widefat striped" style="max-width:1000px"><thead><tr><th>報名編號</th><th>學員</th><th>課程</th><th>錯誤綁定帳號</th><th>操作</th></tr></thead><tbody>';
+            foreach ($unsafe_bindings as $binding) {
+                $registration_id = (int)($binding['id'] ?? 0);
+                $account = trim((string)($binding['account_login'] ?? '') . ' ' . (string)($binding['account_name'] ?? ''));
+                echo '<tr><td>' . esc_html((string)($binding['reg_no'] ?? $registration_id)) . '</td>';
+                echo '<td>' . esc_html((string)($binding['student_name'] ?? '')) . '</td>';
+                echo '<td>' . esc_html((string)($binding['course_name'] ?? '')) . '</td>';
+                echo '<td>' . esc_html($account !== '' ? $account : '找不到使用者') . '</td><td>';
+                echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+                echo '<input type="hidden" name="action" value="tpma_cr_repair_unsafe_learner_binding">';
+                echo '<input type="hidden" name="registration_id" value="' . esc_attr((string)$registration_id) . '">';
+                wp_nonce_field('tpma_cr_repair_unsafe_learner_binding_' . $registration_id);
+                echo '<button type="submit" class="button button-secondary" onclick="return confirm(\'將為此學員建立專用帳號、改綁報名並調整 Tutor 權限。是否繼續？\');">建立專用學員帳號並修正</button></form>';
+                echo '</td></tr>';
+            }
+            echo '</tbody></table>';
+        }
         echo '</td></tr>';
 
         echo '<tr><th scope="row"><label for="tpma_cr_live_access_days_before">直播課前開放</label></th><td>';

@@ -17,7 +17,10 @@ API.loadCourses = async function loadCourses(ctx){
 };
 
 API.loadRegistrations = async function loadRegistrations(ctx){
-  const list = await PublicAPI.fetchJson(ctx.apiBase + '/admin/registrations', { method: 'GET' }, ctx.nonce);
+  // A receipt-type change is immediately reflected in this list. Add a
+  // request marker so browser/proxy caches cannot return the prior row state.
+  const url = ctx.apiBase + '/admin/registrations?_tpma_refresh=' + Date.now();
+  const list = await PublicAPI.fetchJson(url, { method: 'GET' }, ctx.nonce);
   return Array.isArray(list) ? list : [];
 };
 
@@ -84,6 +87,26 @@ API.regenerateReceipt = async function regenerateReceipt(ctx, receiptId){
   return data && data.receipt ? data.receipt : null;
 };
 
+API.changeReceiptType = async function changeReceiptType(ctx, receiptId, receiptType){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/' + (parseInt(receiptId, 10) || 0) + '/type', {
+    method: 'POST', body: JSON.stringify({ receipt_type: receiptType })
+  }, ctx.nonce);
+  if (!data || !data.success || !data.receipt) {
+    throw new Error((data && data.message) ? data.message : '收據方式變更失敗');
+  }
+  return data.receipt;
+};
+
+API.voidReceipt = async function voidReceipt(ctx, receiptId){
+  const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/' + (parseInt(receiptId, 10) || 0) + '/void', {
+    method: 'POST', body: JSON.stringify({})
+  }, ctx.nonce);
+  if (!data || !data.success || !data.receipt) {
+    throw new Error((data && data.message) ? data.message : '收據作廢失敗');
+  }
+  return data.receipt;
+};
+
 API.sendReceipt = async function sendReceipt(ctx, receiptId, force){
   const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/' + (parseInt(receiptId, 10) || 0) + '/send', {
     method: 'POST', body: JSON.stringify({ force: !!force })
@@ -131,7 +154,10 @@ API.receiptBulk = async function receiptBulk(ctx, payload){
     const data = await res.json().catch(() => null);
     throw new Error((data && data.message) ? data.message : '批次收據操作失敗');
   }
-  if (type.indexOf('application/pdf') !== -1) return { blob: await res.blob() };
+  if (type.indexOf('application/pdf') !== -1) return {
+    blob: await res.blob(),
+    skipped: parseInt(res.headers.get('X-TPMA-Receipt-Skipped') || '0', 10) || 0
+  };
   // 批次生成／重生成可能部分成功；保留伺服器回傳明細讓 UI 顯示失敗項目。
   return await res.json();
 };

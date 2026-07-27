@@ -107,6 +107,21 @@ class TPMA_Course_Access {
         return (int)($session['registration_id'] ?? 0);
     }
 
+    /** A portal link must never authenticate a site manager or course author. */
+    public static function learner_login_error(int $user_id, int $tutor_course_id = 0): string {
+        $user = $user_id > 0 ? get_user_by('id', $user_id) : false;
+        if (!$user) return 'learner_account_missing';
+        if (user_can($user->ID, 'manage_options')) return 'learner_account_privileged';
+        if ($tutor_course_id > 0 && (int)get_post_field('post_author', $tutor_course_id) === (int)$user->ID) {
+            return 'learner_account_course_author';
+        }
+        return '';
+    }
+
+    public static function learner_login_is_safe(int $user_id, int $tutor_course_id = 0): bool {
+        return self::learner_login_error($user_id, $tutor_course_id) === '';
+    }
+
     public static function current_user_can_resource(string $resource, int $session_id = 0): bool {
         $reg_id = self::current_registration_id();
         if ($reg_id > 0) {
@@ -297,7 +312,14 @@ class TPMA_Course_Access {
             $session['registration_id'] = $reg_id;
             self::refresh_portal_session(self::cookie_value(), $session);
             $user = get_user_by('id', (int)$candidate['wp_user_id']);
-            if (!$user) wp_die('找不到學員帳號。', '無法進入課程', array('response' => 404));
+            if (!$user || !self::learner_login_is_safe((int)$candidate['wp_user_id'], (int)$candidate['tutor_course_id'])) {
+                $session['registration_id'] = 0;
+                self::refresh_portal_session(self::cookie_value(), $session);
+                wp_clear_auth_cookie();
+                wp_set_current_user(0);
+                self::audit((int)$session['order_id'], $reg_id, 'unsafe_account_binding');
+                wp_die('此學員的課程帳號綁定異常，已拒絕登入。請聯絡主辦單位修正學員帳號後再試。', '無法進入課程', array('response' => 403));
+            }
             wp_set_current_user($user->ID);
             wp_set_auth_cookie($user->ID, true);
             do_action('wp_login', $user->user_login, $user);
@@ -331,8 +353,9 @@ class TPMA_Course_Access {
         ), ARRAY_A);
         return array_values(array_map(static function($row) {
             $result = self::evaluate_registration((int)$row['id'], 'course');
-            $row['access_allowed'] = !empty($result['allowed']);
-            $row['access_reason'] = (string)($result['reason'] ?? '');
+            $row['account_error'] = self::learner_login_error((int)($row['wp_user_id'] ?? 0), (int)($row['tutor_course_id'] ?? 0));
+            $row['access_allowed'] = !empty($result['allowed']) && $row['account_error'] === '';
+            $row['access_reason'] = $row['account_error'] !== '' ? $row['account_error'] : (string)($result['reason'] ?? '');
             return $row;
         }, (array)$rows));
     }
@@ -370,6 +393,9 @@ class TPMA_Course_Access {
             'outside_access_window'=>'目前不在課程開放期間。',
             'registration_cancelled'=>'此報名已取消。',
             'registration_not_found'=>'找不到報名資料。',
+            'learner_account_missing'=>'找不到對應的學員帳號，請聯絡主辦單位修正。',
+            'learner_account_privileged'=>'此報名誤綁網站管理員帳號，已拒絕登入。',
+            'learner_account_course_author'=>'此報名誤綁課程管理帳號，已拒絕登入。',
         );
         return $labels[$reason] ?? '目前無法進入課程。';
     }
@@ -452,7 +478,11 @@ class TPMA_Course_Access {
         $order_id = (int)($session['order_id'] ?? 0);
         if ($reg_id <= 0 || $order_id <= 0) return;
         $candidate = self::candidate_for_order($order_id, $reg_id);
-        if (!$candidate || empty($candidate['wp_user_id'])) return;
+        if (!$candidate || empty($candidate['wp_user_id']) || !self::learner_login_is_safe((int)$candidate['wp_user_id'], (int)($candidate['tutor_course_id'] ?? 0))) {
+            wp_clear_auth_cookie();
+            wp_set_current_user(0);
+            return;
+        }
         $user_id = (int)$candidate['wp_user_id'];
         if (get_current_user_id() === $user_id) return;
         $user = get_user_by('id', $user_id);
@@ -461,6 +491,80 @@ class TPMA_Course_Access {
         if (!headers_sent()) {
             wp_set_auth_cookie($user_id, true);
         }
+    }
+
+    /** Return active registrations that would authenticate a privileged account. */
+    public static function get_unsafe_learner_bindings(): array {
+        global $wpdb;
+        $rows = $wpdb->get_results(
+            "SELECT r.id, r.reg_no, r.student_name, r.wp_user_id, r.tutor_enrolled_id, r.is_virtual_user,
+                    c.course_name, c.tutor_course_id
+             FROM " . TPMA_CR_DB::table('regs') . " r
+             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id = r.course_id
+             WHERE r.wp_user_id IS NOT NULL AND r.wp_user_id > 0
+               AND COALESCE(r.status, '') NOT IN ('cancelled', 'refunded')
+               AND COALESCE(r.payment_status, '') NOT IN ('cancelled', 'wc-cancelled', 'refunded')
+             ORDER BY r.id DESC",
+            ARRAY_A
+        );
+        $unsafe = array();
+        foreach ((array)$rows as $row) {
+            $reason = self::learner_login_error((int)$row['wp_user_id'], (int)$row['tutor_course_id']);
+            if ($reason === '') continue;
+            $user = get_user_by('id', (int)$row['wp_user_id']);
+            $row['account_error'] = $reason;
+            $row['account_login'] = $user ? (string)$user->user_login : '';
+            $row['account_name'] = $user ? (string)$user->display_name : '';
+            $unsafe[] = $row;
+        }
+        return $unsafe;
+    }
+
+    /** Replace one unsafe binding with a dedicated virtual learner and reconcile Tutor enrollment. */
+    public static function repair_unsafe_learner_binding(int $registration_id) {
+        if ($registration_id <= 0 || !class_exists('TPMA_CR_Woo_Shared')) {
+            return new WP_Error('invalid_registration', '無法修正此學員帳號綁定。');
+        }
+        global $wpdb;
+        $regs_table = TPMA_CR_DB::table('regs');
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT r.*, c.tutor_course_id FROM {$regs_table} r
+             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id WHERE r.id=%d LIMIT 1",
+            $registration_id
+        ), ARRAY_A);
+        if (!$row) return new WP_Error('registration_not_found', '找不到報名資料。');
+        $old_user_id = (int)$row['wp_user_id'];
+        $tutor_course_id = (int)$row['tutor_course_id'];
+        if (self::learner_login_error($old_user_id, $tutor_course_id) === '') {
+            return new WP_Error('binding_not_unsafe', '此報名目前未綁定管理帳號，不需修正。');
+        }
+        $new_user_id = (int)TPMA_CR_Woo_Shared::ensure_virtual_user((string)$row['reg_no'], (string)$row['student_name'], true);
+        if ($new_user_id <= 0 || !self::learner_login_is_safe($new_user_id, $tutor_course_id)) {
+            return new WP_Error('learner_account_create_failed', '無法建立安全的專用學員帳號。');
+        }
+        $updated = $wpdb->update($regs_table, array('wp_user_id'=>$new_user_id, 'is_virtual_user'=>1), array('id'=>$registration_id), array('%d','%d'), array('%d'));
+        if ($updated === false) return new WP_Error('binding_update_failed', '學員帳號綁定更新失敗。');
+
+        $new_enrollment_id = 0;
+        if ($tutor_course_id > 0 && class_exists('TPMA_Tutor_Bridge')) {
+            $new_enrollment_id = TPMA_Tutor_Bridge::enroll_learner($new_user_id, $tutor_course_id, $registration_id);
+            if ($new_enrollment_id <= 0) {
+                $wpdb->update($regs_table, array('wp_user_id'=>$old_user_id, 'is_virtual_user'=>(int)$row['is_virtual_user']), array('id'=>$registration_id), array('%d','%d'), array('%d'));
+                return new WP_Error('tutor_enrollment_failed', '專用學員帳號已建立，但 Tutor 權限建立失敗，未變更原綁定。');
+            }
+        }
+
+        $remaining = (int)$wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(1) FROM {$regs_table} r JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+             WHERE r.wp_user_id=%d AND c.tutor_course_id=%d AND r.id<>%d
+               AND COALESCE(r.status, '') NOT IN ('cancelled', 'refunded')
+               AND COALESCE(r.payment_status, '') NOT IN ('cancelled', 'wc-cancelled', 'refunded')",
+            $old_user_id, $tutor_course_id, $registration_id
+        ));
+        if ($remaining === 0 && (int)$row['tutor_enrolled_id'] > 0 && get_post_status((int)$row['tutor_enrolled_id'])) {
+            wp_update_post(array('ID'=>(int)$row['tutor_enrolled_id'], 'post_status'=>'cancel'));
+        }
+        return array('new_user_id'=>$new_user_id, 'new_enrollment_id'=>$new_enrollment_id);
     }
 
     public static function render_identity_bar(): void {

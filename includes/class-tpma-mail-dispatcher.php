@@ -2025,12 +2025,16 @@ class TPMA_CR_Mail_Dispatcher
 
         $template_key = '';
         $has_template_without_order_contact = false;
+        // The TPMA Mailer admin UI exposes woo_order_contact as the canonical
+        // Woo billing/contact source. Keep the original TPMA-specific key for
+        // templates saved before the shared Woo source was introduced.
+        $receipt_recipient_sources = array('woo_order_contact', 'tpma_cr_order_contact');
         foreach ($routes as $route) {
             $route = is_array($route) ? $route : array();
             $candidate = self::resolve_existing_template_key(self::extract_route_template($route));
             if ($candidate !== '') {
                 $sources = self::extract_route_sources($route);
-                if (!in_array('tpma_cr_order_contact', $sources, true)) {
+                if (!array_intersect($receipt_recipient_sources, $sources)) {
                     $has_template_without_order_contact = true;
                     continue;
                 }
@@ -2044,7 +2048,7 @@ class TPMA_CR_Mail_Dispatcher
                     $result,
                     $order_id,
                     'receipt_route_not_order_contact',
-                    '收據寄件模板必須設定為「只寄承辦」（tpma_cr_order_contact），目前沒有符合設定的可用模板，未寄出收據。'
+                    '收據寄件模板必須設定收件人為「Woo 訂購人/聯絡人」（woo_order_contact），目前沒有符合設定的可用模板，未寄出收據。'
                 );
             }
             return self::result_skip($result, $order_id, 'no_route', '收據寄件設定沒有可用的信件模板。');

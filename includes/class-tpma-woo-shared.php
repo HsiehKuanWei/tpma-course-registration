@@ -521,7 +521,9 @@ class TPMA_CR_Woo_Shared
             $wp_user_id = 0;
             $is_virtual = 0;
 
-            if ($has_member) {
+            // A purchaser with site-management authority may register other learners.
+            // Never bind every learner to that privileged WordPress account.
+            if ($has_member && !user_can($payer_user_id, 'manage_options')) {
                 $wp_user_id = $payer_user_id;
                 $is_virtual = 0;
             } else {

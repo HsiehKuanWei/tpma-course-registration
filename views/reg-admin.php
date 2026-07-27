@@ -312,10 +312,7 @@ $TPMA_OPTIONS_FOR_JS = [
       <select id="tpma-bulk-action" class="tpma-bulk-control">
         <option value="">選擇操作</option>
         <option value="update_field">更新欄位</option>
-        <option value="receipt_generate">批次生成收據</option>
-        <option value="receipt_regenerate">批次重新生成收據</option>
-        <option value="receipt_print">批次列印收據</option>
-        <option value="receipt_merge">合併開立收據</option>
+        <option value="receipt">收據</option>
         <option value="send_mail">批次寄信</option>
         <option value="reset_course_mail_meta">重置課程寄件紀錄</option>
         <option value="export_excel">匯出 Excel</option>
@@ -328,6 +325,7 @@ $TPMA_OPTIONS_FOR_JS = [
         <option value="status">報名狀態</option>
         <option value="access_mode">課程型態</option>
         <option value="session_id">課程場次</option>
+        <option value="receipt_type">收據類型</option>
         <option value="remit_paid_at">匯款日期</option>
       </select>
       <select id="tpma-bulk-value-status" class="tpma-bulk-value" data-bulk-target="status">
@@ -344,12 +342,27 @@ $TPMA_OPTIONS_FOR_JS = [
       <select id="tpma-bulk-value-session-id" class="tpma-bulk-value" data-bulk-target="session_id">
         <option value="">請先選擇同一課程的學員</option>
       </select>
+      <select id="tpma-bulk-value-receipt-type" class="tpma-bulk-value" data-bulk-target="receipt_type">
+        <option value="">選擇收據類型</option>
+        <?php foreach ($TPMA_ENUM['receiptType'] as $v => $label): ?>
+          <option value="<?php echo esc_attr($v); ?>"><?php echo esc_html($label); ?></option>
+        <?php endforeach; ?>
+      </select>
       <input type="date" id="tpma-bulk-value-remit-paid-at" class="tpma-bulk-value" data-bulk-target="remit_paid_at">
       <select id="tpma-bulk-mail-event" class="tpma-bulk-target" data-bulk-for="send_mail">
         <option value="">選擇信件種類</option>
         <option value="course_access">課程入口通知</option>
         <option value="certificate_ready">證書通知</option>
         <option value="receipt_notice">收據通知</option>
+      </select>
+      <select id="tpma-bulk-receipt-action" class="tpma-bulk-target" data-bulk-for="receipt">
+        <option value="">選擇收據操作</option>
+        <option value="receipt_generate">批次生成收據</option>
+        <option value="receipt_regenerate">批次重新生成收據</option>
+        <option value="receipt_print">批次列印收據</option>
+        <option value="receipt_download">批次下載收據</option>
+        <option value="receipt_void">批次作廢收據</option>
+        <option value="receipt_merge">合併開立收據</option>
       </select>
       <select id="tpma-bulk-reset-event" class="tpma-bulk-target" data-bulk-for="reset_course_mail_meta">
         <option value="">全部課程寄件紀錄</option>
