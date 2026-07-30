@@ -21,6 +21,9 @@ class TPMA_CR_Settings {
             add_action('admin_post_tpma_cr_backfill_tutor_enrollments', array(__CLASS__, 'handle_backfill_tutor_enrollments'));
             add_action('admin_post_tpma_cr_repair_unsafe_learner_binding', array(__CLASS__, 'handle_repair_unsafe_learner_binding'));
             add_action('admin_post_tpma_cr_repair_all_unsafe_learner_bindings', array(__CLASS__, 'handle_bulk_repair_unsafe_learner_bindings'));
+            add_action('admin_post_tpma_cr_scan_quiz_score_sync', array(__CLASS__, 'handle_scan_quiz_score_sync'));
+            add_action('admin_post_tpma_cr_resync_safe_quiz_scores', array(__CLASS__, 'handle_resync_safe_quiz_scores'));
+            add_action('admin_post_tpma_cr_manual_rebind_quiz_score', array(__CLASS__, 'handle_manual_rebind_quiz_score'));
         }
     }
 
@@ -268,6 +271,89 @@ class TPMA_CR_Settings {
         }
 
         return $summary;
+    }
+
+    /** Scan Tutor attempts that have not populated TPMA test_score; this action never changes data. */
+    public static function handle_scan_quiz_score_sync(): void {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        check_admin_referer('tpma_cr_scan_quiz_score_sync');
+
+        if (!class_exists('TPMA_Tutor_Bridge')) {
+            self::set_notice('Tutor 整合未載入，無法掃描測驗成績同步。', 'error');
+        } else {
+            $result = TPMA_Tutor_Bridge::scan_quiz_score_sync_issues();
+            if (is_wp_error($result)) {
+                self::set_notice($result->get_error_message(), 'error');
+            } else {
+                self::set_quiz_score_sync_scan_result($result);
+                self::set_notice(sprintf(
+                    '測驗成績同步掃描完成：檢查 %d 筆 Tutor 已完成作答，發現 %d 筆需處理作答。',
+                    (int) ($result['scanned'] ?? 0),
+                    count((array) ($result['issues'] ?? array()))
+                ));
+            }
+        }
+
+        wp_safe_redirect(self::get_page_url());
+        exit;
+    }
+
+    /** Re-sync only score records whose attempt context and learner identity are already unambiguous. */
+    public static function handle_resync_safe_quiz_scores(): void {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        check_admin_referer('tpma_cr_resync_safe_quiz_scores');
+        if (!class_exists('TPMA_Tutor_Bridge')) {
+            self::set_notice('Tutor 整合未載入，無法重新同步測驗成績。', 'error');
+        } else {
+            $result = TPMA_Tutor_Bridge::resync_safe_quiz_scores();
+            if (is_wp_error($result)) {
+                self::set_notice($result->get_error_message(), 'error');
+            } else {
+                $failed = (array) ($result['failed'] ?? array());
+                self::set_notice(sprintf(
+                    '安全成績重同步完成：可處理 %d 筆、成功 %d 筆、失敗 %d 筆。',
+                    (int) ($result['eligible'] ?? 0),
+                    (int) ($result['success'] ?? 0),
+                    count($failed)
+                ), empty($failed) ? 'success' : 'error');
+                $scan = TPMA_Tutor_Bridge::scan_quiz_score_sync_issues();
+                if (!is_wp_error($scan)) self::set_quiz_score_sync_scan_result($scan);
+            }
+        }
+        wp_safe_redirect(self::get_page_url());
+        exit;
+    }
+
+    /** Apply an administrator-confirmed historical attempt-to-registration override. */
+    public static function handle_manual_rebind_quiz_score(): void {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        $attempt_id = absint(wp_unslash($_POST['attempt_id'] ?? 0));
+        $target_registration_id = absint(wp_unslash($_POST['target_registration_id'] ?? 0));
+        check_admin_referer('tpma_cr_manual_rebind_quiz_score_' . $attempt_id);
+        if (!class_exists('TPMA_Tutor_Bridge')) {
+            self::set_notice('Tutor 整合未載入，無法人工覆寫測驗成績。', 'error');
+        } else {
+            $result = TPMA_Tutor_Bridge::manually_rebind_quiz_score($attempt_id, $target_registration_id);
+            if (is_wp_error($result)) {
+                self::set_notice($result->get_error_message(), 'error');
+            } else {
+                self::set_notice(sprintf(
+                    '已將作答 #%d 指定給目標報名，並寫入成績 %s%%。原對應報名的成績已重新計算。',
+                    (int) ($result['attempt_id'] ?? $attempt_id),
+                    (string) ($result['score'] ?? '')
+                ));
+                $scan = TPMA_Tutor_Bridge::scan_quiz_score_sync_issues();
+                if (!is_wp_error($scan)) self::set_quiz_score_sync_scan_result($scan);
+            }
+        }
+        wp_safe_redirect(self::get_page_url());
+        exit;
     }
 
     private static function get_meet_oauth_state_key(): string {
@@ -567,6 +653,23 @@ class TPMA_CR_Settings {
         return is_array($result) ? $result : null;
     }
 
+    private static function set_quiz_score_sync_scan_result(array $result): void {
+        set_transient(
+            'tpma_cr_quiz_score_sync_scan_' . get_current_user_id(),
+            $result,
+            10 * MINUTE_IN_SECONDS
+        );
+    }
+
+    private static function get_quiz_score_sync_scan_result(): ?array {
+        $key = 'tpma_cr_quiz_score_sync_scan_' . get_current_user_id();
+        $result = get_transient($key);
+        if ($result) {
+            delete_transient($key);
+        }
+        return is_array($result) ? $result : null;
+    }
+
     // ──────────────────────────────────────────────────────────
     // Tutor LMS Integration Settings
     // ──────────────────────────────────────────────────────────
@@ -766,7 +869,7 @@ class TPMA_CR_Settings {
 
         $unsafe_bindings = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::get_unsafe_learner_bindings() : array();
         $bulk_repair_result = self::get_bulk_unsafe_repair_result();
-        echo '<tr><th scope="row">學員帳號安全檢查</th><td>';
+        echo '<tr><th scope="row">學員考試帳號安全檢查</th><td>';
         if ($bulk_repair_result) {
             $bulk_failed = (array) ($bulk_repair_result['failed'] ?? array());
             $bulk_class = empty($bulk_failed) ? 'notice-success' : 'notice-warning';
@@ -788,15 +891,15 @@ class TPMA_CR_Settings {
             echo '</div>';
         }
         if (empty($unsafe_bindings)) {
-            echo '<p style="color:#008a20;font-weight:600;margin:0;">目前沒有報名資料綁定網站管理員或課程作者帳號。</p>';
+            echo '<p style="color:#008a20;font-weight:600;margin:0;">目前所有有效報名均已綁定專用學員帳號。</p>';
         } else {
-            echo '<p style="color:#b32d2e;font-weight:600;">發現 ' . esc_html((string)count($unsafe_bindings)) . ' 筆報名誤綁管理帳號。入口已拒絕登入這些帳號；可一鍵批次修正，或逐筆建立專用學員帳號並修正。</p>';
+            echo '<p style="color:#b32d2e;font-weight:600;">發現 ' . esc_html((string)count($unsafe_bindings)) . ' 筆報名未綁定專用學員帳號（可能是付款人、承辦人、一般會員、管理員或課程作者）。入口與測驗已拒絕使用這些帳號；可一鍵批次修正，或逐筆建立專用學員帳號並修正。</p>';
             echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0 0 12px;">';
             echo '<input type="hidden" name="action" value="tpma_cr_repair_all_unsafe_learner_bindings">';
             wp_nonce_field('tpma_cr_repair_all_unsafe_learner_bindings');
-            echo '<button type="submit" class="button button-primary" onclick="return confirm(\'將修正全部目前偵測到的錯綁報名。每筆會建立專用學員帳號並同步 Tutor 權限；失敗項目不會中斷其他資料。是否繼續？\');">一鍵修正全部 ' . esc_html((string) count($unsafe_bindings)) . ' 筆錯綁紀錄</button>';
+            echo '<button type="submit" class="button button-primary" onclick="return confirm(\'將修正全部目前未使用專用學員帳號的報名。每筆會建立專用學員帳號並同步 Tutor 權限；失敗項目不會中斷其他資料。是否繼續？\');">一鍵修正全部 ' . esc_html((string) count($unsafe_bindings)) . ' 筆帳號錯綁紀錄</button>';
             echo '</form>';
-            echo '<table class="widefat striped" style="max-width:1000px"><thead><tr><th>報名編號</th><th>學員</th><th>課程</th><th>錯誤綁定帳號</th><th>操作</th></tr></thead><tbody>';
+            echo '<table class="widefat striped" style="max-width:1000px"><thead><tr><th>報名編號</th><th>學員</th><th>課程</th><th>目前綁定帳號</th><th>操作</th></tr></thead><tbody>';
             foreach ($unsafe_bindings as $binding) {
                 $registration_id = (int)($binding['id'] ?? 0);
                 $account = trim((string)($binding['account_login'] ?? '') . ' ' . (string)($binding['account_name'] ?? ''));
@@ -812,6 +915,102 @@ class TPMA_CR_Settings {
                 echo '</td></tr>';
             }
             echo '</tbody></table>';
+        }
+        echo '</td></tr>';
+
+        $quiz_score_scan = self::get_quiz_score_sync_scan_result();
+        echo '<tr><th scope="row">測驗成績同步檢查</th><td>';
+        echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0 0 8px;">';
+        echo '<input type="hidden" name="action" value="tpma_cr_scan_quiz_score_sync">';
+        wp_nonce_field('tpma_cr_scan_quiz_score_sync');
+        echo '<button type="submit" class="button button-secondary">掃描未同步測驗成績</button>';
+        echo '</form>';
+        echo '<p class="description">掃描以每一筆 Tutor 完成作答為單位，不會把同一帳號代考的多筆作答合併。表格會分開顯示實際作答帳號與目前對應報名；已正確對應專用學員帳號的作答可一鍵重同步，其餘資料必須由管理員指定目標報名後才會覆寫。</p>';
+        if ($quiz_score_scan) {
+            $quiz_score_issues = (array) ($quiz_score_scan['issues'] ?? array());
+            echo '<div class="notice inline ' . esc_attr(empty($quiz_score_issues) ? 'notice-success' : 'notice-warning') . '"><p>' . esc_html(sprintf(
+                '本次掃描：檢查 %d 筆 Tutor 已完成作答，發現 %d 筆需處理作答。',
+                (int) ($quiz_score_scan['scanned'] ?? 0),
+                count($quiz_score_issues)
+            )) . '</p></div>';
+            if (empty($quiz_score_issues)) {
+                echo '<p style="color:#008a20;font-weight:600;">沒有發現需要處理的 Tutor 已完成作答。</p>';
+            } else {
+                $safe_score_issues = array_values(array_filter($quiz_score_issues, static function($issue) {
+                    return class_exists('TPMA_Tutor_Bridge')
+                        && TPMA_Tutor_Bridge::is_safe_quiz_score_resync_reason((string) ($issue['reason_code'] ?? ''));
+                }));
+                if (!empty($safe_score_issues)) {
+                    echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0 0 12px;">';
+                    echo '<input type="hidden" name="action" value="tpma_cr_resync_safe_quiz_scores">';
+                    wp_nonce_field('tpma_cr_resync_safe_quiz_scores');
+                    echo '<button type="submit" class="button button-primary" onclick="return confirm(\'只會重同步已驗證為同一報名、同一專用學員帳號的 ' . esc_attr((string) count($safe_score_issues)) . ' 筆成績；不會處理歸屬不明的作答。是否繼續？\');">一鍵重新同步 ' . esc_html((string) count($safe_score_issues)) . ' 筆可安全處理成績</button>';
+                    echo '</form>';
+                }
+                echo '<table class="widefat striped" style="max-width:1500px"><thead><tr><th>作答 ID</th><th>實際 Tutor 作答帳號</th><th>目前對應報名</th><th>目前對應學員</th><th>課程</th><th>完成作答</th><th>判定原因</th><th>修正</th></tr></thead><tbody>';
+                $targets_by_course = array();
+                foreach ($quiz_score_issues as $issue) {
+                    $attempt = trim((string) ($issue['attempt_ended_at'] ?? ''));
+                    $attempt_status = trim((string) ($issue['attempt_status'] ?? ''));
+                    $attempt_id = (int) ($issue['attempt_id'] ?? 0);
+                    $reason_code = (string) ($issue['reason_code'] ?? '');
+                    if ($attempt_status !== '') {
+                        $attempt .= ($attempt !== '' ? '／' : '') . $attempt_status;
+                    }
+                    $attempt_user_id = (int) ($issue['attempt_user_id'] ?? 0);
+                    $attempt_user = trim((string) ($issue['attempt_user_display'] ?? ''));
+                    if ($attempt_user === '') {
+                        $attempt_user = $attempt_user_id > 0 ? '帳號 #' . $attempt_user_id : '未記錄帳號';
+                    }
+                    $registration_label = trim((string) ($issue['reg_no'] ?? ''));
+                    if ($registration_label === '') {
+                        $registration_label = (int) ($issue['registration_id'] ?? 0) > 0
+                            ? '報名 #' . (int) $issue['registration_id']
+                            : '未指定';
+                    }
+                    echo '<tr>';
+                    echo '<td>#' . esc_html((string) $attempt_id) . '</td>';
+                    echo '<td>' . esc_html($attempt_user) . ($attempt_user_id > 0 ? '<br><span class="description">WP User #' . esc_html((string) $attempt_user_id) . '</span>' : '') . '</td>';
+                    echo '<td>' . esc_html($registration_label) . '</td>';
+                    echo '<td>' . esc_html((string) ($issue['student_name'] ?? '')) . '</td>';
+                    echo '<td>' . esc_html((string) ($issue['course_name'] ?? '')) . '</td>';
+                    echo '<td>' . esc_html($attempt !== '' ? $attempt : '已找到完成作答') . '</td>';
+                    echo '<td><strong>' . esc_html((string) ($issue['reason'] ?? '未能判定原因。')) . '</strong></td>';
+                    echo '<td>';
+                    if (class_exists('TPMA_Tutor_Bridge') && TPMA_Tutor_Bridge::is_safe_quiz_score_resync_reason($reason_code)) {
+                        echo '<span style="color:#008a20;font-weight:600;">可由上方一鍵安全重同步</span>';
+                    } elseif ($attempt_id > 0 && class_exists('TPMA_Tutor_Bridge') && TPMA_Tutor_Bridge::is_manual_quiz_score_rebind_reason($reason_code)) {
+                        $tutor_course_id = (int) ($issue['tutor_course_id'] ?? 0);
+                        if (!array_key_exists($tutor_course_id, $targets_by_course)) {
+                            $targets_by_course[$tutor_course_id] = TPMA_Tutor_Bridge::get_quiz_score_rebind_targets($tutor_course_id);
+                        }
+                        $targets = (array) $targets_by_course[$tutor_course_id];
+                        if (empty($targets)) {
+                            echo '<span style="color:#b32d2e;">找不到可指定的專用學員報名。</span>';
+                        } else {
+                            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '">';
+                            echo '<input type="hidden" name="action" value="tpma_cr_manual_rebind_quiz_score">';
+                            echo '<input type="hidden" name="attempt_id" value="' . esc_attr((string) $attempt_id) . '">';
+                            wp_nonce_field('tpma_cr_manual_rebind_quiz_score_' . $attempt_id);
+                            echo '<label class="screen-reader-text" for="tpma-quiz-target-' . esc_attr((string) $attempt_id) . '">目標報名</label>';
+                            echo '<select id="tpma-quiz-target-' . esc_attr((string) $attempt_id) . '" name="target_registration_id" required style="max-width:250px;margin:0 0 6px;">';
+                            echo '<option value="">選擇正確學員／報名</option>';
+                            foreach ($targets as $target) {
+                                $label = trim((string) ($target['reg_no'] ?? '') . '｜' . (string) ($target['student_name'] ?? ''));
+                                echo '<option value="' . esc_attr((string) ($target['registration_id'] ?? 0)) . '">' . esc_html($label) . '</option>';
+                            }
+                            echo '</select><br>';
+                            echo '<button type="submit" class="button button-secondary" onclick="return confirm(\'確認此作答屬於所選學員？系統會把作答對應與成績轉移到所選報名，原對應報名的成績將重新計算。\');">指定學員並覆寫成績</button>';
+                            echo '</form>';
+                        }
+                    } else {
+                        echo '<span class="description">需先修正測驗設定或完成人工批改後再掃描。</span>';
+                    }
+                    echo '</td>';
+                    echo '</tr>';
+                }
+                echo '</tbody></table>';
+            }
         }
         echo '</td></tr>';
 

@@ -904,20 +904,22 @@ class TPMA_Tutor_Bridge {
                 continue;
             }
 
+            $quiz_count = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(1) FROM {$wpdb->posts} WHERE post_parent=%d AND post_type=%s AND post_status<>'trash'",
+                $topic_id,
+                function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz'
+            ));
             $type = sanitize_key((string) get_post_meta($topic_id, '_tpma_resource_type', true));
             if (!in_array($type, array('general','recording','quiz'), true)) {
-                $has_quiz = (int) $wpdb->get_var($wpdb->prepare(
-                    "SELECT COUNT(1) FROM {$wpdb->posts} WHERE post_parent=%d AND post_type=%s AND post_status<>'trash'",
-                    $topic_id,
-                    function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz'
-                ));
-                $type = $has_quiz > 0 ? 'quiz' : 'general';
+                $type = $quiz_count > 0 ? 'quiz' : 'general';
             }
 
             $out[] = array(
                 'topic_id'      => (int) $topic_id,
                 'title'         => (string) get_post_field('post_title', $topic_id),
                 'resource_type' => $type,
+                'quiz_count'    => $quiz_count,
+                'quiz_connection'=> $type === 'quiz' ? ($quiz_count > 0 ? 'connected' : 'missing') : 'not_applicable',
             );
         }
 
@@ -2440,7 +2442,10 @@ class TPMA_Tutor_Bridge {
         }
 
         $registration = $wpdb->get_row($wpdb->prepare(
-            "SELECT status, payment_status, wp_user_id FROM " . TPMA_CR_DB::table('regs') . " WHERE id = %d",
+            "SELECT r.status, r.payment_status, r.wp_user_id, r.is_virtual_user, c.tutor_course_id
+             FROM " . TPMA_CR_DB::table('regs') . " r
+             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+             WHERE r.id = %d",
             (int) $row->registration_id
         ));
         if (!$registration
@@ -2455,9 +2460,9 @@ class TPMA_Tutor_Bridge {
         if (!$user) {
             wp_die(esc_html__('找不到對應的使用者帳號。', 'tpma-cr'), 404);
         }
-        if (class_exists('TPMA_Course_Access') && !TPMA_Course_Access::learner_login_is_safe((int)$user->ID, (int)$row->tutor_course_id)) {
+        if (class_exists('TPMA_Course_Access') && TPMA_Course_Access::learner_binding_error((array) $registration) !== '') {
             self::expire_tokens_for_registration((int)$row->registration_id);
-            wp_die(esc_html__('此報名誤綁管理帳號，認証連結已停用。請聯絡主辦單位修正學員帳號。', 'tpma-cr'), 403);
+            wp_die(esc_html__('此報名未綁定專用學員帳號，認証連結已停用。請聯絡主辦單位修正學員帳號。', 'tpma-cr'), 403);
         }
 
         // Authenticate
@@ -2488,6 +2493,638 @@ class TPMA_Tutor_Bridge {
     // ──────────────────────────────────────────────────────────
     // Quiz result sync
     // ──────────────────────────────────────────────────────────
+
+    /**
+     * Classify why a completed Tutor quiz attempt has not populated TPMA test_score.
+     * This is intentionally data-only so the settings scanner can expose a safe reason
+     * without changing registrations or Tutor attempts.
+     */
+    public static function classify_quiz_score_sync_issue(array $data): array {
+        $registration_id = (int) ($data['registration_id'] ?? 0);
+        $qualifying_quiz_id = (int) ($data['qualifying_quiz_id'] ?? 0);
+        $completed_attempts = array_values((array) ($data['completed_attempts'] ?? array()));
+        $qualifying_attempts = array_values((array) ($data['completed_qualifying_attempts'] ?? array()));
+        $contexts = (array) ($data['context_registration_ids'] ?? array());
+        $learner_is_isolated = !array_key_exists('learner_is_isolated', $data) || !empty($data['learner_is_isolated']);
+        $latest_attempt = !empty($qualifying_attempts) ? $qualifying_attempts[0] : (!empty($completed_attempts) ? $completed_attempts[0] : array());
+
+        $issue = array(
+            'reason_code' => '',
+            'reason' => '',
+            'attempt_id' => (int) ($latest_attempt['attempt_id'] ?? 0),
+            'attempt_status' => (string) ($latest_attempt['attempt_status'] ?? ''),
+            'attempt_ended_at' => (string) ($latest_attempt['attempt_ended_at'] ?? ''),
+        );
+
+        if (!$learner_is_isolated) {
+            $issue['reason_code'] = 'learner_account_not_isolated';
+            $issue['reason'] = '此報名使用付款人、承辦人或其他非專用帳號作答；為避免把成績錯記給帳號持有人，系統不會自動回填。';
+            return $issue;
+        }
+
+        if ($qualifying_quiz_id <= 0) {
+            $issue['reason_code'] = 'quiz_not_qualified';
+            $issue['reason'] = '課程的測驗未標記為 TPMA 隨堂測驗，系統不會同步成績。';
+            return $issue;
+        }
+        if (empty($qualifying_attempts)) {
+            $issue['reason_code'] = 'wrong_quiz_attempt';
+            $issue['reason'] = '已有 Tutor 作答紀錄，但不是課程目前指定的 TPMA 隨堂測驗。';
+            return $issue;
+        }
+
+        $matched_attempts = array();
+        $other_registration_bound = false;
+        foreach ($qualifying_attempts as $attempt) {
+            $attempt_id = (int) ($attempt['attempt_id'] ?? 0);
+            if ($attempt_id <= 0 || !array_key_exists($attempt_id, $contexts)) {
+                continue;
+            }
+            if ((int) $contexts[$attempt_id] === $registration_id) {
+                $matched_attempts[] = $attempt;
+            } else {
+                $other_registration_bound = true;
+            }
+        }
+        if (empty($matched_attempts)) {
+            $issue['reason_code'] = $other_registration_bound ? 'attempt_bound_elsewhere' : 'missing_attempt_context';
+            $issue['reason'] = $other_registration_bound
+                ? '此作答紀錄已對應到另一筆報名，為避免錯綁，系統不會自動回填。'
+                : '找不到作答與報名的對應紀錄；常見於舊資料、直接進入 Tutor 或開始作答時入口 session 不存在。';
+            return $issue;
+        }
+
+        $latest_attempt = $matched_attempts[0];
+        $issue['attempt_id'] = (int) ($latest_attempt['attempt_id'] ?? 0);
+        $issue['attempt_status'] = (string) ($latest_attempt['attempt_status'] ?? '');
+        $issue['attempt_ended_at'] = (string) ($latest_attempt['attempt_ended_at'] ?? '');
+        if ((string) ($latest_attempt['attempt_status'] ?? '') === 'review_required' && empty($latest_attempt['is_manually_reviewed'])) {
+            $issue['reason_code'] = 'manual_review_pending';
+            $issue['reason'] = '測驗含人工批改題目，尚待講師完成批改。';
+            return $issue;
+        }
+        if (!empty($latest_attempt['is_manually_reviewed'])) {
+            $issue['reason_code'] = 'manual_review_resync_required';
+            $issue['reason'] = '人工批改已完成，但目前尚未重新觸發成績同步。';
+            return $issue;
+        }
+
+        $issue['reason_code'] = 'score_sync_missed';
+        $issue['reason'] = '作答已正確對應此報名，但交卷時的成績同步未寫入 TPMA。';
+        return $issue;
+    }
+
+    /** Only these diagnosed reasons may update a score without an administrator choosing a target registration. */
+    public static function is_safe_quiz_score_resync_reason(string $reason_code): bool {
+        return in_array($reason_code, array('score_sync_missed', 'manual_review_resync_required'), true);
+    }
+
+    /** These reasons have an attempt to review, but require an administrator to choose its recipient. */
+    public static function is_manual_quiz_score_rebind_reason(string $reason_code): bool {
+        return in_array($reason_code, array(
+            'attempt_bound_elsewhere',
+            'missing_attempt_context',
+            'learner_account_not_isolated',
+            'attempt_account_changed',
+            'orphan_quiz_attempt',
+            'non_dedicated_attempt_account',
+        ), true);
+    }
+
+    /** A per-registration diagnostic represents only its selected attempt, never every attempt by that account. */
+    public static function scan_attempt_ids_represented_by_diagnostic(array $diagnostic): array {
+        $attempt_id = (int) ($diagnostic['attempt_id'] ?? 0);
+        return $attempt_id > 0 ? array($attempt_id) : array();
+    }
+
+    /** Classify a completed qualifying attempt discovered from its course rather than a current registration account. */
+    public static function classify_historical_quiz_attempt(array $attempt, array $context_registration = array()): array {
+        $attempt_id = (int) ($attempt['attempt_id'] ?? 0);
+        $attempt_user_id = (int) ($attempt['user_id'] ?? 0);
+        $registration_id = (int) ($context_registration['registration_id'] ?? 0);
+        $current_user_id = (int) ($context_registration['wp_user_id'] ?? 0);
+        $quiz_is_current = !array_key_exists('quiz_is_current', $context_registration) || !empty($context_registration['quiz_is_current']);
+        $learner_is_isolated = !array_key_exists('is_virtual_user', $context_registration) || !empty($context_registration['is_virtual_user']);
+        $issue = array(
+            'attempt_id' => $attempt_id,
+            'attempt_status' => (string) ($attempt['attempt_status'] ?? ''),
+            'attempt_ended_at' => (string) ($attempt['attempt_ended_at'] ?? ''),
+        );
+        if (!$quiz_is_current) {
+            $issue['reason_code'] = 'non_current_quiz_attempt';
+            $issue['reason'] = '此作答屬於同課程的另一份 Tutor 測驗，並非目前指定的 TPMA 隨堂測驗；請先確認並修正課程章節測驗設定。';
+            return $issue;
+        }
+        if ($registration_id > 0 && !$learner_is_isolated) {
+            $issue['reason_code'] = 'learner_account_not_isolated';
+            $issue['reason'] = '此作答綁定的報名仍使用付款人、承辦人或其他非專用帳號；即使已有成績，也必須確認並拆分正確學員。';
+            return $issue;
+        }
+        if ($registration_id > 0 && $current_user_id > 0 && $attempt_user_id !== $current_user_id) {
+            $issue['reason_code'] = 'attempt_account_changed';
+            $issue['reason'] = '此作答原本對應報名，但作答帳號與目前專用學員帳號不同；常見於修復前由承辦或付款帳號作答。請人工指定正確學員。';
+            return $issue;
+        }
+        $issue['reason_code'] = 'orphan_quiz_attempt';
+        $issue['reason'] = '此完成作答屬於目前沒有對應報名的歷史帳號；請確認實際應得成績的學員後人工指定。';
+        return $issue;
+    }
+
+    /**
+     * Classify exactly one completed Tutor attempt for the settings scanner.
+     * A row must never stand in for another attempt from the same account.
+     */
+    public static function classify_quiz_attempt_for_score_sync(array $attempt, array $registration = array()): ?array {
+        $attempt_id = (int) ($attempt['attempt_id'] ?? 0);
+        $attempt_user_id = (int) ($attempt['user_id'] ?? 0);
+        $registration_id = (int) ($registration['registration_id'] ?? 0);
+        $registered_user_id = (int) ($registration['wp_user_id'] ?? 0);
+        $course_is_linked = !array_key_exists('course_is_linked', $registration) || !empty($registration['course_is_linked']);
+        $quiz_is_qualifying = !array_key_exists('quiz_is_qualifying', $registration) || !empty($registration['quiz_is_qualifying']);
+        $registration_matches_attempt_course = !array_key_exists('registration_matches_attempt_course', $registration) || !empty($registration['registration_matches_attempt_course']);
+        $learner_is_isolated = !array_key_exists('is_virtual_user', $registration) || !empty($registration['is_virtual_user']);
+        $manual_override = !empty($registration['manual_override']);
+        $attempt_user_is_dedicated = array_key_exists('attempt_user_is_dedicated_for_course', $registration)
+            ? (bool) $registration['attempt_user_is_dedicated_for_course']
+            : null;
+        $score_is_present = trim((string) ($registration['test_score'] ?? '')) !== '';
+        $issue = array(
+            'attempt_id' => $attempt_id,
+            'attempt_user_id' => $attempt_user_id,
+            'attempt_status' => (string) ($attempt['attempt_status'] ?? ''),
+            'attempt_ended_at' => (string) ($attempt['attempt_ended_at'] ?? ''),
+        );
+
+        if (!$course_is_linked) {
+            $issue['reason_code'] = 'course_not_linked';
+            $issue['reason'] = '此 Tutor 課程尚未連結到 TPMA 課程；請先在 courses-admin 重新同步或連結課程，系統才可安全判定應寫入哪筆報名。';
+            return $issue;
+        }
+        if ($manual_override && $score_is_present) {
+            return null;
+        }
+        if ($attempt_user_is_dedicated === false) {
+            $issue['reason_code'] = 'non_dedicated_attempt_account';
+            $issue['reason'] = '此 Tutor 作答帳號不是本課程任何一位專用學員帳號；請確認是否為代考、共用帳號或管理員測試，再人工指定正確學員。';
+            return $issue;
+        }
+        if (!$quiz_is_qualifying) {
+            $issue['reason_code'] = 'non_current_quiz_attempt';
+            $issue['reason'] = '此作答屬於同課程的另一份 Tutor 測驗，並非目前指定的 TPMA 隨堂測驗；請先確認並修正課程章節測驗設定。';
+            return $issue;
+        }
+        if ($registration_id <= 0) {
+            $issue['reason_code'] = 'orphan_quiz_attempt';
+            $issue['reason'] = '此完成作答目前沒有對應報名；請確認實際應得成績的學員後人工指定。';
+            return $issue;
+        }
+        if (!$registration_matches_attempt_course) {
+            $issue['reason_code'] = 'attempt_bound_elsewhere';
+            $issue['reason'] = '此作答的對應報名屬於另一門課程；為避免把成績寫到錯誤課程，請人工指定正確學員。';
+            return $issue;
+        }
+        if (!$learner_is_isolated) {
+            $issue['reason_code'] = 'learner_account_not_isolated';
+            $issue['reason'] = '此作答綁定的報名仍使用付款人、承辦人或其他非專用帳號；必須確認並拆分正確學員。';
+            return $issue;
+        }
+        if ($registered_user_id <= 0 || $attempt_user_id !== $registered_user_id) {
+            $issue['reason_code'] = 'attempt_account_changed';
+            $issue['reason'] = '此作答帳號與目前專用學員帳號不同；常見於修復前由承辦或付款帳號作答。請人工指定正確學員。';
+            return $issue;
+        }
+        if ($score_is_present) {
+            return null;
+        }
+        if ((string) ($attempt['attempt_status'] ?? '') === 'review_required' && empty($attempt['is_manually_reviewed'])) {
+            $issue['reason_code'] = 'manual_review_pending';
+            $issue['reason'] = '測驗含人工批改題目，尚待講師完成批改。';
+            return $issue;
+        }
+        if (!empty($attempt['is_manually_reviewed'])) {
+            $issue['reason_code'] = 'manual_review_resync_required';
+            $issue['reason'] = '人工批改已完成，但目前尚未重新觸發成績同步。';
+            return $issue;
+        }
+        $issue['reason_code'] = 'score_sync_missed';
+        $issue['reason'] = '作答已正確對應此報名，但交卷時的成績同步未寫入 TPMA。';
+        return $issue;
+    }
+
+    /** Find exactly one TPMA course for a legacy Tutor title without guessing between similar courses. */
+    private static function find_tpma_course_title_candidate(string $tutor_course_title, array $courses): array {
+        $normalize = static function(string $title): string {
+            $title = function_exists('mb_strtolower') ? mb_strtolower($title, 'UTF-8') : strtolower($title);
+            return preg_replace('/[\s\p{P}\p{S}]+/u', '', $title) ?: '';
+        };
+        $needle = $normalize($tutor_course_title);
+        if ($needle === '') return array();
+
+        $matches = array();
+        foreach ($courses as $course) {
+            $course_title = $normalize((string) ($course['course_name'] ?? ''));
+            if ($course_title === '') continue;
+            $is_exact = $course_title === $needle;
+            $is_unique_extension = mb_strlen($needle, 'UTF-8') >= 6
+                && (strpos($course_title, $needle) !== false || strpos($needle, $course_title) !== false);
+            if ($is_exact || $is_unique_extension) {
+                $matches[(int) ($course['id'] ?? 0)] = $course;
+            }
+        }
+        return count($matches) === 1 ? reset($matches) : array();
+    }
+
+    /** Values written to Tutor when an administrator confirms the actual learner for an attempt. */
+    public static function manual_rebind_attempt_updates(array $target_registration): array {
+        $user_id = (int) ($target_registration['wp_user_id'] ?? 0);
+        return $user_id > 0 ? array('user_id' => $user_id) : array();
+    }
+
+    /** Return active, isolated registrations that an administrator may explicitly assign an attempt to. */
+    public static function get_quiz_score_rebind_targets(int $tutor_course_id): array {
+        if ($tutor_course_id <= 0 || !class_exists('TPMA_CR_DB')) return array();
+        global $wpdb;
+        return (array) $wpdb->get_results($wpdb->prepare(
+            "SELECT r.id AS registration_id, r.reg_no, r.student_name
+             FROM " . TPMA_CR_DB::table('regs') . " r
+             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+             WHERE c.tutor_course_id=%d AND r.wp_user_id>0 AND r.is_virtual_user=1
+               AND COALESCE(r.status, '') NOT IN ('cancelled', 'refunded')
+               AND COALESCE(r.payment_status, '') NOT IN ('cancelled', 'wc-cancelled', 'refunded')
+             ORDER BY r.student_name ASC, r.id ASC",
+            $tutor_course_id
+        ), ARRAY_A);
+    }
+
+    /** Re-write a score only when the existing attempt context and learner identity already prove the mapping. */
+    public static function resync_safe_quiz_score(int $registration_id, int $attempt_id) {
+        if ($registration_id <= 0 || $attempt_id <= 0 || !self::is_active()) {
+            return new WP_Error('invalid_quiz_score_resync', '無法重新同步此測驗成績。');
+        }
+        global $wpdb;
+        $attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+        $attempt = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$attempts_table} WHERE attempt_id=%d",
+            $attempt_id
+        ), ARRAY_A);
+        if (!$attempt || empty($attempt['attempt_ended_at'])) {
+            return new WP_Error('quiz_attempt_not_completed', '找不到已完成的 Tutor 作答紀錄。');
+        }
+
+        $quiz_id = (int) ($attempt['quiz_id'] ?? 0);
+        $attempt_user_id = (int) ($attempt['user_id'] ?? 0);
+        if ($attempt_user_id <= 0 || !self::is_qualifying_quiz($quiz_id)) {
+            return new WP_Error('quiz_not_qualifying', '此作答不是目前設定的 TPMA 隨堂測驗，不能安全重同步。');
+        }
+        $mapped_registration_id = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT registration_id FROM " . TPMA_CR_DB::table('quiz_contexts') . " WHERE attempt_id=%d",
+            $attempt_id
+        ));
+        if ($mapped_registration_id !== $registration_id) {
+            return new WP_Error('quiz_context_mismatch', '此作答沒有正確對應到指定報名，請改用人工指定覆寫。');
+        }
+
+        $registration = self::get_registration_for_quiz($registration_id, $quiz_id, $attempt_user_id);
+        if (!$registration || empty($registration['is_virtual_user'])) {
+            return new WP_Error('learner_identity_mismatch', '此作答帳號不是該筆報名的專用學員帳號，請改用人工指定覆寫。');
+        }
+        if (in_array((string) ($registration['status'] ?? ''), array('cancelled', 'refunded'), true)
+            || in_array((string) ($registration['payment_status'] ?? ''), array('cancelled', 'wc-cancelled', 'refunded'), true)) {
+            return new WP_Error('registration_inactive', '目標報名已取消或退款，不能同步成績。');
+        }
+
+        $best_score = self::get_registration_best_quiz_score($registration_id, $quiz_id);
+        $updated = $wpdb->update(
+            TPMA_CR_DB::table('regs'),
+            array('test_score' => $best_score . '%'),
+            array('id' => $registration_id),
+            array('%s'),
+            array('%d')
+        );
+        if ($updated === false) {
+            return new WP_Error('quiz_score_update_failed', 'TPMA 測驗成績寫入失敗。');
+        }
+        return array('registration_id' => $registration_id, 'attempt_id' => $attempt_id, 'score' => $best_score);
+    }
+
+    /** Resync every currently diagnosable score that has an unambiguous existing mapping. */
+    public static function resync_safe_quiz_scores() {
+        $scan = self::scan_quiz_score_sync_issues();
+        if (is_wp_error($scan)) return $scan;
+
+        $summary = array('scanned' => (int) ($scan['scanned'] ?? 0), 'eligible' => 0, 'success' => 0, 'failed' => array());
+        foreach ((array) ($scan['issues'] ?? array()) as $issue) {
+            if (!self::is_safe_quiz_score_resync_reason((string) ($issue['reason_code'] ?? ''))) continue;
+            $summary['eligible']++;
+            $result = self::resync_safe_quiz_score((int) ($issue['registration_id'] ?? 0), (int) ($issue['attempt_id'] ?? 0));
+            if (!is_wp_error($result)) {
+                $summary['success']++;
+                continue;
+            }
+            $summary['failed'][] = array(
+                'registration_id' => (int) ($issue['registration_id'] ?? 0),
+                'reg_no' => (string) ($issue['reg_no'] ?? ''),
+                'message' => $result->get_error_message(),
+            );
+        }
+        return $summary;
+    }
+
+    /**
+     * Administrator-only override for a known historical misbinding.
+     * The target must be an active dedicated learner in the same Tutor course. The old mapping's
+     * score is recalculated after moving the attempt so one attempt cannot remain credited twice.
+     */
+    public static function manually_rebind_quiz_score(int $attempt_id, int $target_registration_id) {
+        if ($attempt_id <= 0 || $target_registration_id <= 0 || !self::is_active()) {
+            return new WP_Error('invalid_manual_quiz_rebind', '請選擇有效的作答與目標報名。');
+        }
+        global $wpdb;
+        $attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+        $attempt = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$attempts_table} WHERE attempt_id=%d",
+            $attempt_id
+        ), ARRAY_A);
+        if (!$attempt || empty($attempt['attempt_ended_at'])) {
+            return new WP_Error('quiz_attempt_not_completed', '找不到已完成的 Tutor 作答紀錄。');
+        }
+        $quiz_id = (int) ($attempt['quiz_id'] ?? 0);
+        if (!self::is_qualifying_quiz($quiz_id)) {
+            return new WP_Error('quiz_not_qualifying', '此作答不是目前設定的 TPMA 隨堂測驗，不能覆寫。');
+        }
+
+        $target = self::get_registration_for_quiz($target_registration_id, $quiz_id);
+        if (!$target || empty($target['is_virtual_user'])) {
+            return new WP_Error('manual_rebind_target_invalid', '目標必須是同一課程中有效的專用學員報名。');
+        }
+        if (in_array((string) ($target['status'] ?? ''), array('cancelled', 'refunded'), true)
+            || in_array((string) ($target['payment_status'] ?? ''), array('cancelled', 'wc-cancelled', 'refunded'), true)) {
+            return new WP_Error('registration_inactive', '目標報名已取消或退款，不能覆寫成績。');
+        }
+
+        $attempt_updates = self::manual_rebind_attempt_updates((array) $target);
+        if (empty($attempt_updates['user_id'])) {
+            return new WP_Error('manual_rebind_target_account_missing', '目標報名缺少專用學員帳號，不能轉移 Tutor 作答。');
+        }
+        $target_user = get_user_by('id', (int) $attempt_updates['user_id']);
+        if (!$target_user) {
+            return new WP_Error('manual_rebind_target_account_missing', '目標專用學員帳號不存在，不能轉移 Tutor 作答。');
+        }
+        if (class_exists('TPMA_CR_Woo_Shared') && method_exists('TPMA_CR_Woo_Shared', 'virtual_user_display_name_update')) {
+            $profile_update = TPMA_CR_Woo_Shared::virtual_user_display_name_update(
+                (int) $target_user->ID,
+                (string) $target_user->display_name,
+                (string) ($target['student_name'] ?? '')
+            );
+            if (!empty($profile_update)) {
+                $profile_result = wp_update_user($profile_update);
+                if (is_wp_error($profile_result)) {
+                    return new WP_Error('manual_rebind_target_name_failed', '目標專用學員帳號名稱修正失敗，未轉移 Tutor 作答。');
+                }
+            }
+        }
+        $previous_attempt_user_id = (int) ($attempt['user_id'] ?? 0);
+        $attempt_user_changed = false;
+        if ($previous_attempt_user_id !== (int) $attempt_updates['user_id']) {
+            $attempt_user_changed = $wpdb->update(
+                $attempts_table,
+                $attempt_updates,
+                array('attempt_id' => $attempt_id),
+                array('%d'),
+                array('%d')
+            );
+            if ($attempt_user_changed === false) {
+                return new WP_Error('manual_rebind_attempt_owner_failed', 'Tutor 作答帳號轉移失敗，未變更報名對應。');
+            }
+        }
+
+        $contexts_table = TPMA_CR_DB::table('quiz_contexts');
+        $old_registration_id = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT registration_id FROM {$contexts_table} WHERE attempt_id=%d",
+            $attempt_id
+        ));
+        $saved = $wpdb->replace($contexts_table, array(
+            'attempt_id' => $attempt_id,
+            'registration_id' => $target_registration_id,
+            'order_id' => (int) ($target['woocommerce_order_id'] ?? 0),
+            'session_id' => (int) ($target['session_id'] ?? 0),
+            'manual_override' => 1,
+            'created_at' => current_time('mysql'),
+        ), array('%d', '%d', '%d', '%d', '%d', '%s'));
+        if ($saved === false) {
+            if ($attempt_user_changed !== false && $previous_attempt_user_id > 0) {
+                $wpdb->update($attempts_table, array('user_id' => $previous_attempt_user_id), array('attempt_id' => $attempt_id), array('%d'), array('%d'));
+            }
+            return new WP_Error('manual_rebind_save_failed', '作答與目標報名的對應寫入失敗。');
+        }
+
+        $target_score = self::get_registration_best_quiz_score($target_registration_id, $quiz_id);
+        $updated = $wpdb->update(
+            TPMA_CR_DB::table('regs'),
+            array('test_score' => $target_score . '%'),
+            array('id' => $target_registration_id),
+            array('%s'),
+            array('%d')
+        );
+        if ($updated === false) {
+            return new WP_Error('quiz_score_update_failed', '作答對應已更新，但目標報名成績寫入失敗。');
+        }
+
+        if ($old_registration_id > 0 && $old_registration_id !== $target_registration_id) {
+            $old_score = self::get_registration_best_quiz_score($old_registration_id, $quiz_id);
+            $wpdb->update(
+                TPMA_CR_DB::table('regs'),
+                array('test_score' => $old_score > 0 ? $old_score . '%' : ''),
+                array('id' => $old_registration_id),
+                array('%s'),
+                array('%d')
+            );
+        }
+
+        $wpdb->insert(TPMA_CR_DB::table('portal_audit'), array(
+            'order_id' => (int) ($target['woocommerce_order_id'] ?? 0),
+            'registration_id' => $target_registration_id,
+            'event_key' => 'quiz_score_manual_rebind',
+            'ip_hash' => hash('sha256', (string) ($_SERVER['REMOTE_ADDR'] ?? '')),
+            'created_at' => current_time('mysql'),
+        ), array('%d', '%d', '%s', '%s', '%s'));
+
+        return array(
+            'attempt_id' => $attempt_id,
+            'registration_id' => $target_registration_id,
+            'old_registration_id' => $old_registration_id,
+            'score' => $target_score,
+        );
+    }
+
+    /**
+     * Return one diagnostic row for every completed Tutor attempt that still needs attention.
+     * The scanner is deliberately attempt-first: a shared/coordinator account may have submitted
+     * several students' quizzes, and one attempt must never hide or replace another.
+     */
+    public static function scan_quiz_score_sync_issues() {
+        if (!self::is_active() || !class_exists('TPMA_CR_DB')) {
+            return new WP_Error('tutor_inactive', 'Tutor 整合未啟用，無法掃描測驗成績同步。');
+        }
+
+        global $wpdb;
+        $attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+        if (!$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $attempts_table))) {
+            return new WP_Error('quiz_attempts_missing', '找不到 Tutor 測驗作答資料表，無法掃描。');
+        }
+
+        $regs_table = TPMA_CR_DB::table('regs');
+        $courses_table = TPMA_CR_DB::table('courses');
+        $courses_by_tutor_id = array();
+        $all_tpma_courses = (array) $wpdb->get_results("SELECT id, tutor_course_id, course_name FROM {$courses_table}", ARRAY_A);
+        foreach ($all_tpma_courses as $course) {
+            $tutor_course_id = (int) ($course['tutor_course_id'] ?? 0);
+            if ($tutor_course_id > 0 && !isset($courses_by_tutor_id[$tutor_course_id])) {
+                $course['course_is_linked'] = true;
+                $courses_by_tutor_id[$tutor_course_id] = $course;
+            }
+        }
+
+        // Older manually-created Tutor courses may not have tutor_course_id saved yet. When the
+        // title has exactly one TPMA course candidate, include it in the audit but flag it as
+        // unlinked instead of silently omitting its completed attempts.
+        $course_post_type = function_exists('tutor') ? tutor()->course_post_type : 'courses';
+        foreach ((array) $wpdb->get_results($wpdb->prepare(
+            "SELECT ID, post_title FROM {$wpdb->posts} WHERE post_type=%s AND post_status NOT IN ('trash', 'auto-draft')",
+            $course_post_type
+        ), ARRAY_A) as $tutor_course) {
+            $tutor_course_id = (int) ($tutor_course['ID'] ?? 0);
+            $candidate = self::find_tpma_course_title_candidate((string) ($tutor_course['post_title'] ?? ''), $all_tpma_courses);
+            if ($tutor_course_id <= 0 || isset($courses_by_tutor_id[$tutor_course_id]) || empty($candidate)) {
+                continue;
+            }
+            $candidate['tutor_course_id'] = $tutor_course_id;
+            $candidate['course_is_linked'] = false;
+            $courses_by_tutor_id[$tutor_course_id] = $candidate;
+        }
+
+        $dedicated_user_ids_by_course_id = array();
+        foreach ((array) $wpdb->get_results(
+            "SELECT course_id, wp_user_id FROM {$regs_table} WHERE is_virtual_user=1 AND wp_user_id>0",
+            ARRAY_A
+        ) as $dedicated_account) {
+            $course_id = (int) ($dedicated_account['course_id'] ?? 0);
+            $user_id = (int) ($dedicated_account['wp_user_id'] ?? 0);
+            if ($course_id > 0 && $user_id > 0) {
+                $dedicated_user_ids_by_course_id[$course_id][$user_id] = true;
+            }
+        }
+
+        $course_ids = array_keys($courses_by_tutor_id);
+        $attempt_scope = array(
+            'attempt_id IN (SELECT attempt_id FROM ' . TPMA_CR_DB::table('quiz_contexts') . ')',
+        );
+        $attempt_args = array();
+        if (!empty($course_ids)) {
+            $course_placeholders = implode(',', array_fill(0, count($course_ids), '%d'));
+            $attempt_scope[] = "course_id IN ({$course_placeholders})";
+            $attempt_args = $course_ids;
+        }
+        $attempt_sql = "SELECT attempt_id, quiz_id, course_id, user_id, attempt_status, is_manually_reviewed, attempt_ended_at
+                        FROM {$attempts_table}
+                        WHERE (" . implode(' OR ', $attempt_scope) . ")
+                          AND COALESCE(attempt_status, '')<>'attempt_started'
+                          AND attempt_ended_at IS NOT NULL
+                        ORDER BY attempt_ended_at DESC, attempt_id DESC";
+        $attempts = (array) $wpdb->get_results(
+            empty($attempt_args) ? $attempt_sql : call_user_func_array(array($wpdb, 'prepare'), array_merge(array($attempt_sql), $attempt_args)),
+            ARRAY_A
+        );
+        if (empty($attempts)) {
+            return array('scanned' => 0, 'issues' => array());
+        }
+
+        $attempt_ids = array_values(array_filter(array_map('intval', wp_list_pluck($attempts, 'attempt_id'))));
+        $attempt_placeholders = implode(',', array_fill(0, count($attempt_ids), '%d'));
+        $contexts_sql = "SELECT q.attempt_id, q.manual_override, r.id AS registration_id, r.reg_no, r.student_name, r.wp_user_id,
+                                r.is_virtual_user, r.test_score, c.course_name, c.tutor_course_id
+                         FROM " . TPMA_CR_DB::table('quiz_contexts') . " q
+                         LEFT JOIN {$regs_table} r ON r.id=q.registration_id
+                         LEFT JOIN {$courses_table} c ON c.id=r.course_id
+                         WHERE q.attempt_id IN ({$attempt_placeholders})";
+        $contexts_by_attempt_id = array();
+        foreach ((array) $wpdb->get_results(
+            call_user_func_array(array($wpdb, 'prepare'), array_merge(array($contexts_sql), $attempt_ids)),
+            ARRAY_A
+        ) as $context) {
+            $contexts_by_attempt_id[(int) $context['attempt_id']] = $context;
+        }
+
+        $qualifying_quiz_by_course = array();
+        $attempt_user_names = array();
+        $tutor_course_titles = array();
+        $issues = array();
+        foreach ($attempts as $attempt) {
+            $attempt_id = (int) ($attempt['attempt_id'] ?? 0);
+            $tutor_course_id = (int) ($attempt['course_id'] ?? 0);
+            if ($attempt_id <= 0) {
+                continue;
+            }
+            $context = $contexts_by_attempt_id[$attempt_id] ?? array();
+            $course = $courses_by_tutor_id[$tutor_course_id] ?? array();
+            $course_is_linked = !empty($course['course_is_linked']);
+            if (!$course && !array_key_exists($tutor_course_id, $tutor_course_titles)) {
+                $tutor_course_titles[$tutor_course_id] = $tutor_course_id > 0
+                    ? (string) get_post_field('post_title', $tutor_course_id)
+                    : '';
+            }
+            if (!$course) {
+                $course = array(
+                    'course_name' => $tutor_course_titles[$tutor_course_id] ?? (string) ($context['course_name'] ?? ''),
+                    'tutor_course_id' => $tutor_course_id,
+                    'course_is_linked' => false,
+                );
+            }
+            if ($course_is_linked && !array_key_exists($tutor_course_id, $qualifying_quiz_by_course)) {
+                $qualifying_quiz_by_course[$tutor_course_id] = self::get_qualifying_quiz_for_course($tutor_course_id);
+            }
+
+            $identity = $context ?: array(
+                'registration_id' => 0,
+                'reg_no' => '未指定',
+                'student_name' => '',
+                'wp_user_id' => 0,
+                'is_virtual_user' => 0,
+                'test_score' => '',
+            );
+            $identity['course_name'] = (string) ($course['course_name'] ?? '');
+            $identity['tutor_course_id'] = $tutor_course_id;
+            $identity['course_is_linked'] = $course_is_linked;
+            $tpma_course_id = (int) ($course['id'] ?? 0);
+            if ($tpma_course_id > 0) {
+                $identity['attempt_user_is_dedicated_for_course'] = !empty(
+                    $dedicated_user_ids_by_course_id[$tpma_course_id][(int) ($attempt['user_id'] ?? 0)]
+                );
+            }
+            $identity['quiz_is_qualifying'] = $course_is_linked
+                && (int) ($attempt['quiz_id'] ?? 0) === (int) ($qualifying_quiz_by_course[$tutor_course_id] ?? 0);
+            $identity['registration_matches_attempt_course'] = empty($context['tutor_course_id']) || (int) $context['tutor_course_id'] === $tutor_course_id;
+
+            $diagnostic = self::classify_quiz_attempt_for_score_sync($attempt, $identity);
+            if ($diagnostic === null) {
+                continue;
+            }
+            $attempt_user_id = (int) ($attempt['user_id'] ?? 0);
+            if (!array_key_exists($attempt_user_id, $attempt_user_names)) {
+                $attempt_user = $attempt_user_id > 0 ? get_user_by('id', $attempt_user_id) : null;
+                $attempt_user_names[$attempt_user_id] = $attempt_user
+                    ? (string) $attempt_user->display_name
+                    : '歷史帳號 #' . $attempt_user_id;
+            }
+            $identity['attempt_user_display'] = $attempt_user_names[$attempt_user_id];
+            $issues[] = array_merge($identity, $diagnostic);
+        }
+
+        return array(
+            'scanned' => count($attempts),
+            'issues' => $issues,
+        );
+    }
 
     private static function is_qualifying_quiz(int $quiz_id): bool {
         $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';

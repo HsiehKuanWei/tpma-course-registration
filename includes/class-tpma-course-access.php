@@ -12,6 +12,7 @@ class TPMA_Course_Access {
 
     public static function init(): void {
         add_action('init', array(__CLASS__, 'handle_portal'), 98);
+        add_action('wp_logout', array(__CLASS__, 'clear_portal_selection_on_logout'), 10, 1);
         add_action('wp_footer', array(__CLASS__, 'render_identity_bar'));
         add_action('tutor_quiz/start/after', array(__CLASS__, 'map_quiz_attempt'), 10, 3);
         add_action('woocommerce_order_status_processing', array(__CLASS__, 'maybe_send_access_event_for_order'), 20, 1);
@@ -122,11 +123,25 @@ class TPMA_Course_Access {
         return self::learner_login_error($user_id, $tutor_course_id) === '';
     }
 
+    /** A TPMA learner portal may only authenticate the dedicated account created for that registration. */
+    public static function learner_binding_error(array $registration): string {
+        if (empty($registration['is_virtual_user'])) {
+            return 'learner_account_not_isolated';
+        }
+        return self::learner_login_error(
+            (int) ($registration['wp_user_id'] ?? 0),
+            (int) ($registration['tutor_course_id'] ?? 0)
+        );
+    }
+
     public static function current_user_can_resource(string $resource, int $session_id = 0): bool {
         $reg_id = self::current_registration_id();
         if ($reg_id > 0) {
             $result = self::evaluate_registration($reg_id, $resource);
             if (empty($result['allowed'])) return false;
+            $registration = (array) ($result['registration'] ?? array());
+            if (self::learner_binding_error($registration) !== '') return false;
+            if (get_current_user_id() !== (int) ($registration['wp_user_id'] ?? 0)) return false;
             return $session_id <= 0 || (int)($result['registration']['session_id'] ?? 0) === $session_id;
         }
         return false;
@@ -312,7 +327,7 @@ class TPMA_Course_Access {
             $session['registration_id'] = $reg_id;
             self::refresh_portal_session(self::cookie_value(), $session);
             $user = get_user_by('id', (int)$candidate['wp_user_id']);
-            if (!$user || !self::learner_login_is_safe((int)$candidate['wp_user_id'], (int)$candidate['tutor_course_id'])) {
+            if (!$user || self::learner_binding_error($candidate) !== '') {
                 $session['registration_id'] = 0;
                 self::refresh_portal_session(self::cookie_value(), $session);
                 wp_clear_auth_cookie();
@@ -353,7 +368,7 @@ class TPMA_Course_Access {
         ), ARRAY_A);
         return array_values(array_map(static function($row) {
             $result = self::evaluate_registration((int)$row['id'], 'course');
-            $row['account_error'] = self::learner_login_error((int)($row['wp_user_id'] ?? 0), (int)($row['tutor_course_id'] ?? 0));
+            $row['account_error'] = self::learner_binding_error($row);
             $row['access_allowed'] = !empty($result['allowed']) && $row['account_error'] === '';
             $row['access_reason'] = $row['account_error'] !== '' ? $row['account_error'] : (string)($result['reason'] ?? '');
             return $row;
@@ -394,6 +409,7 @@ class TPMA_Course_Access {
             'registration_cancelled'=>'此報名已取消。',
             'registration_not_found'=>'找不到報名資料。',
             'learner_account_missing'=>'找不到對應的學員帳號，請聯絡主辦單位修正。',
+            'learner_account_not_isolated'=>'此報名尚未綁定專用學員帳號，為避免承辦或付款帳號代為作答，已拒絕登入。',
             'learner_account_privileged'=>'此報名誤綁網站管理員帳號，已拒絕登入。',
             'learner_account_course_author'=>'此報名誤綁課程管理帳號，已拒絕登入。',
         );
@@ -473,12 +489,28 @@ class TPMA_Course_Access {
         $_COOKIE[self::COOKIE] = $id;
     }
 
+    /** Prevent a normal WordPress logout from being immediately undone by portal auto-login. */
+    public static function clear_portal_selection_on_logout(int $user_id = 0): void {
+        $id = self::cookie_value();
+        if ($id === '') return;
+
+        $session = get_transient('tpma_portal_' . $id);
+        if (!is_array($session)) return;
+
+        $registration_id = (int)($session['registration_id'] ?? 0);
+        if ($registration_id <= 0) return;
+
+        $session['registration_id'] = 0;
+        self::refresh_portal_session($id, $session);
+        self::audit((int)($session['order_id'] ?? 0), $registration_id, 'logged_out');
+    }
+
     private static function ensure_portal_user_session(array $session): void {
         $reg_id = (int)($session['registration_id'] ?? 0);
         $order_id = (int)($session['order_id'] ?? 0);
         if ($reg_id <= 0 || $order_id <= 0) return;
         $candidate = self::candidate_for_order($order_id, $reg_id);
-        if (!$candidate || empty($candidate['wp_user_id']) || !self::learner_login_is_safe((int)$candidate['wp_user_id'], (int)($candidate['tutor_course_id'] ?? 0))) {
+        if (!$candidate || empty($candidate['wp_user_id']) || self::learner_binding_error($candidate) !== '') {
             wp_clear_auth_cookie();
             wp_set_current_user(0);
             return;
@@ -493,7 +525,7 @@ class TPMA_Course_Access {
         }
     }
 
-    /** Return active registrations that would authenticate a privileged account. */
+    /** Return active registrations that would not authenticate a dedicated safe learner account. */
     public static function get_unsafe_learner_bindings(): array {
         global $wpdb;
         $rows = $wpdb->get_results(
@@ -509,7 +541,7 @@ class TPMA_Course_Access {
         );
         $unsafe = array();
         foreach ((array)$rows as $row) {
-            $reason = self::learner_login_error((int)$row['wp_user_id'], (int)$row['tutor_course_id']);
+            $reason = self::learner_binding_error($row);
             if ($reason === '') continue;
             $user = get_user_by('id', (int)$row['wp_user_id']);
             $row['account_error'] = $reason;
@@ -535,11 +567,11 @@ class TPMA_Course_Access {
         if (!$row) return new WP_Error('registration_not_found', '找不到報名資料。');
         $old_user_id = (int)$row['wp_user_id'];
         $tutor_course_id = (int)$row['tutor_course_id'];
-        if (self::learner_login_error($old_user_id, $tutor_course_id) === '') {
-            return new WP_Error('binding_not_unsafe', '此報名目前未綁定管理帳號，不需修正。');
+        if (self::learner_binding_error($row) === '') {
+            return new WP_Error('binding_not_unsafe', '此報名目前已綁定安全的專用學員帳號，不需修正。');
         }
         $new_user_id = (int)TPMA_CR_Woo_Shared::ensure_virtual_user((string)$row['reg_no'], (string)$row['student_name'], true);
-        if ($new_user_id <= 0 || !self::learner_login_is_safe($new_user_id, $tutor_course_id)) {
+        if ($new_user_id <= 0 || self::learner_binding_error(array('wp_user_id' => $new_user_id, 'is_virtual_user' => 1, 'tutor_course_id' => $tutor_course_id)) !== '') {
             return new WP_Error('learner_account_create_failed', '無法建立安全的專用學員帳號。');
         }
         $updated = $wpdb->update($regs_table, array('wp_user_id'=>$new_user_id, 'is_virtual_user'=>1), array('id'=>$registration_id), array('%d','%d'), array('%d'));
@@ -584,7 +616,13 @@ class TPMA_Course_Access {
 
     public static function map_quiz_attempt($quiz_id, $user_id, $attempt_id): void {
         $reg_id = self::current_registration_id();
-        if ($reg_id <= 0 || !self::evaluate_registration($reg_id, 'quiz')['allowed']) return;
+        $access = $reg_id > 0 ? self::evaluate_registration($reg_id, 'quiz') : array('allowed' => false);
+        if ($reg_id <= 0 || empty($access['allowed'])) return;
+        $registration = (array) ($access['registration'] ?? array());
+        if (self::learner_binding_error($registration) !== '' || (int) $user_id !== (int) ($registration['wp_user_id'] ?? 0)) {
+            self::audit((int) ($registration['woocommerce_order_id'] ?? 0), $reg_id, 'quiz_identity_denied');
+            return;
+        }
         $session = self::read_portal_session();
         global $wpdb;
         $topic_id = (int)get_post_field('post_parent', (int)$quiz_id);

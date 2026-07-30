@@ -338,6 +338,16 @@ class TPMA_CR_Woo_Shared
     /**
      * Ensure virtual user for registrations.
      */
+    public static function virtual_user_display_name_update($user_id, $current_display_name, $registration_display_name): array {
+        $user_id = (int) $user_id;
+        $current_display_name = trim((string) $current_display_name);
+        $registration_display_name = trim((string) $registration_display_name);
+        if ($user_id <= 0 || $current_display_name !== '' || $registration_display_name === '') {
+            return array();
+        }
+        return array('ID' => $user_id, 'display_name' => $registration_display_name);
+    }
+
     public static function ensure_virtual_user($reg_no, $display_name = '', $log_on_error = false) {
         $reg_no = preg_replace('/[^A-Za-z0-9_\-]/', '', (string)$reg_no);
         if ($reg_no === '') return 0;
@@ -347,6 +357,13 @@ class TPMA_CR_Woo_Shared
 
         $u = get_user_by('login', $login);
         if ($u && !is_wp_error($u)) {
+            $profile_update = self::virtual_user_display_name_update((int) $u->ID, (string) $u->display_name, $display_name);
+            if (!empty($profile_update)) {
+                $updated = wp_update_user($profile_update);
+                if (is_wp_error($updated) && $log_on_error) {
+                    error_log('TPMA Debug: virtual user display name update failed: ' . $updated->get_error_message());
+                }
+            }
             return (int)$u->ID;
         }
 
@@ -518,18 +535,11 @@ class TPMA_CR_Woo_Shared
             $inserted_ids[] = $rid;
             $reg_nos[] = $reg_no;
 
-            $wp_user_id = 0;
-            $is_virtual = 0;
-
-            // A purchaser with site-management authority may register other learners.
-            // Never bind every learner to that privileged WordPress account.
-            if ($has_member && !user_can($payer_user_id, 'manage_options')) {
-                $wp_user_id = $payer_user_id;
-                $is_virtual = 0;
-            } else {
-                $wp_user_id = self::ensure_virtual_user($reg_no, sanitize_text_field($learner['student_name'] ?? ''), $log_virtual_user);
-                $is_virtual = $wp_user_id ? 1 : 0;
-            }
+            // The payer may be a coordinator, company contact, member, or site manager.
+            // A TPMA learner must always use a registration-specific account so a payer
+            // can never take an exam or receive another learner's Tutor result.
+            $wp_user_id = self::ensure_virtual_user($reg_no, sanitize_text_field($learner['student_name'] ?? ''), $log_virtual_user);
+            $is_virtual = $wp_user_id ? 1 : 0;
 
             if ($wp_user_id) {
                 $wpdb->query(

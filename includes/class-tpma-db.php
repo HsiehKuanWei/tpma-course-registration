@@ -11,7 +11,7 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
-    const SCHEMA_VERSION = '1.9.1';
+    const SCHEMA_VERSION = '1.9.4';
 
     private static $table_columns_cache = array();
 
@@ -268,15 +268,22 @@ class TPMA_CR_DB
             revoked_at DATETIME DEFAULT NULL,
             PRIMARY KEY (id), UNIQUE KEY token_hash_idx (token_hash), KEY order_active_idx (order_id, revoked_at)
         ) {$charset_collate};");
-        $wpdb->query("CREATE TABLE IF NOT EXISTS " . self::table('quiz_contexts') . " (
+        $quiz_contexts_table = self::table('quiz_contexts');
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$quiz_contexts_table} (
             attempt_id BIGINT UNSIGNED NOT NULL,
             registration_id BIGINT UNSIGNED NOT NULL,
             order_id BIGINT UNSIGNED NOT NULL,
             session_id BIGINT UNSIGNED NOT NULL,
+            manual_override TINYINT(1) NOT NULL DEFAULT 0,
             created_at DATETIME NOT NULL,
             PRIMARY KEY (attempt_id), KEY registration_idx (registration_id)
         ) {$charset_collate};");
-        $wpdb->query("CREATE TABLE IF NOT EXISTS " . self::table('portal_audit') . " (
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$quiz_contexts_table} LIKE 'manual_override'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$quiz_contexts_table} ADD COLUMN manual_override TINYINT(1) NOT NULL DEFAULT 0 AFTER session_id");
+        }
+        $portal_audit_table = self::table('portal_audit');
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$portal_audit_table} (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
             order_id BIGINT UNSIGNED NOT NULL,
             registration_id BIGINT UNSIGNED DEFAULT NULL,
@@ -285,6 +292,35 @@ class TPMA_CR_DB
             created_at DATETIME NOT NULL,
             PRIMARY KEY (id), KEY order_created_idx (order_id, created_at)
         ) {$charset_collate};");
+        // Older manual score assignments predate quiz_contexts.manual_override. They wrote the
+        // context and portal audit entry in the same request, so this narrow timestamp match
+        // restores only those confirmed assignments without guessing from learner names.
+        $wpdb->query("UPDATE {$quiz_contexts_table} qc
+                      INNER JOIN {$portal_audit_table} pa
+                        ON pa.registration_id=qc.registration_id
+                       AND pa.order_id=qc.order_id
+                       AND pa.event_key='quiz_score_manual_rebind'
+                       AND ABS(TIMESTAMPDIFF(SECOND, qc.created_at, pa.created_at)) <= 5
+                      SET qc.manual_override=1
+                      WHERE qc.manual_override=0");
+        $tutor_attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+        if ($wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $tutor_attempts_table))) {
+            // A confirmed historical reassignment belongs to the target learner in Tutor as well
+            // as TPMA. This keeps Tutor's attempt list and quiz result lookups consistent.
+            $wpdb->query("UPDATE {$tutor_attempts_table} a
+                          INNER JOIN {$quiz_contexts_table} qc ON qc.attempt_id=a.attempt_id
+                          INNER JOIN " . self::table('regs') . " r ON r.id=qc.registration_id
+                          SET a.user_id=r.wp_user_id
+                          WHERE qc.manual_override=1 AND r.is_virtual_user=1 AND r.wp_user_id>0
+                            AND a.user_id<>r.wp_user_id");
+        }
+        // Legacy virtual accounts may predate the per-registration display name. Tutor renders
+        // attempt students from wp_users.display_name, so fill only truly blank names.
+        $wpdb->query("UPDATE {$wpdb->users} u
+                      INNER JOIN " . self::table('regs') . " r ON r.wp_user_id=u.ID
+                      SET u.display_name=r.student_name
+                      WHERE r.is_virtual_user=1 AND r.student_name IS NOT NULL AND TRIM(r.student_name)<>''
+                        AND (u.display_name IS NULL OR TRIM(u.display_name)='')");
 
         // ── receipts: immutable serials, current snapshot, and source-order links ──
         $receipts_table = self::table('receipts');

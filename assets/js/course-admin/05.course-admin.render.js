@@ -550,6 +550,12 @@ ns.renderCourses = function renderCourses(list){
     const topicResourcesHtml = topicResources.length
       ? topicResources.map(topic => {
           const type = ['general', 'recording', 'quiz'].includes(topic.resource_type) ? topic.resource_type : 'general';
+          const quizCount = parseInt(topic.quiz_count, 10) || 0;
+          const quizConnection = type !== 'quiz'
+            ? ''
+            : topic.quiz_connection === 'connected'
+              ? `<small class="tpma-topic-resource-status is-connected">測驗已連線（${quizCount} 份）</small>`
+              : '<small class="tpma-topic-resource-status is-missing">測驗未連線：請先在 Tutor 建立測驗，再儲存本頁。</small>';
           return `<label class="tpma-topic-resource-row">
             <span>${util.esc(topic.title || `Topic ${topic.topic_id}`)}</span>
             <select class="tpma-topic-resource-select" data-topic-id="${parseInt(topic.topic_id, 10) || 0}">
@@ -557,6 +563,7 @@ ns.renderCourses = function renderCourses(list){
               <option value="recording" ${type === 'recording' ? 'selected' : ''}>正式錄播（僅錄播權限）</option>
               <option value="quiz" ${type === 'quiz' ? 'selected' : ''}>測驗（依測驗時窗）</option>
             </select>
+            ${quizConnection}
           </label>`;
         }).join('')
       : '<p class="tpma-empty-content">尚無可設定的 Tutor 章節；場次章節由系統自動管理。</p>';

@@ -374,6 +374,9 @@
 }
 .tpma-topic-resource-select{width:100%;min-height:42px;border:1px solid #c7d3df;border-radius:7px;background:#fff;padding:8px 10px;}
 .tpma-topic-resource-select:focus{border-color:#0f6c7b;outline:3px solid rgba(15,108,123,.16);outline-offset:1px;}
+.tpma-topic-resource-status{grid-column:2;margin-top:-10px;font-size:12px;font-weight:600;}
+.tpma-topic-resource-status.is-connected{color:#16803c;}
+.tpma-topic-resource-status.is-missing{color:#b42318;}
 
 /* 編輯頁固定操作列 */
 .tpma-reg-detail-actions.tpma-course-edit-actions{
@@ -439,6 +442,7 @@
   }
   .tpma-session-fields{grid-template-columns:1fr;}
   .tpma-topic-resource-row{grid-template-columns:1fr;gap:8px;}
+  .tpma-topic-resource-status{grid-column:auto;margin-top:-4px;}
   .tpma-session-summary{
     align-items:flex-start;
     flex-direction:column;
