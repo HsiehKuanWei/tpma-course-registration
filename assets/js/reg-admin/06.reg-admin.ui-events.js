@@ -213,13 +213,13 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
   } else if (action === 'receipt_regenerate') {
     hint = '以目前訂單資料重新生成所選收據，保留原流水號並建立修訂歷程。';
   } else if (action === 'receipt_print') {
-    hint = '只列印具有效 PDF 的收據，並在新視窗開啟多頁 A5 橫向 PDF。';
+    hint = '列印所選已開立收據；紙本待掃描會使用已填資料的生成 PDF，並在新視窗開啟多頁 A5 橫向 PDF。';
   } else if (action === 'receipt_download') {
     hint = '下載所選已開立收據；紙本待掃描會下載已填資料的生成 PDF。';
   } else if (action === 'receipt_void') {
-    hint = '僅作廢已開立收據；作廢後可重新開立，已作廢項目會略過。';
+    hint = '可作廢所有已開立但未作廢的收據；作廢後可重新開立，已作廢項目會略過。';
   } else if (action === 'receipt_merge') {
-    hint = '所選資料會去重成 Woo 訂單；需至少兩筆訂單，且付款人、統編、收據方式及開立資格皆須相符。';
+    hint = '所選資料會去重成 Woo 訂單；未寄的既有收據會先作廢，再開立一張合併收據。付款人、統編、收據方式及開立資格皆須相符。';
   } else if (action === 'update_field' && target === 'session_id') {
     hint = sessionContext && sessionContext.valid
       ? '僅可移動至同一課程的啟用場次；系統會重建課程入口與 Meet 連結。'
@@ -289,7 +289,7 @@ UI.bulkReasonLabel = function bulkReasonLabel(reason, fallback){
     receipt_missing: '尚未開立收據',
     merged_receipt_partial_selection: '合併收據須一併選取所有來源訂單',
     tpma_receipt_type_sent: '已寄收據已鎖定，請先作廢後重新開立',
-    tpma_receipt_void_not_sent: '僅已寄收據可由後台手動作廢',
+    tpma_receipt_merge_sent_locked: '已寄收據不可直接合併，請先作廢後重新開立',
     route_invalid: '寄件路由設定不合法',
     routes_matched_but_no_mail_sent: '路由已命中，但沒有成功寄出',
     session_finished: '場次已授課完畢'
@@ -465,7 +465,10 @@ UI.applyBulk = async function applyBulk(ctx){
       receipt_void: '批次作廢收據',
       receipt_merge: '合併開立收據'
     };
-    if (!confirm('確定要' + labelMap[action] + '（共 ' + orderIds.length + ' 筆 Woo 訂單）？')) return;
+    const confirmation = action === 'receipt_merge'
+      ? '確定合併開立收據（共 ' + orderIds.length + ' 筆 Woo 訂單）？未寄的既有收據會先作廢，並開立一張新的合併收據。'
+      : '確定要' + labelMap[action] + '（共 ' + orderIds.length + ' 筆 Woo 訂單）？';
+    if (!confirm(confirmation)) return;
     const printWindow = action === 'receipt_print' ? R.prepareReceiptPreviewWindow() : null;
     if (action === 'receipt_print' && !printWindow) return;
     if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = true;
@@ -500,7 +503,7 @@ UI.applyBulk = async function applyBulk(ctx){
         if (action === 'receipt_print') {
           const result = await API.receiptBulk(ctx, { action: 'print', receipt_ids: receiptIds });
           API.openPdfBlob(result.blob, printWindow);
-          const skipped = result.skipped ? missing.concat([{ id: '-', reason: 'ineligible', message: '另略過 ' + result.skipped + ' 筆不適用或無有效檔案的收據' }]) : missing;
+          const skipped = result.skipped ? missing.concat([{ id: '-', reason: 'ineligible', message: '另略過 ' + result.skipped + ' 筆不適用或無可預覽檔案的收據' }]) : missing;
           UI.openBulkResultModal({ processed: receiptIds.length, updated: 0, sent: 0, skipped, failed: [] }, '批次列印已開啟');
         } else if (action === 'receipt_download') {
           const result = await API.receiptBulk(ctx, { action: 'download', receipt_ids: receiptIds });

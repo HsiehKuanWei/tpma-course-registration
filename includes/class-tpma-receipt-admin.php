@@ -55,7 +55,7 @@ class TPMA_CR_Receipt_Admin {
                 'selectRows' => '請先勾選至少一筆資料。',
                 'pendingOnly' => '此操作只能處理待開立訂單；已略過不適用資料。',
                 'receiptOnly' => '此操作只能處理已開立收據；已略過不適用資料。',
-                'mergeConfirm' => '確定合併開立所選訂單嗎？合併後會共用一張收據。',
+                'mergeConfirm' => '確定合併所選訂單嗎？未寄的既有收據會先作廢，再開立一張新的合併收據。',
             ),
         ), JSON_UNESCAPED_UNICODE) . ';', 'before');
     }
@@ -613,7 +613,10 @@ class TPMA_CR_Receipt_Admin {
             return self::bulk_void(self::normalise_ids($payload['receipt_ids'] ?? array()));
         }
         if ($action === 'merge') {
-            return self::bulk_merge(self::normalise_ids($payload['order_ids'] ?? array()));
+            return self::bulk_merge(
+                self::normalise_ids($payload['order_ids'] ?? array()),
+                self::normalise_ids($payload['receipt_ids'] ?? array())
+            );
         }
         if ($action === 'send') {
             return self::bulk_send(self::normalise_ids($payload['receipt_ids'] ?? array()));
@@ -886,40 +889,23 @@ class TPMA_CR_Receipt_Admin {
         return rest_ensure_response($result);
     }
 
-    private static function bulk_merge(array $order_ids) {
+    private static function bulk_merge(array $order_ids, array $receipt_ids = array()) {
+        foreach ($receipt_ids as $receipt_id) {
+            $receipt = TPMA_CR_Receipt_Service::get_receipt($receipt_id);
+            if (!$receipt) {
+                continue;
+            }
+            $order_ids = array_merge($order_ids, TPMA_CR_Receipt_Service::get_receipt_orders((int) $receipt['id']));
+        }
+        $order_ids = array_values(array_unique(array_filter(array_map('intval', $order_ids))));
         if (count($order_ids) < 2) {
-            return new WP_Error('tpma_receipt_merge_requires_multiple_orders', '合併開立至少需選擇兩筆待開立訂單。', array('status' => 400));
+            return new WP_Error('tpma_receipt_merge_requires_multiple_orders', '合併開立至少需選擇兩筆不同的訂單。', array('status' => 400));
         }
-        $skipped = array();
-        $eligible = array();
-        foreach ($order_ids as $order_id) {
-            if (TPMA_CR_Receipt_Service::get_receipt_for_order($order_id)) {
-                $skipped[] = array('order_id' => $order_id, 'reason' => 'already_issued', 'message' => '訂單已有有效收據。');
-                continue;
-            }
-            $order = self::get_order($order_id);
-            $checked = TPMA_CR_Receipt_Service::check_order_eligibility($order);
-            if (is_wp_error($checked)) {
-                $skipped[] = self::error_payload($order_id, $checked);
-                $skipped[count($skipped) - 1]['reason'] = $skipped[count($skipped) - 1]['code'];
-                continue;
-            }
-            $eligible[] = $order_id;
-        }
-        if (count($eligible) < 2) {
-            return rest_ensure_response(array('success' => false, 'merged' => null, 'skipped' => $skipped, 'message' => '可合併的待開立訂單不足兩筆。'));
-        }
-        $receipt = TPMA_CR_Receipt_Service::merge_orders($eligible);
+        $receipt = TPMA_CR_Receipt_Service::merge_orders($order_ids);
         if (is_wp_error($receipt)) {
-            $payload = self::rest_service_error($receipt);
-            $data = $payload->get_error_data();
-            if (!is_array($data)) {
-                $data = array();
-            }
-            $data['skipped'] = $skipped;
-            return new WP_Error($payload->get_error_code(), $payload->get_error_message(), $data);
+            return self::rest_service_error($receipt);
         }
-        return rest_ensure_response(array('success' => true, 'receipt' => self::receipt_payload($receipt), 'skipped' => $skipped));
+        return rest_ensure_response(array('success' => true, 'receipt' => self::receipt_payload($receipt), 'skipped' => array()));
     }
 
     private static function bulk_send(array $receipt_ids) {
@@ -940,8 +926,9 @@ class TPMA_CR_Receipt_Admin {
     }
 
     /**
-     * Streams a merged batch of receipt PDFs. Printed batches use only final
-     * files; downloaded batches may use the generated, data-filled paper PDF.
+     * Streams a merged batch of receipt PDFs. Management printing and download
+     * may use the generated, data-filled paper PDF before a scan is uploaded.
+     * Mail attachment eligibility remains stricter in the receipt service.
      */
     private static function stream_batch_pdf(array $receipt_ids, bool $download) {
         if (!$receipt_ids) {
@@ -957,9 +944,7 @@ class TPMA_CR_Receipt_Admin {
         $included = 0;
         $skipped = 0;
         foreach ($receipt_ids as $receipt_id) {
-            $file = $download
-                ? TPMA_CR_Receipt_Service::get_preview_file($receipt_id)
-                : TPMA_CR_Receipt_Service::get_effective_file($receipt_id);
+            $file = TPMA_CR_Receipt_Service::get_preview_file($receipt_id);
             if (is_wp_error($file)) {
                 $skipped++;
                 continue;

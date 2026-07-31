@@ -440,7 +440,18 @@ public static function admin_update_reg($request)
 
     // 收據方式會被寫入已開立收據的快照。為避免單筆編輯顯示成功卻破壞既有收據，
     // 只要請求帶有 receipt_type 且訂單已有有效收據，就整個請求拒絕。
-    if (array_key_exists('receipt_type', $d) && $order_id > 0) {
+    $receipt_type_for_reg = null;
+    if (array_key_exists('receipt_type', $d)) {
+        $receipt_type_for_reg = sanitize_key((string) $d['receipt_type']);
+        if (!in_array($receipt_type_for_reg, array('electronic', 'paper'), true)) {
+            return new WP_Error(
+                'tpma_receipt_type_invalid',
+                '收據方式必須是電子或紙本。',
+                array('status' => 400)
+            );
+        }
+    }
+    if ($receipt_type_for_reg !== null && $order_id > 0) {
         if (!class_exists('TPMA_CR_Receipt_Service')) {
             return new WP_Error(
                 'tpma_receipt_service_unavailable',
@@ -661,6 +672,19 @@ public static function admin_update_reg($request)
         if ($postpay_order_changed && class_exists('TPMA_Course_Access')) {
             TPMA_Course_Access::maybe_send_access_event_for_order($order_id);
         }
+    }
+
+    // 收據類型是每一筆 Woo 訂單共用的一張收據資料；單筆編輯也必須
+    // 一併回寫該訂單的所有 TPMA 報名，避免後續開立／合併時讀到舊值。
+    if ($receipt_type_for_reg !== null) {
+        $where = $order_id > 0 ? array('woocommerce_order_id' => $order_id) : array('id' => $id);
+        $wpdb->update(
+            $regs_table,
+            array('receipt_type' => $receipt_type_for_reg),
+            $where,
+            array('%s'),
+            array('%d')
+        );
     }
 
     // 課後付款在資料與 Woo 訂單保存成功後立即嘗試開立；失敗只回報，不回滾已完成的狀態操作。

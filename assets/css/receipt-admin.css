@@ -51,6 +51,9 @@
 .tpma-receipt-serial-link,
 .tpma-receipt-serial { color:#1e3a8a; font-weight:700; text-decoration:none; }
 .tpma-receipt-serial-link:hover { color:#1d4ed8; text-decoration:underline; }
+.tpma-receipt-serial-link.is-void,
+.tpma-receipt-serial.is-void { color:#94a3b8; }
+.tpma-receipt-serial-link.is-void:hover { color:#64748b; }
 .tpma-receipt-pending { color:#64748b; font-weight:700; }
 .tpma-receipt-status { white-space:normal; }
 .tpma-receipt-heading small { color:#64748b; }

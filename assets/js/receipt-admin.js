@@ -167,9 +167,10 @@
   function receiptNumber(item) {
     if (item.kind !== 'receipt') return '<span class="tpma-receipt-pending">尚未開立</span>';
     const serial = escapeHtml(item.serial);
+    const voidClass = item.status === 'void' ? ' is-void' : '';
     return item.preview_url
-      ? `<a class="tpma-receipt-serial-link" href="${escapeHtml(item.preview_url)}" target="_blank" rel="noopener noreferrer" aria-label="預覽收據 ${serial}">${serial}</a>`
-      : `<span class="tpma-receipt-serial">${serial}</span>`;
+      ? `<a class="tpma-receipt-serial-link${voidClass}" href="${escapeHtml(item.preview_url)}" target="_blank" rel="noopener noreferrer" aria-label="預覽收據 ${serial}">${serial}</a>`
+      : `<span class="tpma-receipt-serial${voidClass}">${serial}</span>`;
   }
 
   function receiptStatus(item) {
@@ -405,7 +406,7 @@
       const blob = await result.blob;
       const url = URL.createObjectURL(blob);
       const totalSkipped = skipped + result.skipped;
-      const message = `已產生列印檔${totalSkipped ? `；略過 ${totalSkipped} 筆不適用或無有效檔案的資料` : ''}。`;
+      const message = `已產生列印檔${totalSkipped ? `；略過 ${totalSkipped} 筆不適用或無可預覽檔案的資料` : ''}。`;
       if (printWindow) {
         printWindow.location.href = url;
         window.setTimeout(() => URL.revokeObjectURL(url), 60000);
@@ -443,12 +444,13 @@
     const action = el('tpma-receipt-bulk-action').value;
     if (!action) { showMessage('請先選擇批次操作。', 'error'); return; }
     if (!state.selected.size) { showMessage(cfg.strings.selectRows, 'error'); return; }
-    const pendingActions = ['generate', 'merge'];
-    const type = pendingActions.includes(action) ? 'pending' : 'receipt';
+    const type = action === 'generate' ? 'pending' : 'receipt';
     const ids = selectedFor(type);
-    const skipped = state.selected.size - ids.length;
-    if (!ids.length) { showMessage(type === 'pending' ? cfg.strings.pendingOnly : cfg.strings.receiptOnly, 'error'); return; }
-    if (action === 'merge' && ids.length < 2) { showMessage('合併開立至少需選擇兩筆待開立訂單。', 'error'); return; }
+    const skipped = action === 'merge' ? 0 : state.selected.size - ids.length;
+    const mergeOrderIds = action === 'merge' ? selectedFor('pending') : [];
+    const mergeReceiptIds = action === 'merge' ? selectedFor('receipt') : [];
+    if (action !== 'merge' && !ids.length) { showMessage(type === 'pending' ? cfg.strings.pendingOnly : cfg.strings.receiptOnly, 'error'); return; }
+    if (action === 'merge' && mergeOrderIds.length + mergeReceiptIds.length < 2) { showMessage('合併開立至少需選擇兩筆不同的訂單或收據。', 'error'); return; }
     if (action === 'merge' && !window.confirm(cfg.strings.mergeConfirm)) return;
     if (action === 'change_type_electronic' && !window.confirm('確定將所選未寄收據改為電子嗎？會保留收據號並自動重新生成。')) return;
     if (action === 'change_type_paper' && !window.confirm('確定將所選未寄收據改為紙本嗎？會保留收據號並自動重新生成，之後需上傳掃描檔。')) return;
@@ -464,7 +466,9 @@
       batchDownload(ids, skipped).finally(() => setBulkSubmitting(false));
       return;
     }
-    const payload = type === 'pending' ? { order_ids: ids } : { receipt_ids: ids };
+    const payload = action === 'merge'
+      ? { order_ids: mergeOrderIds, receipt_ids: mergeReceiptIds }
+      : (type === 'pending' ? { order_ids: ids } : { receipt_ids: ids });
     const requestAction = action === 'change_type_electronic' || action === 'change_type_paper' ? 'change_type' : action;
     if (requestAction === 'change_type') payload.receipt_type = action === 'change_type_paper' ? 'paper' : 'electronic';
     postBulk(requestAction, payload).then((response) => response.json()).then((data) => {

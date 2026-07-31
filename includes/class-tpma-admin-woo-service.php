@@ -531,7 +531,12 @@ class TPMA_CR_Admin_Woo_Service
                 $r['address_city']       = $o['address_city'] ?? '';
                 $r['address_line1']      = $o['address_line1'] ?? '';
                 $r['receiver']           = $o['receiver'];
-                $r['receipt_type']       = $o['receipt_type'] !== '' ? $o['receipt_type'] : $r['receipt_type'];
+                // TPMA 報名表才是未開立收據的來源資料。若無條件以 Woo
+                // snapshot 覆蓋，單筆編輯會看似已改成功、實際卻沒有回寫
+                // regs.receipt_type，導致後續開立收據時被判定為不一致。
+                if (empty($r['receipt_type']) && $o['receipt_type'] !== '') {
+                    $r['receipt_type'] = $o['receipt_type'];
+                }
                 $r['tax_id']             = $o['tax_id'] !== '' ? $o['tax_id'] : $r['tax_id'];
                 $r['remit_amount_total'] = $o['remit_amount_total'];
                 $r['remit_paid_at']      = $o['remit_paid_at'] ?: $r['remit_paid_at'];

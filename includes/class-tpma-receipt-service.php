@@ -235,10 +235,46 @@ class TPMA_CR_Receipt_Service {
         return is_wp_error($rendered) ? $rendered : self::get_receipt((int) $receipt['id']);
     }
 
-    /** Explicit merge API used by a future admin controller. */
+    /**
+     * Merge eligible orders into a new receipt.
+     *
+     * Unsent source receipts are voided only after every selected order passes
+     * the merge identity and payment checks. Sent receipts remain locked and
+     * must be explicitly voided before they can be reissued or merged.
+     */
     public static function merge_orders(array $order_ids) {
-        if (count(array_unique(array_filter(array_map('intval', $order_ids)))) < 2) {
+        $order_ids = array_values(array_unique(array_filter(array_map('intval', $order_ids))));
+        if (count($order_ids) < 2) {
             return new WP_Error('tpma_receipt_merge_requires_multiple_orders', '合併收據至少需要兩筆訂單。');
+        }
+
+        $selected_orders = array_fill_keys($order_ids, true);
+        $source_receipts = array();
+        foreach ($order_ids as $order_id) {
+            $receipt = self::get_receipt_for_order($order_id);
+            if (!$receipt) {
+                continue;
+            }
+            if (($receipt['status'] ?? '') === self::STATUS_SENT) {
+                return new WP_Error('tpma_receipt_merge_sent_locked', '已寄收據不可直接合併；請先作廢後重新開立。');
+            }
+            foreach (self::get_receipt_orders((int) $receipt['id']) as $linked_order_id) {
+                if (!isset($selected_orders[$linked_order_id])) {
+                    return new WP_Error('tpma_receipt_merge_partial_selection', '合併既有收據時，必須一併選取該收據的所有來源訂單。');
+                }
+            }
+            $source_receipts[(int) $receipt['id']] = $receipt;
+        }
+
+        $validated = self::validate_orders_for_merge($order_ids);
+        if (is_wp_error($validated)) {
+            return $validated;
+        }
+        foreach ($source_receipts as $receipt) {
+            $voided = self::void_receipt((int) $receipt['id']);
+            if (is_wp_error($voided)) {
+                return $voided;
+            }
         }
         return self::generate_for_orders($order_ids, false);
     }
@@ -349,9 +385,6 @@ class TPMA_CR_Receipt_Service {
         }
         if ($receipt['status'] === self::STATUS_VOID) {
             return new WP_Error('tpma_receipt_already_void', '此收據已作廢。', array('status' => 409));
-        }
-        if ($receipt['status'] !== self::STATUS_SENT) {
-            return new WP_Error('tpma_receipt_void_not_sent', '僅已寄收據可由後台手動作廢。', array('status' => 409));
         }
         global $wpdb;
         $now = current_time('mysql');
@@ -574,6 +607,35 @@ class TPMA_CR_Receipt_Service {
                 if ($identity !== $first) {
                     return new WP_Error('tpma_receipt_merge_identity_mismatch', '合併訂單必須有相同付款人、統編與收據方式。');
                 }
+            }
+        }
+        return $orders;
+    }
+
+    /** Validate merge eligibility without rejecting the unissued source receipts being replaced. */
+    private static function validate_orders_for_merge(array $order_ids) {
+        if (!function_exists('wc_get_order')) {
+            return new WP_Error('tpma_receipt_woocommerce_unavailable', 'WooCommerce 尚未啟用。');
+        }
+        $orders = array();
+        foreach ($order_ids as $order_id) {
+            $order = self::check_order_eligibility($order_id);
+            if (is_wp_error($order)) {
+                return $order;
+            }
+            $orders[] = $order;
+        }
+        $first = self::merge_identity($orders[0]);
+        if (is_wp_error($first)) {
+            return $first;
+        }
+        foreach (array_slice($orders, 1) as $order) {
+            $identity = self::merge_identity($order);
+            if (is_wp_error($identity)) {
+                return $identity;
+            }
+            if ($identity !== $first) {
+                return new WP_Error('tpma_receipt_merge_identity_mismatch', '合併訂單必須有相同付款人、統編與收據方式。');
             }
         }
         return $orders;
@@ -887,8 +949,28 @@ class TPMA_CR_Receipt_Service {
     }
 
     /**
-     * TPMA registrations own the receipt-type decision; Woo meta is only a
-     * checkout snapshot and must agree with a non-empty registration value.
+     * Keep a pending order's registration records aligned with its Woo
+     * selection. This is only used before a receipt exists; issued receipts
+     * remain governed by their immutable receipt snapshot.
+     */
+    private static function sync_unissued_registration_receipt_type($order_id, string $receipt_type): void {
+        global $wpdb;
+        $order_id = (int) $order_id;
+        if ($order_id <= 0 || !in_array($receipt_type, array('electronic', 'paper'), true)) {
+            return;
+        }
+        $wpdb->update(
+            TPMA_CR_DB::table('regs'),
+            array('receipt_type' => $receipt_type),
+            array('woocommerce_order_id' => $order_id),
+            array('%s'),
+            array('%d')
+        );
+    }
+
+    /**
+     * TPMA registrations own the issued-receipt lifecycle. Before issuance,
+     * repair legacy rows where reg-admin previously saved only the Woo value.
      */
     private static function resolve_registration_receipt_type(WC_Order $order) {
         global $wpdb;
@@ -916,7 +998,14 @@ class TPMA_CR_Receipt_Service {
             return new WP_Error('tpma_receipt_type_invalid', 'WooCommerce 訂單的收據方式無效。');
         }
         if ($registration_type !== '' && $order_type !== '' && $registration_type !== $order_type) {
-            return new WP_Error('tpma_receipt_type_conflict', 'TPMA 報名資料與 WooCommerce 訂單的收據方式不一致，請先統一後再開立。');
+            // A valid receipt must never be silently altered. For an unissued
+            // order, however, this is a recoverable legacy mismatch caused by
+            // reg-admin writing only the Woo order meta.
+            if (self::get_receipt_for_order((int) $order->get_id())) {
+                return new WP_Error('tpma_receipt_type_conflict', 'TPMA 報名資料與 WooCommerce 訂單的收據方式不一致，請先統一後再開立。');
+            }
+            self::sync_unissued_registration_receipt_type((int) $order->get_id(), $order_type);
+            $registration_type = $order_type;
         }
         // Legacy rows can be blank; only then read the order snapshot and use
         // electronic as the final established default.
