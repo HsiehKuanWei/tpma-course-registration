@@ -260,14 +260,17 @@ class TPMA_CR_DB
 
         $wpdb->query("CREATE TABLE IF NOT EXISTS " . self::table('portal_tokens') . " (
             id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-            order_id BIGINT UNSIGNED NOT NULL,
+            order_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            scope VARCHAR(20) NOT NULL DEFAULT 'order',
+            session_id BIGINT UNSIGNED DEFAULT NULL,
             token_hash VARCHAR(64) NOT NULL,
             encrypted_token LONGTEXT NOT NULL,
             expires_at DATETIME NOT NULL,
             created_at DATETIME NOT NULL,
             revoked_at DATETIME DEFAULT NULL,
-            PRIMARY KEY (id), UNIQUE KEY token_hash_idx (token_hash), KEY order_active_idx (order_id, revoked_at)
+            PRIMARY KEY (id), UNIQUE KEY token_hash_idx (token_hash), KEY order_active_idx (order_id, revoked_at), KEY session_active_idx (session_id, revoked_at)
         ) {$charset_collate};");
+        self::ensure_portal_token_scope_columns();
         $quiz_contexts_table = self::table('quiz_contexts');
         $wpdb->query("CREATE TABLE IF NOT EXISTS {$quiz_contexts_table} (
             attempt_id BIGINT UNSIGNED NOT NULL,
@@ -374,6 +377,26 @@ class TPMA_CR_DB
         if (!(bool)get_option('tpma_cr_portal_tokens_migrated_v1', false)) {
             $wpdb->query($wpdb->prepare("UPDATE {$tokens_table} SET expires_at=%s WHERE expires_at>%s", current_time('mysql'), current_time('mysql')));
             update_option('tpma_cr_portal_tokens_migrated_v1', 1, false);
+        }
+    }
+
+    public static function ensure_portal_token_scope_columns(): void {
+        global $wpdb;
+        $table = self::table('portal_tokens');
+        if (!$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table))) {
+            return;
+        }
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'scope'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN scope VARCHAR(20) NOT NULL DEFAULT 'order' AFTER order_id");
+        }
+        $col = $wpdb->get_results("SHOW COLUMNS FROM {$table} LIKE 'session_id'");
+        if (empty($col)) {
+            $wpdb->query("ALTER TABLE {$table} ADD COLUMN session_id BIGINT UNSIGNED DEFAULT NULL AFTER scope");
+        }
+        $idx = $wpdb->get_var("SHOW INDEX FROM {$table} WHERE Key_name = 'session_active_idx'");
+        if (!$idx) {
+            $wpdb->query("ALTER TABLE {$table} ADD KEY session_active_idx (session_id, revoked_at)");
         }
     }
 

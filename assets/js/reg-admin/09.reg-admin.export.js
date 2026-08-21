@@ -76,7 +76,7 @@ EXP.openModal = function openModal(ctx, defaultType){
   const overlay = document.getElementById('tpma-export-modal');
   if (!overlay) return;
   EXP.mountModal(overlay);
-  defaultType = defaultType === 'statistics' ? 'statistics' : 'students';
+  defaultType = ['statistics', 'quiz_summary'].includes(defaultType) ? defaultType : 'students';
 
   // 更新筆數顯示
   const count = getStudentExportRows(ctx).length;
@@ -244,6 +244,53 @@ EXP.exportStatistics = function exportStatistics(allRows, dateFrom, dateTo){
   XLSX.writeFile(wb, '統計報表_' + suffix + '.xlsx');
 };
 
+function sheetName(name, used){
+  var clean = String(name || '測驗摘要').replace(/[\[\]\:\*\?\/\\]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!clean) clean = '測驗摘要';
+  clean = clean.substring(0, 31);
+  var base = clean;
+  var index = 2;
+  while (used[clean]) {
+    var suffix = '_' + index;
+    clean = base.substring(0, 31 - suffix.length) + suffix;
+    index++;
+  }
+  used[clean] = true;
+  return clean;
+}
+
+EXP.exportQuizSummary = async function exportQuizSummary(ctx){
+  const rows = getStudentExportRows(ctx);
+  const ids = rows.map(function(row){ return parseInt(row.id, 10) || 0; }).filter(Boolean);
+  if (!ids.length) {
+    alert('沒有可匯出的學員資料');
+    return false;
+  }
+
+  const data = await (global.TPMARegAdmin.api || {}).exportQuizSummary(ctx, ids);
+  const sheets = data && Array.isArray(data.sheets) ? data.sheets : [];
+  if (!sheets.length) {
+    alert('沒有可匯出的測驗摘要');
+    return false;
+  }
+
+  const wb = XLSX.utils.book_new();
+  const used = {};
+  sheets.forEach(function(sheet){
+    const headers = Array.isArray(sheet.headers) ? sheet.headers : [];
+    const body = Array.isArray(sheet.rows) ? sheet.rows : [];
+    if (!headers.length) return;
+    const ws = XLSX.utils.aoa_to_sheet([headers].concat(body));
+    XLSX.utils.book_append_sheet(wb, ws, sheetName(sheet.name, used));
+  });
+  if (!wb.SheetNames.length) {
+    alert('沒有可匯出的測驗摘要');
+    return false;
+  }
+  XLSX.writeFile(wb, '測驗摘要_' + todayStr() + '.xlsx');
+  return true;
+};
+
 // ------------------------------------------------------------
 // 初始化：綁定事件
 // ------------------------------------------------------------
@@ -279,13 +326,25 @@ EXP.init = function init(ctx){
 
   // 確認匯出
   var confirmBtn = document.getElementById('tpma-export-confirm');
-  if (confirmBtn) confirmBtn.addEventListener('click', function(){
+  if (confirmBtn) confirmBtn.addEventListener('click', async function(){
     var checked = overlay.querySelector('input[name="tpma-export-type"]:checked');
     if (!checked) return;
 
     if (checked.value === 'students') {
       EXP.exportStudents(getStudentExportRows(ctx));
       EXP.closeModal();
+    } else if (checked.value === 'quiz_summary') {
+      try {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = '匯出中…';
+        const ok = await EXP.exportQuizSummary(ctx);
+        if (ok) EXP.closeModal();
+      } catch (e) {
+        alert(e.message || '測驗摘要匯出失敗');
+      } finally {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = '確認匯出';
+      }
     } else if (checked.value === 'statistics') {
       var dateFrom = (document.getElementById('tpma-export-stats-from') || {}).value || '';
       var dateTo   = (document.getElementById('tpma-export-stats-to')   || {}).value || '';

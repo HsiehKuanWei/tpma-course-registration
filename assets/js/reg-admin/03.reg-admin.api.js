@@ -59,6 +59,22 @@ API.regeneratePortal = async function regeneratePortal(ctx, regId, regenerate){
   }, ctx.nonce);
 };
 
+API.getSessionPortal = async function getSessionPortal(ctx, regId, regenerate){
+  return await PublicAPI.fetchJson(ctx.apiBase + '/admin/session-portal', {
+    method: 'POST', body: JSON.stringify({
+      reg_id: parseInt(regId, 10) || 0,
+      regenerate: !!regenerate
+    })
+  }, ctx.nonce);
+};
+
+API.exportQuizSummary = async function exportQuizSummary(ctx, ids){
+  return await PublicAPI.fetchJson(ctx.apiBase + '/admin/quiz-summary', {
+    method: 'POST',
+    body: JSON.stringify({ ids: ids || [] })
+  }, ctx.nonce);
+};
+
 API.getOrderReceipt = async function getOrderReceipt(ctx, orderId){
   const data = await PublicAPI.fetchJson(ctx.apiBase + '/admin/receipts/order/' + (parseInt(orderId, 10) || 0), {
     method: 'GET'

@@ -269,6 +269,12 @@ body{
   white-space:nowrap;
 }
 
+.tpma-status-pill.tpma-receipt-link,
+.tpma-status-pill.tpma-receipt-link:hover,
+.tpma-status-pill.tpma-receipt-link:focus-visible{
+  text-decoration:none;
+}
+
 .tpma-receipt-action-slot{
   display:inline-flex;
   align-items:center;

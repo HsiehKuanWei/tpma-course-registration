@@ -35,6 +35,7 @@ class TPMA_Woo_Special_Product {
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_marker'], 15);
         add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_styles'], 16);
         add_filter('woocommerce_form_field', [__CLASS__, 'wrap_form_field_groups'], 18, 4);
+        add_filter('woocommerce_form_field_tpma_receipt_notice', [__CLASS__, 'render_receipt_notice_field'], 10, 4);
         add_filter('body_class', [__CLASS__, 'filter_body_class'], 20, 1);
         add_filter('tpma_common_required_fields', [__CLASS__, 'filter_common_required_fields'], 20, 2);
 
@@ -244,6 +245,22 @@ class TPMA_Woo_Special_Product {
         return $field_html;
     }
 
+    public static function render_receipt_notice_field($field_html, $key, $args, $value) {
+        if ($key !== 'tpma_receipt_notice' || !self::cart_is_tpma_only()) {
+            return $field_html;
+        }
+
+        $label = isset($args['label']) ? (string) $args['label'] : '收據類型';
+
+        return '<p class="form-row form-row-wide tpma-receipt-type-field" id="tpma_receipt_notice_field">'
+            . '<label>' . esc_html($label) . '</label>'
+            . '<span class="woocommerce-input-wrapper">'
+            . '<span class="tpma-fixed-receipt-type">電子收據</span><br>'
+            . '<span class="description">本商品不開立發票，僅開立收據，收據電子檔將於課後寄出</span>'
+            . '</span>'
+            . '</p>';
+    }
+
     /**
      * 1083：預先補齊發票類型，避免被通用驗證誤判為必填。
      */
@@ -256,6 +273,8 @@ class TPMA_Woo_Special_Product {
         if (empty($_POST['tpma_invoice_type'])) {
             $_POST['tpma_invoice_type'] = 'na';
         }
+
+        $_POST['tpma_receipt_type'] = 'electronic';
 
         // O'Pay 發票模組欄位（1083 會在後續流程標記為 tax_exempt）
         if (empty($_POST['opay_invoice_type'])) {
@@ -427,17 +446,19 @@ class TPMA_Woo_Special_Product {
             $fields['billing']['billing_first_name']['placeholder'] = '承辦人姓名';
         }
 
-        // 特殊商品專用：收據類型
-        $fields['billing']['tpma_receipt_type'] = array(
-            'type'     => 'select',
-            'required' => true,
+        // 特殊商品專用：前台固定電子收據，紙本改由後台管理員調整。
+        $fields['billing']['tpma_receipt_notice'] = array(
+            'type'     => 'tpma_receipt_notice',
+            'required' => false,
             'label'    => '收據類型',
-            'options'  => array(
-                ''           => '請選擇',
-                'electronic' => '電子收據',
-                'paper'      => '紙本收據',
-            ),
             'priority' => 100,
+            'class'    => array('form-row-wide', 'tpma-receipt-type-field'),
+        );
+        $fields['billing']['tpma_receipt_type'] = array(
+            'type'     => 'hidden',
+            'required' => false,
+            'default'  => 'electronic',
+            'priority' => 101,
         );
 
         // 隱藏手機欄位（由 1083 流程決定不顯示）
@@ -468,9 +489,14 @@ class TPMA_Woo_Special_Product {
             $fields['order'] = array();
         }
         // 收據類型移至額外資訊
+        if (isset($fields['billing']['tpma_receipt_notice'])) {
+            $fields['order']['tpma_receipt_notice'] = $fields['billing']['tpma_receipt_notice'];
+            $fields['order']['tpma_receipt_notice']['priority'] = 10;
+            unset($fields['billing']['tpma_receipt_notice']);
+        }
         if (isset($fields['billing']['tpma_receipt_type'])) {
             $fields['order']['tpma_receipt_type'] = $fields['billing']['tpma_receipt_type'];
-            $fields['order']['tpma_receipt_type']['priority'] = 10;
+            $fields['order']['tpma_receipt_type']['priority'] = 11;
             unset($fields['billing']['tpma_receipt_type']);
         }
         // 發票類型：1083 不顯示（由預設值補齊）
@@ -543,9 +569,7 @@ class TPMA_Woo_Special_Product {
         if (!self::cart_is_tpma_only()) {
             return;
         }
-        if (empty($_POST['tpma_receipt_type'])) {
-            wc_add_notice('請選擇收據類型', 'error');
-        }
+        $_POST['tpma_receipt_type'] = 'electronic';
         if (empty($_POST['billing_company'])) {
             wc_add_notice('請填寫公司抬頭', 'error');
         }
@@ -562,10 +586,7 @@ class TPMA_Woo_Special_Product {
         if (!self::cart_is_tpma_only()) {
             return;
         }
-        $receipt_type = sanitize_text_field(wp_unslash($_POST['tpma_receipt_type'] ?? ''));
-        if ($receipt_type !== '') {
-            $order->update_meta_data('_tpma_receipt_type', $receipt_type);
-        }
+        $order->update_meta_data('_tpma_receipt_type', 'electronic');
         // 1083：固定不開立發票，保留舊欄位為 na 供舊流程判斷
         $invoice_type = sanitize_text_field(wp_unslash($_POST['tpma_invoice_type'] ?? ''));
         if ($invoice_type === '') {

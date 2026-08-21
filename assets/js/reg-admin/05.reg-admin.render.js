@@ -158,6 +158,22 @@ R.buildAccessModeSummaryHtml = function buildAccessModeSummaryHtml(rows){
   return badges.join(' ');
 };
 
+R.copySessionPortal = async function copySessionPortal(ctx, row, regenerate){
+  const result = await API.getSessionPortal(ctx, row.id, !!regenerate);
+  const url = result?.urls?.portal || result?.portal || '';
+  if (!url) throw new Error('未取得全員測驗入口');
+  await navigator.clipboard.writeText(url);
+  return url;
+};
+
+R.copyOrderPortal = async function copyOrderPortal(ctx, row, regenerate){
+  const result = await API.regeneratePortal(ctx, row.id, !!regenerate);
+  const url = result?.urls?.portal || result?.portal || '';
+  if (!url) throw new Error('未取得個人／同訂單入口');
+  await navigator.clipboard.writeText(url);
+  return url;
+};
+
 R.receiptTypeText = function receiptTypeText(type){
   return String(type || '').toLowerCase() === 'paper' ? '紙本' : '電子';
 };
@@ -176,6 +192,18 @@ R.receiptStatusText = function receiptStatusText(status){
 
 R.receiptCompactText = function receiptCompactText(type, status){
   return R.receiptTypeText(type) + '／' + R.receiptStatusText(status);
+};
+
+R.receiptStatusPillClass = function receiptStatusPillClass(status){
+  switch(String(status || 'pending')){
+    case 'sent': return 'tpma-status-pill-g2-sent';
+    case 'generated':
+    case 'awaiting_scan':
+    case 'scanned': return 'tpma-status-pill-g2-opened';
+    case 'void': return 'tpma-status-pill-g1-cancelled';
+    case 'pending':
+    default: return 'tpma-status-pill-g2-pending';
+  }
 };
 
 R.receiptIsPreviewable = function receiptIsPreviewable(type, status){
@@ -243,11 +271,12 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
   const rCode = row.receipt_status || 'pending';
   const rType = row.receipt_type || 'electronic';
   const rText = R.receiptCompactText(rType, rCode);
+  const rClass = R.receiptStatusPillClass(rCode);
   const previewable = row.woocommerce_order_id && R.receiptIsPreviewable(rType, rCode);
   if (previewable) {
-    icons.push('<a href="#" class="tpma-receipt-link tpma-receipt-status-link" data-receipt-preview-order="'+U.esc(row.woocommerce_order_id)+'" title="預覽收據">'+U.esc(rText)+'</a>');
+    icons.push('<a href="#" class="tpma-status-pill '+rClass+' tpma-receipt-link tpma-receipt-status-link" data-receipt-preview-order="'+U.esc(row.woocommerce_order_id)+'" title="預覽收據">'+U.esc(rText)+'</a>');
   } else {
-    icons.push('<span class="tpma-receipt-state" title="收據方式／狀態: '+U.esc(rText)+'">'+U.esc(rText)+'</span>');
+    icons.push('<span class="tpma-status-pill '+rClass+' tpma-receipt-state" title="收據方式／狀態: '+U.esc(rText)+'">'+U.esc(rText)+'</span>');
   }
 
   const tLabel = (testState === 'done') ? '已測驗' : '待測驗';
@@ -350,6 +379,8 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   const actionsDiv = document.createElement('div');
   actionsDiv.className = 'tpma-reg-detail-actions tpma-reg-detail-view-actions';
   actionsDiv.innerHTML = `
+    ${row.session_id ? `<button class="tpma-btn tpma-btn-secondary tpma-reg-action-btn" id="tpma-btn-session-portal-${row.id}" type="button">複製全員測驗入口</button>` : ''}
+    ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary tpma-reg-action-btn" id="tpma-btn-order-portal-${row.id}" type="button">複製個人／同訂單入口</button>` : ''}
     <button class="tpma-btn tpma-btn-secondary tpma-reg-action-btn" id="tpma-btn-edit-${row.id}">編輯詳情</button>
   `;
 
@@ -358,6 +389,24 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   container.appendChild(detailContainer);
 
   // 綁定編輯按鈕事件
+  const sessionPortalBtn = actionsDiv.querySelector(`#tpma-btn-session-portal-${row.id}`);
+  if (sessionPortalBtn) sessionPortalBtn.addEventListener('click', async function(){
+    try {
+      sessionPortalBtn.disabled = true;
+      await R.copySessionPortal(ctx, row, false);
+      global.alert('全員測驗入口已複製。');
+    } catch (e) { global.alert(e.message || '無法取得全員測驗入口'); }
+    finally { sessionPortalBtn.disabled = false; }
+  });
+  const orderPortalBtn = actionsDiv.querySelector(`#tpma-btn-order-portal-${row.id}`);
+  if (orderPortalBtn) orderPortalBtn.addEventListener('click', async function(){
+    try {
+      orderPortalBtn.disabled = true;
+      await R.copyOrderPortal(ctx, row, false);
+      global.alert('個人／同訂單入口已複製。');
+    } catch (e) { global.alert(e.message || '無法取得個人／同訂單入口'); }
+    finally { orderPortalBtn.disabled = false; }
+  });
   actionsDiv.querySelector(`#tpma-btn-edit-${row.id}`).addEventListener('click', function(){
     R.renderDetailEdit(ctx, container, row);
   });
@@ -483,13 +532,14 @@ R.receiptDisplayHtml = function receiptDisplayHtml(row, receipt){
   const type = receipt?.receipt_type || row.receipt_type || 'electronic';
   const status = receipt?.status || row.receipt_status || 'pending';
   const text = R.receiptCompactText(type, status);
+  const cls = R.receiptStatusPillClass(status);
   if (receipt && receipt.id && R.receiptIsPreviewable(type, status)) {
-    return '<a href="#" class="tpma-receipt-link" data-receipt-preview="'+U.esc(receipt.id)+'" title="預覽收據">'+U.esc(text)+'</a>';
+    return '<a href="#" class="tpma-status-pill '+cls+' tpma-receipt-link" data-receipt-preview="'+U.esc(receipt.id)+'" title="預覽收據">'+U.esc(text)+'</a>';
   }
   if (!receipt && row.woocommerce_order_id && R.receiptIsPreviewable(type, status)) {
-    return '<a href="#" class="tpma-receipt-link" data-receipt-preview-order="'+U.esc(row.woocommerce_order_id)+'" title="預覽收據">'+U.esc(text)+'</a>';
+    return '<a href="#" class="tpma-status-pill '+cls+' tpma-receipt-link" data-receipt-preview-order="'+U.esc(row.woocommerce_order_id)+'" title="預覽收據">'+U.esc(text)+'</a>';
   }
-  return '<span class="tpma-receipt-state">'+U.esc(text)+'</span>';
+  return '<span class="tpma-status-pill '+cls+' tpma-receipt-state">'+U.esc(text)+'</span>';
 };
 
 R.bindReceiptPreviewLink = function bindReceiptPreviewLink(ctx, link, fallbackOrderId){
@@ -751,8 +801,9 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
       ${row.woocommerce_order_id ? `<span class="tpma-receipt-action-slot" aria-live="polite">讀取收據中…</span>` : ''}
     </div>
     <div class="tpma-reg-edit-actions-secondary">
-      ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-${row.id}">複製共用入口</button>` : ''}
-      ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-reset-${row.id}">重置入口</button>` : ''}
+      ${row.session_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-${row.id}" type="button">複製全員測驗入口</button>` : ''}
+      ${row.woocommerce_order_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-order-portal-edit-${row.id}" type="button">複製個人／同訂單入口</button>` : ''}
+      ${row.session_id ? `<button class="tpma-btn tpma-btn-secondary" id="tpma-btn-portal-reset-${row.id}" type="button">重置全員入口</button>` : ''}
       <button class="tpma-btn tpma-btn-secondary" id="tpma-btn-cancel-edit-${row.id}">取消編輯</button>
     </div>
   `;
@@ -818,23 +869,24 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   const portalBtn = actionsDiv.querySelector(`#tpma-btn-portal-${row.id}`);
   if (portalBtn) portalBtn.addEventListener('click', async function(){
     try {
-      const result = await API.regeneratePortal(ctx, row.id, false);
-      const url = result?.urls?.portal || result?.portal || '';
-      if (!url) throw new Error('未取得共用入口');
-      await navigator.clipboard.writeText(url);
-      global.alert('訂單共用入口已複製。');
-    } catch (e) { global.alert(e.message || '無法取得共用入口'); }
+      await R.copySessionPortal(ctx, row, false);
+      global.alert('全員測驗入口已複製。');
+    } catch (e) { global.alert(e.message || '無法取得全員測驗入口'); }
+  });
+  const orderPortalEditBtn = actionsDiv.querySelector(`#tpma-btn-order-portal-edit-${row.id}`);
+  if (orderPortalEditBtn) orderPortalEditBtn.addEventListener('click', async function(){
+    try {
+      await R.copyOrderPortal(ctx, row, false);
+      global.alert('個人／同訂單入口已複製。');
+    } catch (e) { global.alert(e.message || '無法取得個人／同訂單入口'); }
   });
   const portalResetBtn = actionsDiv.querySelector(`#tpma-btn-portal-reset-${row.id}`);
   if (portalResetBtn) portalResetBtn.addEventListener('click', async function(){
-    if (!global.confirm('重置入口會讓此訂單舊的共用入口立即失效。確定產生新入口？')) return;
+    if (!global.confirm('重置全員入口會讓此場次舊的全員測驗入口立即失效。確定產生新入口？')) return;
     try {
-      const result = await API.regeneratePortal(ctx, row.id, true);
-      const url = result?.urls?.portal || result?.portal || '';
-      if (!url) throw new Error('未取得共用入口');
-      await navigator.clipboard.writeText(url);
-      global.alert('新的訂單共用入口已複製。');
-    } catch (e) { global.alert(e.message || '無法重置共用入口'); }
+      await R.copySessionPortal(ctx, row, true);
+      global.alert('新的全員測驗入口已複製。');
+    } catch (e) { global.alert(e.message || '無法重置全員測驗入口'); }
   });
 
   const receiptActionSlot = actionsDiv.querySelector('.tpma-receipt-action-slot');

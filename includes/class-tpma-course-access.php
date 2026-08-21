@@ -9,6 +9,7 @@ class TPMA_Course_Access {
     const SESSION_TTL = 43200;
     const SESSION_MIN_TTL = 28800;
     const SESSION_EXTRA_TTL = 7200;
+    private static $portal_schema_checked = false;
 
     public static function init(): void {
         add_action('init', array(__CLASS__, 'handle_portal'), 98);
@@ -220,9 +221,10 @@ class TPMA_Course_Access {
 
     public static function get_or_create_portal_url(int $order_id, bool $regenerate = false): string {
         if ($order_id <= 0) return '';
+        self::ensure_portal_schema();
         global $wpdb;
         $table = TPMA_CR_DB::table('portal_tokens');
-        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE order_id = %d AND revoked_at IS NULL ORDER BY id DESC LIMIT 1", $order_id), ARRAY_A);
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE order_id = %d AND scope = 'order' AND revoked_at IS NULL ORDER BY id DESC LIMIT 1", $order_id), ARRAY_A);
         if ($row && !$regenerate && strtotime((string)$row['expires_at']) >= time()) {
             $raw = self::decrypt((string)$row['encrypted_token']);
             if ($raw !== '') return add_query_arg('tpma_portal_token', $raw, home_url('/'));
@@ -232,11 +234,39 @@ class TPMA_Course_Access {
         $expires = self::order_access_expiry($order_id);
         $wpdb->insert($table, array(
             'order_id' => $order_id,
+            'scope' => 'order',
+            'session_id' => null,
             'token_hash' => hash('sha256', $raw),
             'encrypted_token' => self::encrypt($raw),
             'expires_at' => $expires,
             'created_at' => current_time('mysql'),
-        ), array('%d','%s','%s','%s','%s'));
+        ), array('%d','%s','%d','%s','%s','%s','%s'));
+        return add_query_arg('tpma_portal_token', $raw, home_url('/'));
+    }
+
+    public static function get_or_create_session_portal_url(int $session_id, bool $regenerate = false): string {
+        if ($session_id <= 0) return '';
+        self::ensure_portal_schema();
+        $window = self::session_portal_window($session_id);
+        if (!$window) return '';
+        global $wpdb;
+        $table = TPMA_CR_DB::table('portal_tokens');
+        $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$table} WHERE scope = 'session' AND session_id = %d AND revoked_at IS NULL ORDER BY id DESC LIMIT 1", $session_id), ARRAY_A);
+        if ($row && !$regenerate && self::token_row_is_active_for_storage($row)) {
+            $raw = self::decrypt((string)$row['encrypted_token']);
+            if ($raw !== '') return add_query_arg('tpma_portal_token', $raw, home_url('/'));
+        }
+        if ($row) $wpdb->update($table, array('revoked_at' => current_time('mysql')), array('id' => (int)$row['id']), array('%s'), array('%d'));
+        $raw = bin2hex(random_bytes(32));
+        $wpdb->insert($table, array(
+            'order_id' => 0,
+            'scope' => 'session',
+            'session_id' => $session_id,
+            'token_hash' => hash('sha256', $raw),
+            'encrypted_token' => self::encrypt($raw),
+            'expires_at' => $window['closes_at'],
+            'created_at' => current_time('mysql'),
+        ), array('%d','%s','%d','%s','%s','%s','%s'));
         return add_query_arg('tpma_portal_token', $raw, home_url('/'));
     }
 
@@ -253,9 +283,43 @@ class TPMA_Course_Access {
         return $until && strtotime($until) > time() ? (string)$until : date('Y-m-d H:i:s', time() + 30 * DAY_IN_SECONDS);
     }
 
+    private static function session_portal_window(int $session_id): ?array {
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT s.session_datetime, c.duration_minutes
+             FROM " . TPMA_CR_DB::table('sessions') . " s
+             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=s.course_id
+             WHERE s.id=%d LIMIT 1",
+            $session_id
+        ), ARRAY_A);
+        $start = $row ? strtotime((string)($row['session_datetime'] ?? '')) : 0;
+        if (!$start) return null;
+        $end = $start + max(1, (int)($row['duration_minutes'] ?? 180)) * MINUTE_IN_SECONDS;
+        return array(
+            'opens_at' => wp_date('Y-m-d H:i:s', $end - 30 * MINUTE_IN_SECONDS),
+            'closes_at' => wp_date('Y-m-d H:i:s', $end + 30 * MINUTE_IN_SECONDS),
+        );
+    }
+
+    private static function token_row_is_active_for_storage(array $row): bool {
+        return !empty($row['expires_at']) && strtotime((string)$row['expires_at']) >= time();
+    }
+
+    private static function token_row_is_usable(array $row): bool {
+        if (!self::token_row_is_active_for_storage($row)) return false;
+        $scope = sanitize_key((string)($row['scope'] ?? 'order'));
+        if ($scope !== 'session') return true;
+        $window = self::session_portal_window((int)($row['session_id'] ?? 0));
+        if (!$window) return false;
+        $now = strtotime(current_time('mysql'));
+        $opens = strtotime((string)$window['opens_at']);
+        $closes = strtotime((string)$window['closes_at']);
+        return $now && $opens && $closes && $now >= $opens && $now <= $closes;
+    }
+
     public static function revoke_order(int $order_id): void {
         global $wpdb;
-        $wpdb->query($wpdb->prepare("UPDATE " . TPMA_CR_DB::table('portal_tokens') . " SET revoked_at=%s WHERE order_id=%d AND revoked_at IS NULL", current_time('mysql'), $order_id));
+        $wpdb->query($wpdb->prepare("UPDATE " . TPMA_CR_DB::table('portal_tokens') . " SET revoked_at=%s WHERE scope='order' AND order_id=%d AND revoked_at IS NULL", current_time('mysql'), $order_id));
     }
 
     public static function maybe_send_access_event_for_order(int $order_id): void {
@@ -294,7 +358,7 @@ class TPMA_Course_Access {
             $token = self::validate_token($raw);
             if (!$token) wp_die('此課程入口無效或已過期。', '無法進入課程', array('response' => 403));
             delete_transient($rate_key);
-            self::start_portal_session((int)$token['id'], (int)$token['order_id']);
+            self::start_portal_session($token);
             wp_clear_auth_cookie();
             wp_set_current_user(0);
             wp_safe_redirect(add_query_arg('tpma_portal', '1', home_url('/')));
@@ -319,7 +383,7 @@ class TPMA_Course_Access {
                 wp_die('選擇學員連結已失效，請重新整理頁面後再試。', '無法選擇學員', array('response' => 403));
             }
             $reg_id = absint(wp_unslash($_POST['tpma_registration_id']));
-            $candidate = self::candidate_for_order((int)$session['order_id'], $reg_id);
+            $candidate = self::candidate_for_scope($session, $reg_id);
             if (!$candidate) {
                 self::audit((int)$session['order_id'], $reg_id, 'selection_denied');
                 wp_die('所選學員目前沒有課程權限。', '無法選擇學員', array('response' => 403));
@@ -343,31 +407,45 @@ class TPMA_Course_Access {
             wp_safe_redirect($course_url ?: home_url('/'));
             exit;
         }
-        self::render_selector((int)$session['order_id'], $session);
+        self::render_selector($session);
         exit;
     }
 
     private static function validate_token(string $raw): ?array {
         if (strlen($raw) !== 64 || !ctype_xdigit($raw)) return null;
+        self::ensure_portal_schema();
         global $wpdb;
         $row = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . TPMA_CR_DB::table('portal_tokens') . " WHERE token_hash=%s AND revoked_at IS NULL LIMIT 1", hash('sha256', $raw)), ARRAY_A);
-        return $row && strtotime((string)$row['expires_at']) >= time() ? $row : null;
+        return $row && self::token_row_is_usable($row) ? $row : null;
     }
 
-    private static function candidate_for_order(int $order_id, int $reg_id): ?array {
-        foreach (self::get_candidates($order_id) as $candidate) if ((int)$candidate['id'] === $reg_id && !empty($candidate['access_allowed'])) return $candidate;
+    private static function candidate_for_scope(array $session, int $reg_id): ?array {
+        foreach (self::get_candidates($session) as $candidate) if ((int)$candidate['id'] === $reg_id && !empty($candidate['access_allowed'])) return $candidate;
         return null;
     }
 
-    private static function get_candidates(int $order_id): array {
+    private static function get_candidates(array $session): array {
         global $wpdb;
-        $rows = $wpdb->get_results($wpdb->prepare(
-            "SELECT r.*, c.course_name, c.tutor_course_id FROM " . TPMA_CR_DB::table('regs') . " r
-             JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
-             WHERE r.woocommerce_order_id=%d AND COALESCE(r.status,'')<>'cancelled' ORDER BY r.student_name,r.id", $order_id
-        ), ARRAY_A);
-        return array_values(array_map(static function($row) {
-            $result = self::evaluate_registration((int)$row['id'], 'course');
+        $scope = sanitize_key((string)($session['scope'] ?? 'order'));
+        if ($scope === 'session') {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT r.*, c.course_name, c.tutor_course_id FROM " . TPMA_CR_DB::table('regs') . " r
+                 JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+                 WHERE r.session_id=%d AND COALESCE(r.status,'')<>'cancelled' ORDER BY r.student_name,r.id",
+                (int)($session['session_id'] ?? 0)
+            ), ARRAY_A);
+            $resource = 'quiz';
+        } else {
+            $rows = $wpdb->get_results($wpdb->prepare(
+                "SELECT r.*, c.course_name, c.tutor_course_id FROM " . TPMA_CR_DB::table('regs') . " r
+                 JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+                 WHERE r.woocommerce_order_id=%d AND COALESCE(r.status,'')<>'cancelled' ORDER BY r.student_name,r.id",
+                (int)($session['order_id'] ?? 0)
+            ), ARRAY_A);
+            $resource = 'course';
+        }
+        return array_values(array_map(static function($row) use ($resource) {
+            $result = self::evaluate_registration((int)$row['id'], $resource);
             $row['account_error'] = self::learner_binding_error($row);
             $row['access_allowed'] = !empty($result['allowed']) && $row['account_error'] === '';
             $row['access_reason'] = $row['account_error'] !== '' ? $row['account_error'] : (string)($result['reason'] ?? '');
@@ -375,12 +453,14 @@ class TPMA_Course_Access {
         }, (array)$rows));
     }
 
-    private static function render_selector(int $order_id, array $session = array()): void {
-        $candidates = self::get_candidates($order_id);
+    private static function render_selector(array $session = array()): void {
+        $candidates = self::get_candidates($session);
+        $scope = sanitize_key((string)($session['scope'] ?? 'order'));
         status_header(200);
         nocache_headers();
         echo '<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>選擇學員</title>';
-        echo '<style>body{margin:0;background:#f3f7f6;color:#17342f;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.tpma-portal{max-width:680px;margin:8vh auto;padding:24px}.tpma-card{background:#fff;border:1px solid #d7e4e1;border-radius:16px;padding:28px;box-shadow:0 12px 36px rgba(23,52,47,.1)}h1{font-size:26px;margin:0 0 8px}p{color:#526b66}.person{display:block;border:1px solid #cbded9;border-radius:10px;padding:14px;margin:10px 0;cursor:pointer}.person:has(input:checked){border-color:#087f6d;background:#edf9f6}.person input{margin-right:10px}.meta{font-size:13px;color:#637b76;margin-left:26px}.btn{width:100%;border:0;border-radius:10px;background:#087f6d;color:#fff;font-weight:700;padding:13px;margin-top:14px;cursor:pointer}.btn:focus,.person:focus-within{outline:3px solid #91d9cc;outline-offset:2px}@media(max-width:720px){.tpma-portal{margin:0;padding:16px}.tpma-card{padding:20px}}</style></head><body><main class="tpma-portal"><section class="tpma-card"><h1>請選擇使用者</h1><p>此入口包含本訂單內的課程學員。請選擇目前要進入課程或應考的人員。</p>';
+        $description = $scope === 'session' ? '此入口包含本場次全部學員。請選擇目前要應考的人員。' : '此入口包含本訂單內的課程學員。請選擇目前要進入課程或應考的人員。';
+        echo '<style>body{margin:0;background:#f3f7f6;color:#17342f;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}.tpma-portal{max-width:680px;margin:8vh auto;padding:24px}.tpma-card{background:#fff;border:1px solid #d7e4e1;border-radius:16px;padding:28px;box-shadow:0 12px 36px rgba(23,52,47,.1)}h1{font-size:26px;margin:0 0 8px}p{color:#526b66}.person{display:block;border:1px solid #cbded9;border-radius:10px;padding:14px;margin:10px 0;cursor:pointer}.person:has(input:checked){border-color:#087f6d;background:#edf9f6}.person input{margin-right:10px}.meta{font-size:13px;color:#637b76;margin-left:26px}.btn{width:100%;border:0;border-radius:10px;background:#087f6d;color:#fff;font-weight:700;padding:13px;margin-top:14px;cursor:pointer}.btn:focus,.person:focus-within{outline:3px solid #91d9cc;outline-offset:2px}@media(max-width:720px){.tpma-portal{margin:0;padding:16px}.tpma-card{padding:20px}}</style></head><body><main class="tpma-portal"><section class="tpma-card"><h1>請選擇使用者</h1><p>' . esc_html($description) . '</p>';
         if (!$candidates) {
             echo '<p role="alert">目前沒有已開放課程權限的學員。</p>';
         } else {
@@ -416,9 +496,15 @@ class TPMA_Course_Access {
         return $labels[$reason] ?? '目前無法進入課程。';
     }
 
-    private static function start_portal_session(int $token_id, int $order_id): void {
+    private static function start_portal_session(array $token): void {
         $id = bin2hex(random_bytes(24));
-        $session = array('token_id'=>$token_id,'order_id'=>$order_id,'registration_id'=>0);
+        $session = array(
+            'token_id' => (int)($token['id'] ?? 0),
+            'order_id' => (int)($token['order_id'] ?? 0),
+            'scope' => sanitize_key((string)($token['scope'] ?? 'order')),
+            'session_id' => (int)($token['session_id'] ?? 0),
+            'registration_id' => 0,
+        );
         self::refresh_portal_session($id, $session);
         $_COOKIE[self::COOKIE] = $id;
     }
@@ -432,9 +518,13 @@ class TPMA_Course_Access {
         if ($id === '') return null;
         $session = get_transient('tpma_portal_' . $id);
         if (!is_array($session)) return null;
+        self::ensure_portal_schema();
         global $wpdb;
-        $valid = $wpdb->get_var($wpdb->prepare("SELECT id FROM " . TPMA_CR_DB::table('portal_tokens') . " WHERE id=%d AND revoked_at IS NULL AND expires_at >= %s", (int)$session['token_id'], current_time('mysql')));
-        if (!$valid) return null;
+        $token = $wpdb->get_row($wpdb->prepare("SELECT * FROM " . TPMA_CR_DB::table('portal_tokens') . " WHERE id=%d AND revoked_at IS NULL LIMIT 1", (int)$session['token_id']), ARRAY_A);
+        if (!$token || !self::token_row_is_usable($token)) return null;
+        $session['scope'] = sanitize_key((string)($token['scope'] ?? ($session['scope'] ?? 'order')));
+        $session['order_id'] = (int)($token['order_id'] ?? ($session['order_id'] ?? 0));
+        $session['session_id'] = (int)($token['session_id'] ?? ($session['session_id'] ?? 0));
         $session = self::ensure_portal_switch_nonce($session);
         self::refresh_portal_session($id, $session);
         self::ensure_portal_user_session($session);
@@ -489,6 +579,14 @@ class TPMA_Course_Access {
         $_COOKIE[self::COOKIE] = $id;
     }
 
+    private static function ensure_portal_schema(): void {
+        if (self::$portal_schema_checked) return;
+        self::$portal_schema_checked = true;
+        if (class_exists('TPMA_CR_DB') && method_exists('TPMA_CR_DB', 'ensure_portal_token_scope_columns')) {
+            TPMA_CR_DB::ensure_portal_token_scope_columns();
+        }
+    }
+
     /** Prevent a normal WordPress logout from being immediately undone by portal auto-login. */
     public static function clear_portal_selection_on_logout(int $user_id = 0): void {
         $id = self::cookie_value();
@@ -508,8 +606,8 @@ class TPMA_Course_Access {
     private static function ensure_portal_user_session(array $session): void {
         $reg_id = (int)($session['registration_id'] ?? 0);
         $order_id = (int)($session['order_id'] ?? 0);
-        if ($reg_id <= 0 || $order_id <= 0) return;
-        $candidate = self::candidate_for_order($order_id, $reg_id);
+        if ($reg_id <= 0) return;
+        $candidate = self::candidate_for_scope($session, $reg_id);
         if (!$candidate || empty($candidate['wp_user_id']) || self::learner_binding_error($candidate) !== '') {
             wp_clear_auth_cookie();
             wp_set_current_user(0);
@@ -632,9 +730,10 @@ class TPMA_Course_Access {
             $reg_id
         ));
         if ($tutor_course_id <= 0 || $tutor_course_id !== $reg_course_id) return;
+        $reg_context = $wpdb->get_row($wpdb->prepare("SELECT woocommerce_order_id, session_id FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d", $reg_id), ARRAY_A);
         $wpdb->replace(TPMA_CR_DB::table('quiz_contexts'), array(
-            'attempt_id'=>(int)$attempt_id,'registration_id'=>$reg_id,'order_id'=>(int)$session['order_id'],
-            'session_id'=>(int)$wpdb->get_var($wpdb->prepare("SELECT session_id FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d", $reg_id)),
+            'attempt_id'=>(int)$attempt_id,'registration_id'=>$reg_id,'order_id'=>(int)($reg_context['woocommerce_order_id'] ?? 0),
+            'session_id'=>(int)($reg_context['session_id'] ?? 0),
             'created_at'=>current_time('mysql'),
         ), array('%d','%d','%d','%d','%s'));
     }

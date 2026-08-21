@@ -28,6 +28,12 @@ class TPMA_CR_REST_Admin
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
+        register_rest_route($ns, '/admin/quiz-summary', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_quiz_summary'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
         // 課程 / 場次
         register_rest_route($ns, '/admin/courses', array(
             'methods'  => 'GET',
@@ -127,6 +133,12 @@ class TPMA_CR_REST_Admin
         register_rest_route($ns, '/admin/magic-links/regenerate', array(
             'methods'  => 'POST',
             'callback' => array(__CLASS__, 'admin_regenerate_magic_links'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
+        register_rest_route($ns, '/admin/session-portal', array(
+            'methods'  => 'POST',
+            'callback' => array(__CLASS__, 'admin_get_session_portal'),
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
@@ -802,6 +814,240 @@ public static function admin_bulk_registrations($request)
 
     $result['success'] = empty($result['failed']);
     return rest_ensure_response($result);
+}
+
+public static function admin_quiz_summary($request)
+{
+    global $wpdb;
+    $d = $request->get_json_params();
+    if (!is_array($d)) {
+        $d = array();
+    }
+    $ids = array_values(array_unique(array_filter(array_map('absint', (array)($d['ids'] ?? array())))));
+    if (empty($ids)) {
+        return new WP_Error('invalid_ids', '請先選擇學員', array('status' => 400));
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+    $regs_sql = $wpdb->prepare(
+        "SELECT r.id, r.test_score, r.student_name, r.department, r.job_title, r.wp_user_id, r.session_id,
+                c.course_name, c.tutor_course_id,
+                COALESCE(s.session_datetime, CONCAT(COALESCE(r.class_date, ''), ' 00:00:00')) AS session_datetime,
+                r.class_date
+         FROM " . TPMA_CR_DB::table('regs') . " r
+         LEFT JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+         LEFT JOIN " . TPMA_CR_DB::table('sessions') . " s ON s.id=r.session_id
+         WHERE r.id IN ({$placeholders})
+         ORDER BY session_datetime ASC, c.course_name ASC, r.student_name ASC, r.id ASC",
+        ...$ids
+    );
+    $regs = (array)$wpdb->get_results($regs_sql, ARRAY_A);
+    if (!$regs) {
+        return rest_ensure_response(array('success' => true, 'sheets' => array()));
+    }
+
+    $attempts_by_registration = self::get_latest_quiz_attempts_for_registrations($ids);
+    $attempt_ids = array_values(array_filter(array_map('intval', wp_list_pluck($attempts_by_registration, 'attempt_id'))));
+    $answers_by_attempt = self::get_quiz_answers_for_attempts($attempt_ids);
+
+    $sheets = array();
+    foreach ($regs as $reg) {
+        $registration_id = (int)($reg['id'] ?? 0);
+        $course_name = trim((string)($reg['course_name'] ?? ''));
+        $session_datetime = trim((string)($reg['session_datetime'] ?? ''));
+        $date = $session_datetime !== '' ? substr($session_datetime, 0, 10) : (string)($reg['class_date'] ?? '');
+        $raw_sheet_name = trim($date . ' ' . ($course_name !== '' ? $course_name : '未命名課程'));
+        $sheet_key = $raw_sheet_name !== '' ? $raw_sheet_name : '測驗摘要';
+        $sheet_name = self::excel_sheet_name($raw_sheet_name !== '' ? $raw_sheet_name : '測驗摘要');
+        if (!isset($sheets[$sheet_key])) {
+            $sheets[$sheet_key] = array(
+                'name' => $sheet_name,
+                'questions' => array(),
+                'rows' => array(),
+            );
+        }
+
+        $attempt = $attempts_by_registration[$registration_id] ?? array();
+        $attempt_id = (int)($attempt['attempt_id'] ?? 0);
+        $answers = $attempt_id > 0 ? ($answers_by_attempt[$attempt_id] ?? array()) : array();
+        foreach ($answers as $question => $answer) {
+            if (!array_key_exists($question, $sheets[$sheet_key]['questions'])) {
+                $sheets[$sheet_key]['questions'][$question] = true;
+            }
+        }
+
+        $sheets[$sheet_key]['rows'][] = array(
+            '測驗時間' => (string)($attempt['attempt_ended_at'] ?? ''),
+            '測驗成績' => (string)($reg['test_score'] ?? ''),
+            '學員姓名' => (string)($reg['student_name'] ?? ''),
+            '部門' => (string)($reg['department'] ?? ''),
+            '職稱' => (string)($reg['job_title'] ?? ''),
+            '_answers' => $answers,
+        );
+    }
+
+    $response_sheets = array();
+    foreach ($sheets as $sheet) {
+        $questions = array_keys((array)$sheet['questions']);
+        $headers = array_merge(array('測驗時間', '測驗成績', '學員姓名', '部門', '職稱'), $questions);
+        $rows = array();
+        foreach ((array)$sheet['rows'] as $row) {
+            $values = array();
+            foreach ($headers as $header) {
+                $values[] = in_array($header, array('測驗時間', '測驗成績', '學員姓名', '部門', '職稱'), true)
+                    ? (string)($row[$header] ?? '')
+                    : (string)(($row['_answers'] ?? array())[$header] ?? '');
+            }
+            $rows[] = $values;
+        }
+        $response_sheets[] = array(
+            'name' => (string)$sheet['name'],
+            'headers' => $headers,
+            'rows' => $rows,
+        );
+    }
+
+    return rest_ensure_response(array('success' => true, 'sheets' => $response_sheets));
+}
+
+private static function get_latest_quiz_attempts_for_registrations(array $ids): array
+{
+    global $wpdb;
+    $attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+    if (!self::db_table_exists($attempts_table) || empty($ids)) {
+        return array();
+    }
+    $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+    $sql = $wpdb->prepare(
+        "SELECT qc.registration_id, a.attempt_id, a.quiz_id, a.attempt_status, a.attempt_ended_at
+         FROM " . TPMA_CR_DB::table('quiz_contexts') . " qc
+         JOIN {$attempts_table} a ON a.attempt_id=qc.attempt_id
+         WHERE qc.registration_id IN ({$placeholders})
+           AND COALESCE(a.attempt_status, '') <> 'attempt_started'
+           AND a.attempt_ended_at IS NOT NULL
+         ORDER BY qc.registration_id ASC, a.attempt_ended_at DESC, a.attempt_id DESC",
+        ...$ids
+    );
+    $rows = (array)$wpdb->get_results($sql, ARRAY_A);
+    $latest = array();
+    foreach ($rows as $row) {
+        $reg_id = (int)($row['registration_id'] ?? 0);
+        if ($reg_id > 0 && !isset($latest[$reg_id])) {
+            $latest[$reg_id] = $row;
+        }
+    }
+    return $latest;
+}
+
+private static function get_quiz_answers_for_attempts(array $attempt_ids): array
+{
+    global $wpdb;
+    $attempt_ids = array_values(array_unique(array_filter(array_map('intval', $attempt_ids))));
+    $answers_table = $wpdb->prefix . 'tutor_quiz_attempt_answers';
+    $questions_table = $wpdb->prefix . 'tutor_quiz_questions';
+    if (!$attempt_ids || !self::db_table_exists($answers_table) || !self::db_table_exists($questions_table)) {
+        return array();
+    }
+    $placeholders = implode(',', array_fill(0, count($attempt_ids), '%d'));
+    $sql = $wpdb->prepare(
+        "SELECT aa.quiz_attempt_id, aa.question_id, aa.given_answer, q.question_title, q.question_order
+         FROM {$answers_table} aa
+         LEFT JOIN {$questions_table} q ON q.question_id=aa.question_id
+         WHERE aa.quiz_attempt_id IN ({$placeholders})
+         ORDER BY aa.quiz_attempt_id ASC, q.question_order ASC, aa.attempt_answer_id ASC",
+        ...$attempt_ids
+    );
+    $rows = (array)$wpdb->get_results($sql, ARRAY_A);
+    $answer_ids = array();
+    foreach ($rows as $row) {
+        foreach (self::quiz_answer_ids_from_raw((string)($row['given_answer'] ?? '')) as $answer_id) {
+            $answer_ids[$answer_id] = true;
+        }
+    }
+    $title_map = self::quiz_answer_title_map(array_keys($answer_ids));
+    $by_attempt = array();
+    foreach ($rows as $row) {
+        $attempt_id = (int)($row['quiz_attempt_id'] ?? 0);
+        if ($attempt_id <= 0) continue;
+        $question = trim(wp_strip_all_tags((string)($row['question_title'] ?? '')));
+        if ($question === '') $question = '問題 #' . (int)($row['question_id'] ?? 0);
+        $answer = self::format_quiz_answer((string)($row['given_answer'] ?? ''), $title_map);
+        if (!isset($by_attempt[$attempt_id])) $by_attempt[$attempt_id] = array();
+        $by_attempt[$attempt_id][$question] = isset($by_attempt[$attempt_id][$question]) && $by_attempt[$attempt_id][$question] !== ''
+            ? $by_attempt[$attempt_id][$question] . '；' . $answer
+            : $answer;
+    }
+    return $by_attempt;
+}
+
+private static function db_table_exists(string $table): bool
+{
+    global $wpdb;
+    return (bool)$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table));
+}
+
+private static function quiz_answer_ids_from_raw(string $raw): array
+{
+    $value = maybe_unserialize($raw);
+    $ids = array();
+    $walk = static function($item) use (&$walk, &$ids): void {
+        if (is_array($item)) {
+            foreach ($item as $part) $walk($part);
+        } elseif (is_numeric($item)) {
+            $ids[] = (int)$item;
+        }
+    };
+    $walk($value);
+    return array_values(array_unique(array_filter($ids)));
+}
+
+private static function quiz_answer_title_map(array $answer_ids): array
+{
+    global $wpdb;
+    $answer_ids = array_values(array_unique(array_filter(array_map('intval', $answer_ids))));
+    $answers_table = $wpdb->prefix . 'tutor_quiz_question_answers';
+    if (!$answer_ids || !self::db_table_exists($answers_table)) {
+        return array();
+    }
+    $placeholders = implode(',', array_fill(0, count($answer_ids), '%d'));
+    $sql = $wpdb->prepare("SELECT answer_id, answer_title FROM {$answers_table} WHERE answer_id IN ({$placeholders})", ...$answer_ids);
+    $rows = (array)$wpdb->get_results($sql, ARRAY_A);
+    $map = array();
+    foreach ($rows as $row) {
+        $map[(int)$row['answer_id']] = trim(wp_strip_all_tags((string)$row['answer_title']));
+    }
+    return $map;
+}
+
+private static function format_quiz_answer(string $raw, array $title_map): string
+{
+    $value = maybe_unserialize($raw);
+    if (is_array($value)) {
+        $parts = array();
+        $walk = static function($item) use (&$walk, &$parts, $title_map): void {
+            if (is_array($item)) {
+                foreach ($item as $part) $walk($part);
+                return;
+            }
+            $text = is_numeric($item) && isset($title_map[(int)$item]) ? $title_map[(int)$item] : (string)$item;
+            $text = trim(wp_strip_all_tags($text));
+            if ($text !== '') $parts[] = $text;
+        };
+        $walk($value);
+        return implode('、', array_values(array_unique($parts)));
+    }
+    if (is_numeric($value) && isset($title_map[(int)$value])) {
+        return (string)$title_map[(int)$value];
+    }
+    return trim(wp_strip_all_tags((string)$value));
+}
+
+private static function excel_sheet_name(string $name): string
+{
+    $name = preg_replace('/[\[\]\:\*\?\/\\\\]/', ' ', $name);
+    $name = trim((string)preg_replace('/\s+/', ' ', $name));
+    if ($name === '') $name = '測驗摘要';
+    return function_exists('mb_substr') ? mb_substr($name, 0, 31) : substr($name, 0, 31);
 }
 
 private static function empty_bulk_result(): array
@@ -2293,6 +2539,49 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
             'success' => true,
             'reg_id'  => $reg_id,
             'urls'    => $urls,
+        ));
+    }
+
+    public static function admin_get_session_portal($request) {
+        if (!class_exists('TPMA_Course_Access')) {
+            return new WP_Error('course_access_inactive', '課程入口服務未啟用', array('status' => 503));
+        }
+
+        $params = $request->get_json_params();
+        if (!is_array($params)) {
+            $params = array();
+        }
+        $reg_id = absint($params['reg_id'] ?? 0);
+        if ($reg_id <= 0) {
+            return new WP_Error('invalid', 'reg_id 必填', array('status' => 400));
+        }
+
+        global $wpdb;
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT r.session_id, s.session_datetime, c.duration_minutes
+             FROM " . TPMA_CR_DB::table('regs') . " r
+             LEFT JOIN " . TPMA_CR_DB::table('sessions') . " s ON s.id=r.session_id
+             LEFT JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+             WHERE r.id=%d LIMIT 1",
+            $reg_id
+        ), ARRAY_A);
+        $session_id = (int)($row['session_id'] ?? 0);
+        if ($session_id <= 0) {
+            return new WP_Error('session_missing', '此報名尚未綁定課程場次，無法建立場次共用入口。', array('status' => 400));
+        }
+
+        $portal = TPMA_Course_Access::get_or_create_session_portal_url($session_id, !empty($params['regenerate']));
+        if ($portal === '') {
+            return new WP_Error('portal_unavailable', '無法建立場次共用入口。', array('status' => 404));
+        }
+
+        return rest_ensure_response(array(
+            'success' => true,
+            'reg_id' => $reg_id,
+            'session_id' => $session_id,
+            'urls' => array(
+                'portal' => $portal,
+            ),
         ));
     }
 

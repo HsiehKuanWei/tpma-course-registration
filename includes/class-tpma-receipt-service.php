@@ -730,9 +730,39 @@ class TPMA_CR_Receipt_Service {
             'company_name' => $identity['company_name'], 'contact_name' => $identity['contact_name'],
             'amount' => round($amount), 'amount_formatted' => number_format(round($amount)), 'amount_chinese' => self::amount_to_chinese(round($amount)),
             'amount_digits' => self::amount_digits_for_receipt(round($amount)),
-            'item_name' => '課程費', 'issue_date' => current_time('mysql'), 'issue_date_roc' => self::roc_date(current_time('timestamp')),
+            'item_name' => self::build_item_name($order_ids), 'issue_date' => current_time('mysql'), 'issue_date_roc' => self::roc_date(current_time('timestamp')),
             'order_ids' => $order_ids,
         );
+    }
+
+    private static function build_item_name(array $order_ids): string {
+        global $wpdb;
+        $order_ids = array_values(array_unique(array_filter(array_map('intval', $order_ids))));
+        if (!$order_ids) {
+            return '課程費';
+        }
+        $placeholders = implode(',', array_fill(0, count($order_ids), '%d'));
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT COALESCE(NULLIF(TRIM(c.course_name), ''), '未命名課程') AS course_name, COUNT(*) AS qty
+             FROM " . TPMA_CR_DB::table('regs') . " r
+             LEFT JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+             WHERE r.woocommerce_order_id IN ({$placeholders})
+               AND COALESCE(r.status, '') <> 'cancelled'
+             GROUP BY course_name
+             ORDER BY MIN(r.id) ASC",
+            ...$order_ids
+        ), ARRAY_A);
+        if (!$rows) {
+            return '課程費';
+        }
+        $parts = array();
+        foreach ($rows as $row) {
+            $name = trim((string)($row['course_name'] ?? ''));
+            if ($name === '') $name = '未命名課程';
+            $qty = max(1, (int)($row['qty'] ?? 0));
+            $parts[] = $name . 'X' . $qty;
+        }
+        return $parts ? '課程費（' . implode('、', $parts) . '）' : '課程費';
     }
 
     private static function render_template(array $snapshot, $receipt_type): string {
@@ -916,6 +946,12 @@ class TPMA_CR_Receipt_Service {
         self::pdf_html_text($mpdf, 54.3, 37.4 + $html_baseline_offset, 74, 9.8, (string) ($snapshot['payer_name'] ?? ''), 14, true);
 
         self::pdf_html_text($mpdf, 160.3, 37.4 + $html_baseline_offset, 30.5, 9.8, (string) ($snapshot['tax_id'] ?? ''), 14, true);
+
+        $item_name = trim((string)($snapshot['item_name'] ?? ''));
+        $item_suffix = $item_name !== '' ? preg_replace('/^課程費/u', '', $item_name) : '';
+        if ($item_suffix !== '') {
+            self::pdf_html_text($mpdf, 72, 52.1 + $html_baseline_offset, 116, 9.8, $item_suffix, 12.5, true);
+        }
 
         $digits = (array) ($snapshot['amount_digits'] ?? array());
         $digit_x = array(75.9, 94.5, 113.1, 131.8, 150.6, 169.4);

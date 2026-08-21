@@ -370,6 +370,7 @@ $TPMA_OPTIONS_FOR_JS = [
       </select>
       <select id="tpma-bulk-export-type" class="tpma-bulk-target" data-bulk-for="export_excel">
         <option value="students">課程學員資料</option>
+        <option value="quiz_summary">測驗摘要</option>
         <option value="statistics">統計報表</option>
       </select>
       <span class="tpma-bulk-hint" id="tpma-bulk-hint"></span>
@@ -417,6 +418,15 @@ $TPMA_OPTIONS_FOR_JS = [
                 <label>授課日期起：<input type="date" id="tpma-export-stats-from"></label>
                 <label>授課日期訖：<input type="date" id="tpma-export-stats-to"></label>
               </span>
+            </span>
+          </label>
+        </div>
+        <div class="tpma-export-option">
+          <label>
+            <input type="radio" name="tpma-export-type" value="quiz_summary">
+            <span>
+              <span class="tpma-export-option-title">測驗摘要</span>
+              <span class="tpma-export-option-desc">依課程日期與課程名稱分工作表，匯出測驗時間、成績與各題回答</span>
             </span>
           </label>
         </div>
