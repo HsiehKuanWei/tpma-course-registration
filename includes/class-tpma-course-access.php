@@ -32,8 +32,8 @@ class TPMA_Course_Access {
 
     /** Earliest time a recorded learner may receive or use course access. */
     public static function recorded_access_starts_at(array $session, int $days_before = 7): int {
-        $session_start = strtotime((string)($session['session_datetime'] ?? ''));
-        $recording_from = strtotime((string)($session['recording_available_from'] ?? ''));
+        $session_start = self::local_mysql_timestamp((string)($session['session_datetime'] ?? ''));
+        $recording_from = self::local_mysql_timestamp((string)($session['recording_available_from'] ?? ''));
         if (!$session_start || !$recording_from) return 0;
 
         $live_access_start = $session_start - max(1, $days_before) * DAY_IN_SECONDS;
@@ -47,10 +47,10 @@ class TPMA_Course_Access {
         if (!in_array($mode, array('live', 'recorded'), true)) return false;
         if ($delivery !== 'hybrid' && $mode !== $delivery) return false;
         if ($mode === 'live' && $resource === 'recording') return false;
-        $now_ts = strtotime($now !== '' ? $now : current_time('mysql'));
+        $now_ts = self::local_mysql_timestamp($now !== '' ? $now : current_time('mysql'));
         if (!$now_ts) return false;
 
-        $start = strtotime((string)($session['session_datetime'] ?? ''));
+        $start = self::local_mysql_timestamp((string)($session['session_datetime'] ?? ''));
         if (!$start) return false;
         $end = $start + max(1, (int)($session['duration_minutes'] ?? 180)) * MINUTE_IN_SECONDS;
         // Meet 是場次點名入口，錄播與混合場次也必須沿用直播時間窗。
@@ -58,7 +58,7 @@ class TPMA_Course_Access {
 
         if ($mode === 'recorded') {
             $from = self::recorded_access_starts_at($session, $days_before);
-            $until = strtotime((string)($session['recording_available_until'] ?? ''));
+            $until = self::local_mysql_timestamp((string)($session['recording_available_until'] ?? ''));
             return $from && $until && $now_ts >= $from && $now_ts <= $until;
         }
 
@@ -67,16 +67,33 @@ class TPMA_Course_Access {
     }
 
     public static function registration_session_has_ended(array $row, string $now = ''): bool {
-        $start = strtotime((string)($row['session_datetime'] ?? ''));
+        $start = self::local_mysql_timestamp((string)($row['session_datetime'] ?? ''));
         if (!$start) {
             return false;
         }
         $duration = max(1, (int)($row['duration_minutes'] ?? 180));
-        $now_ts = strtotime($now !== '' ? $now : current_time('mysql'));
+        $now_ts = self::local_mysql_timestamp($now !== '' ? $now : current_time('mysql'));
         if (!$now_ts) {
             return false;
         }
         return $now_ts > ($start + $duration * MINUTE_IN_SECONDS);
+    }
+
+    private static function local_mysql_timestamp(string $value): int {
+        $value = trim($value);
+        if ($value === '') return 0;
+        try {
+            if (function_exists('wp_timezone')) {
+                $timezone = wp_timezone();
+            } elseif (function_exists('wp_timezone_string')) {
+                $timezone = new DateTimeZone(wp_timezone_string() ?: 'UTC');
+            } else {
+                $timezone = new DateTimeZone(date_default_timezone_get() ?: 'UTC');
+            }
+            return (int)(new DateTimeImmutable($value, $timezone))->getTimestamp();
+        } catch (Exception $e) {
+            return 0;
+        }
     }
 
     public static function evaluate_registration(int $registration_id, string $resource = 'course', string $now = '', bool $ignore_time_window = false): array {
@@ -292,7 +309,7 @@ class TPMA_Course_Access {
              WHERE s.id=%d LIMIT 1",
             $session_id
         ), ARRAY_A);
-        $start = $row ? strtotime((string)($row['session_datetime'] ?? '')) : 0;
+        $start = $row ? self::local_mysql_timestamp((string)($row['session_datetime'] ?? '')) : 0;
         if (!$start) return null;
         $end = $start + max(1, (int)($row['duration_minutes'] ?? 180)) * MINUTE_IN_SECONDS;
         return array(
@@ -302,7 +319,7 @@ class TPMA_Course_Access {
     }
 
     private static function token_row_is_active_for_storage(array $row): bool {
-        return !empty($row['expires_at']) && strtotime((string)$row['expires_at']) >= time();
+        return !empty($row['expires_at']) && self::local_mysql_timestamp((string)$row['expires_at']) >= time();
     }
 
     private static function token_row_is_usable(array $row): bool {
@@ -311,9 +328,9 @@ class TPMA_Course_Access {
         if ($scope !== 'session') return true;
         $window = self::session_portal_window((int)($row['session_id'] ?? 0));
         if (!$window) return false;
-        $now = strtotime(current_time('mysql'));
-        $opens = strtotime((string)$window['opens_at']);
-        $closes = strtotime((string)$window['closes_at']);
+        $now = time();
+        $opens = self::local_mysql_timestamp((string)$window['opens_at']);
+        $closes = self::local_mysql_timestamp((string)$window['closes_at']);
         return $now && $opens && $closes && $now >= $opens && $now <= $closes;
     }
 
