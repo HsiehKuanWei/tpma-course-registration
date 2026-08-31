@@ -24,6 +24,7 @@ class TPMA_CR_Settings {
             add_action('admin_post_tpma_cr_scan_quiz_score_sync', array(__CLASS__, 'handle_scan_quiz_score_sync'));
             add_action('admin_post_tpma_cr_resync_safe_quiz_scores', array(__CLASS__, 'handle_resync_safe_quiz_scores'));
             add_action('admin_post_tpma_cr_manual_rebind_quiz_score', array(__CLASS__, 'handle_manual_rebind_quiz_score'));
+            add_action('admin_post_tpma_cr_duplicate_quiz_migration', array(__CLASS__, 'handle_duplicate_quiz_migration'));
         }
     }
 
@@ -356,6 +357,50 @@ class TPMA_CR_Settings {
         exit;
     }
 
+    public static function handle_duplicate_quiz_migration(): void {
+        if (!current_user_can('manage_options')) {
+            wp_die('Permission denied.');
+        }
+        check_admin_referer('tpma_cr_duplicate_quiz_migration');
+
+        $source_quiz_id = absint(wp_unslash($_POST['source_quiz_id'] ?? 0));
+        $target_quiz_id = absint(wp_unslash($_POST['target_quiz_id'] ?? 0));
+        $operation = sanitize_key(wp_unslash($_POST['operation'] ?? 'preview'));
+
+        if (!class_exists('TPMA_Tutor_Bridge')) {
+            self::set_notice('Tutor 整合未載入，無法處理重複測驗移轉。', 'error');
+        } elseif ($operation === 'migrate') {
+            $result = TPMA_Tutor_Bridge::migrate_duplicate_quiz_attempts($source_quiz_id, $target_quiz_id);
+            self::set_duplicate_quiz_migration_result($result);
+            if (is_wp_error($result)) {
+                self::set_notice($result->get_error_message(), 'error');
+            } else {
+                self::set_notice(sprintf(
+                    '重複測驗移轉完成：已移轉 %d 筆 Tutor attempts、%d 筆 answer rows，並重算 %d 筆 TPMA 報名成績。',
+                    (int)($result['attempts_moved'] ?? 0),
+                    (int)($result['answers_moved'] ?? 0),
+                    (int)($result['registrations_recalculated'] ?? 0)
+                ), 'success');
+                $scan = TPMA_Tutor_Bridge::scan_quiz_score_sync_issues();
+                if (!is_wp_error($scan)) self::set_quiz_score_sync_scan_result($scan);
+            }
+        } else {
+            $result = TPMA_Tutor_Bridge::preview_duplicate_quiz_migration($source_quiz_id, $target_quiz_id);
+            self::set_duplicate_quiz_migration_result($result);
+            if (is_wp_error($result)) {
+                self::set_notice($result->get_error_message(), 'error');
+            } else {
+                $mismatches = (array)($result['mismatches'] ?? array());
+                self::set_notice(empty($mismatches)
+                    ? '重複測驗檢查通過，可執行移轉。'
+                    : '重複測驗檢查未通過，請確認兩份測驗題目與答案是否完全一致。', empty($mismatches) ? 'success' : 'error');
+            }
+        }
+
+        wp_safe_redirect(self::get_page_url());
+        exit;
+    }
+
     private static function get_meet_oauth_state_key(): string {
         return 'tpma_cr_meet_oauth_state_' . get_current_user_id();
     }
@@ -663,6 +708,28 @@ class TPMA_CR_Settings {
 
     private static function get_quiz_score_sync_scan_result(): ?array {
         $key = 'tpma_cr_quiz_score_sync_scan_' . get_current_user_id();
+        $result = get_transient($key);
+        if ($result) {
+            delete_transient($key);
+        }
+        return is_array($result) ? $result : null;
+    }
+
+    private static function set_duplicate_quiz_migration_result($result): void {
+        set_transient(
+            'tpma_cr_duplicate_quiz_migration_' . get_current_user_id(),
+            is_wp_error($result)
+                ? array_merge(
+                    is_array($result->get_error_data()) ? $result->get_error_data() : array(),
+                    array('error' => $result->get_error_message(), 'code' => $result->get_error_code())
+                )
+                : $result,
+            10 * MINUTE_IN_SECONDS
+        );
+    }
+
+    private static function get_duplicate_quiz_migration_result(): ?array {
+        $key = 'tpma_cr_duplicate_quiz_migration_' . get_current_user_id();
         $result = get_transient($key);
         if ($result) {
             delete_transient($key);
@@ -1010,6 +1077,105 @@ class TPMA_CR_Settings {
                     echo '</tr>';
                 }
                 echo '</tbody></table>';
+            }
+        }
+        echo '</td></tr>';
+
+        $duplicate_quiz_result = self::get_duplicate_quiz_migration_result();
+        $duplicate_quiz_courses = class_exists('TPMA_Tutor_Bridge') ? TPMA_Tutor_Bridge::get_duplicate_quiz_migration_course_options() : array();
+        echo '<tr><th scope="row">重複測驗移轉</th><td>';
+        if (empty($duplicate_quiz_courses)) {
+            echo '<p class="description">目前沒有找到同一 TPMA/Tutor 課程底下有兩個以上有效隨堂測驗的課程。</p>';
+        } else {
+            echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" style="margin:0 0 10px;max-width:900px;">';
+            echo '<input type="hidden" name="action" value="tpma_cr_duplicate_quiz_migration">';
+            wp_nonce_field('tpma_cr_duplicate_quiz_migration');
+            echo '<p style="margin:0 0 8px;">';
+            echo '<label for="tpma-duplicate-course" style="display:block;font-weight:600;margin-bottom:4px;">課程</label>';
+            echo '<select id="tpma-duplicate-course" style="min-width:520px;max-width:100%;">';
+            echo '<option value="">選擇有重複測驗的課程</option>';
+            foreach ($duplicate_quiz_courses as $course_option) {
+                echo '<option value="' . esc_attr((string)($course_option['tutor_course_id'] ?? 0)) . '">' . esc_html((string)($course_option['title'] ?? '')) . '</option>';
+            }
+            echo '</select>';
+            echo '</p>';
+            echo '<p style="margin:0 0 8px;">';
+            echo '<label for="tpma-duplicate-source-quiz" style="display:inline-block;font-weight:600;margin:0 6px 4px 0;">要刪除的來源測驗</label>';
+            echo '<select id="tpma-duplicate-source-quiz" name="source_quiz_id" required style="min-width:360px;margin:0 14px 4px 0;" disabled><option value="">先選課程</option></select>';
+            echo '<label for="tpma-duplicate-target-quiz" style="display:inline-block;font-weight:600;margin:0 6px 4px 0;">要保留的測驗</label>';
+            echo '<select id="tpma-duplicate-target-quiz" name="target_quiz_id" required style="min-width:360px;margin:0 0 4px;" disabled><option value="">先選課程</option></select>';
+            echo '</p>';
+            echo '<button type="submit" name="operation" value="preview" class="button button-secondary">先檢查是否可移轉</button> ';
+            echo '<button type="submit" name="operation" value="migrate" class="button button-primary" onclick="return confirm(\'執行前請確認已備份資料庫。系統會把來源測驗的 Tutor attempts 與 answers 改綁到保留測驗，並重新計算 TPMA 成績；不會自動刪除來源測驗。是否繼續？\');">執行移轉</button>';
+            echo '<p class="description">只列出同一 TPMA/Tutor 課程底下有兩個以上有效隨堂測驗的課程。移轉前會比對題目、答案、設定與通過分數；未通過時不會自動搬資料。完成後再回 Tutor 課程編輯器刪除來源測驗。</p>';
+            echo '</form>';
+            echo '<script>(function(){';
+            echo 'const courses=' . wp_json_encode($duplicate_quiz_courses) . ';';
+            echo 'const byCourse=new Map(courses.map(c=>[String(c.tutor_course_id),c.quizzes||[]]));';
+            echo 'const course=document.getElementById("tpma-duplicate-course");';
+            echo 'const source=document.getElementById("tpma-duplicate-source-quiz");';
+            echo 'const target=document.getElementById("tpma-duplicate-target-quiz");';
+            echo 'function fill(select,quizzes){select.innerHTML="";if(!quizzes.length){select.disabled=true;select.append(new Option("先選課程",""));return;}select.disabled=false;select.append(new Option("選擇測驗",""));quizzes.forEach(q=>select.append(new Option(q.title,String(q.id))));}';
+            echo 'function refresh(){const quizzes=byCourse.get(String(course.value))||[];fill(source,quizzes);fill(target,quizzes);}';
+            echo 'source&&target&&source.form&&source.form.addEventListener("submit",function(e){if(source.value&&target.value&&source.value===target.value){e.preventDefault();alert("來源測驗與保留測驗不能相同。");}});';
+            echo 'course&&course.addEventListener("change",refresh);';
+            echo '})();</script>';
+        }
+        if ($duplicate_quiz_result) {
+            if (!empty($duplicate_quiz_result['error'])) {
+                echo '<div class="notice inline notice-error"><p>' . esc_html((string)$duplicate_quiz_result['error']) . '</p></div>';
+            } else {
+                $can_migrate = !empty($duplicate_quiz_result['can_migrate']);
+                $mismatches = (array)($duplicate_quiz_result['mismatches'] ?? array());
+                echo '<div class="notice inline ' . esc_attr($can_migrate ? 'notice-success' : 'notice-error') . '"><p>' . esc_html(sprintf(
+                    '來源 #%d「%s」→ 保留 #%d「%s」：%s。來源 attempts %d 筆、answers %d 筆、涉及報名 %d 筆。',
+                    (int)($duplicate_quiz_result['source_quiz_id'] ?? 0),
+                    (string)($duplicate_quiz_result['source_quiz_title'] ?? ''),
+                    (int)($duplicate_quiz_result['target_quiz_id'] ?? 0),
+                    (string)($duplicate_quiz_result['target_quiz_title'] ?? ''),
+                    $can_migrate ? '檢查通過' : '檢查未通過',
+                    (int)($duplicate_quiz_result['attempt_count'] ?? 0),
+                    (int)($duplicate_quiz_result['answer_count'] ?? 0),
+                    (int)($duplicate_quiz_result['registration_count'] ?? 0)
+                )) . '</p>';
+                if (!empty($duplicate_quiz_result['migrated'])) {
+                    echo '<p>' . esc_html(sprintf(
+                        '本次已移轉 attempts %d 筆、answer rows %d 筆、重算 TPMA 報名 %d 筆。',
+                        (int)($duplicate_quiz_result['attempts_moved'] ?? 0),
+                        (int)($duplicate_quiz_result['answers_moved'] ?? 0),
+                        (int)($duplicate_quiz_result['registrations_recalculated'] ?? 0)
+                    )) . '</p>';
+                }
+                if (!empty($mismatches)) {
+                    echo '<ul style="list-style:disc;margin:0 0 8px 24px;">';
+                    foreach ($mismatches as $mismatch) {
+                        echo '<li>' . esc_html((string)$mismatch) . '</li>';
+                    }
+                    echo '</ul>';
+                }
+                echo '</div>';
+            }
+        }
+        if (class_exists('TPMA_Tutor_Bridge')) {
+            $migration_logs = TPMA_Tutor_Bridge::get_duplicate_quiz_migration_logs();
+            if (!empty($migration_logs)) {
+                echo '<details style="margin-top:10px;"><summary>最近重複測驗移轉紀錄</summary>';
+                echo '<table class="widefat striped" style="margin-top:8px;max-width:1000px;"><thead><tr><th>時間</th><th>來源</th><th>保留</th><th>結果</th><th>數量</th></tr></thead><tbody>';
+                foreach ((array)$migration_logs as $log) {
+                    echo '<tr>';
+                    echo '<td>' . esc_html((string)($log['created_at'] ?? '')) . '</td>';
+                    echo '<td>#' . esc_html((string)($log['source_quiz_id'] ?? 0)) . '<br>' . esc_html((string)($log['source_quiz_title'] ?? '')) . '</td>';
+                    echo '<td>#' . esc_html((string)($log['target_quiz_id'] ?? 0)) . '<br>' . esc_html((string)($log['target_quiz_title'] ?? '')) . '</td>';
+                    echo '<td>' . esc_html((string)($log['status'] ?? '')) . '</td>';
+                    echo '<td>' . esc_html(sprintf(
+                        'attempts %d / answers %d / regs %d',
+                        (int)($log['attempts_moved'] ?? 0),
+                        (int)($log['answers_moved'] ?? 0),
+                        (int)($log['registrations_recalculated'] ?? 0)
+                    )) . '</td>';
+                    echo '</tr>';
+                }
+                echo '</tbody></table></details>';
             }
         }
         echo '</td></tr>';

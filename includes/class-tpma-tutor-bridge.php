@@ -32,6 +32,9 @@ class TPMA_Tutor_Bridge {
     /** @var array<int,array> Per-request cached topic resource lookups keyed by tutor course ID. */
     private static $course_topic_resource_cache = [];
 
+    /** @var array<int,array<int>> Per-request cached TPMA quiz IDs keyed by Tutor course ID. */
+    private static $qualifying_quiz_ids_cache = [];
+
     /** @var bool Prevent save_post recursion during bridge writes. */
     private static $syncing_course = false;
 
@@ -960,6 +963,7 @@ class TPMA_Tutor_Bridge {
 
     private static function clear_course_topic_resource_cache(int $tutor_course_id): void {
         unset(self::$course_topic_resource_cache[$tutor_course_id]);
+        unset(self::$qualifying_quiz_ids_cache[$tutor_course_id]);
     }
 
     private static function reorder_course_topics(int $tutor_course_id): void {
@@ -2648,6 +2652,8 @@ class TPMA_Tutor_Bridge {
             ? (bool) $registration['attempt_user_is_dedicated_for_course']
             : null;
         $score_is_present = trim((string) ($registration['test_score'] ?? '')) !== '';
+        $expected_score = array_key_exists('expected_score', $registration) ? (float) $registration['expected_score'] : null;
+        $current_score = self::parse_score_percent((string) ($registration['test_score'] ?? ''));
         $issue = array(
             'attempt_id' => $attempt_id,
             'attempt_user_id' => $attempt_user_id,
@@ -2660,7 +2666,7 @@ class TPMA_Tutor_Bridge {
             $issue['reason'] = '此 Tutor 課程尚未連結到 TPMA 課程；請先在 courses-admin 重新同步或連結課程，系統才可安全判定應寫入哪筆報名。';
             return $issue;
         }
-        if ($manual_override && $score_is_present) {
+        if ($manual_override && $score_is_present && ($expected_score === null || $expected_score <= $current_score)) {
             return null;
         }
         if ($attempt_user_is_dedicated === false) {
@@ -2693,7 +2699,7 @@ class TPMA_Tutor_Bridge {
             $issue['reason'] = '此作答帳號與目前專用學員帳號不同；常見於修復前由承辦或付款帳號作答。請人工指定正確學員。';
             return $issue;
         }
-        if ($score_is_present) {
+        if ($score_is_present && ($expected_score === null || $expected_score <= $current_score)) {
             return null;
         }
         if ((string) ($attempt['attempt_status'] ?? '') === 'review_required' && empty($attempt['is_manually_reviewed'])) {
@@ -2709,6 +2715,11 @@ class TPMA_Tutor_Bridge {
         $issue['reason_code'] = 'score_sync_missed';
         $issue['reason'] = '作答已正確對應此報名，但交卷時的成績同步未寫入 TPMA。';
         return $issue;
+    }
+
+    private static function parse_score_percent(string $value): float {
+        $value = trim(str_replace('%', '', $value));
+        return is_numeric($value) ? (float)$value : 0.0;
     }
 
     /** Find exactly one TPMA course for a legacy Tutor title without guessing between similar courses. */
@@ -2773,9 +2784,6 @@ class TPMA_Tutor_Bridge {
 
         $quiz_id = (int) ($attempt['quiz_id'] ?? 0);
         $attempt_user_id = (int) ($attempt['user_id'] ?? 0);
-        if ($attempt_user_id <= 0 || !self::is_qualifying_quiz($quiz_id)) {
-            return new WP_Error('quiz_not_qualifying', '此作答不是目前設定的 TPMA 隨堂測驗，不能安全重同步。');
-        }
         $mapped_registration_id = (int) $wpdb->get_var($wpdb->prepare(
             "SELECT registration_id FROM " . TPMA_CR_DB::table('quiz_contexts') . " WHERE attempt_id=%d",
             $attempt_id
@@ -2784,7 +2792,15 @@ class TPMA_Tutor_Bridge {
             return new WP_Error('quiz_context_mismatch', '此作答沒有正確對應到指定報名，請改用人工指定覆寫。');
         }
 
-        $registration = self::get_registration_for_quiz($registration_id, $quiz_id, $attempt_user_id);
+        $tutor_course_id = (int) ($attempt['course_id'] ?? 0);
+        if ($tutor_course_id <= 0) {
+            $tutor_course_id = self::get_tutor_course_id_for_quiz($quiz_id);
+        }
+        if ($attempt_user_id <= 0 || !self::quiz_can_count_for_registration_score($registration_id, $quiz_id, $tutor_course_id)) {
+            return new WP_Error('quiz_not_qualifying', '此作答不是此 TPMA 課程可辨識的隨堂測驗，不能安全重同步。');
+        }
+
+        $registration = self::get_registration_for_tutor_course($registration_id, $tutor_course_id, $attempt_user_id);
         if (!$registration || empty($registration['is_virtual_user'])) {
             return new WP_Error('learner_identity_mismatch', '此作答帳號不是該筆報名的專用學員帳號，請改用人工指定覆寫。');
         }
@@ -2793,7 +2809,7 @@ class TPMA_Tutor_Bridge {
             return new WP_Error('registration_inactive', '目標報名已取消或退款，不能同步成績。');
         }
 
-        $best_score = self::get_registration_best_quiz_score($registration_id, $quiz_id);
+        $best_score = self::get_registration_best_quiz_score($registration_id, $quiz_id, $tutor_course_id);
         $updated = $wpdb->update(
             TPMA_CR_DB::table('regs'),
             array('test_score' => $best_score . '%'),
@@ -2849,11 +2865,11 @@ class TPMA_Tutor_Bridge {
             return new WP_Error('quiz_attempt_not_completed', '找不到已完成的 Tutor 作答紀錄。');
         }
         $quiz_id = (int) ($attempt['quiz_id'] ?? 0);
-        if (!self::is_qualifying_quiz($quiz_id)) {
-            return new WP_Error('quiz_not_qualifying', '此作答不是目前設定的 TPMA 隨堂測驗，不能覆寫。');
+        $tutor_course_id = (int) ($attempt['course_id'] ?? 0);
+        if ($tutor_course_id <= 0) {
+            $tutor_course_id = self::get_tutor_course_id_for_quiz($quiz_id);
         }
-
-        $target = self::get_registration_for_quiz($target_registration_id, $quiz_id);
+        $target = self::get_registration_for_tutor_course($target_registration_id, $tutor_course_id);
         if (!$target || empty($target['is_virtual_user'])) {
             return new WP_Error('manual_rebind_target_invalid', '目標必須是同一課程中有效的專用學員報名。');
         }
@@ -2918,7 +2934,7 @@ class TPMA_Tutor_Bridge {
             return new WP_Error('manual_rebind_save_failed', '作答與目標報名的對應寫入失敗。');
         }
 
-        $target_score = self::get_registration_best_quiz_score($target_registration_id, $quiz_id);
+        $target_score = self::get_registration_best_quiz_score($target_registration_id, $quiz_id, $tutor_course_id);
         $updated = $wpdb->update(
             TPMA_CR_DB::table('regs'),
             array('test_score' => $target_score . '%'),
@@ -2931,7 +2947,7 @@ class TPMA_Tutor_Bridge {
         }
 
         if ($old_registration_id > 0 && $old_registration_id !== $target_registration_id) {
-            $old_score = self::get_registration_best_quiz_score($old_registration_id, $quiz_id);
+            $old_score = self::get_registration_best_quiz_score($old_registration_id, $quiz_id, $tutor_course_id);
             $wpdb->update(
                 TPMA_CR_DB::table('regs'),
                 array('test_score' => $old_score > 0 ? $old_score . '%' : ''),
@@ -2955,6 +2971,396 @@ class TPMA_Tutor_Bridge {
             'old_registration_id' => $old_registration_id,
             'score' => $target_score,
         );
+    }
+
+    public static function preview_duplicate_quiz_migration(int $source_quiz_id, int $target_quiz_id) {
+        return self::build_duplicate_quiz_migration_plan($source_quiz_id, $target_quiz_id);
+    }
+
+    public static function migrate_duplicate_quiz_attempts(int $source_quiz_id, int $target_quiz_id) {
+        $plan = self::build_duplicate_quiz_migration_plan($source_quiz_id, $target_quiz_id);
+        if (is_wp_error($plan)) {
+            return $plan;
+        }
+        if (empty($plan['can_migrate'])) {
+            $mismatches = array_values(array_filter(array_map('strval', (array)($plan['mismatches'] ?? array()))));
+            $message = '兩份測驗未通過一致性檢查，不能自動移轉。';
+            if (!empty($mismatches)) {
+                $message .= ' 原因：' . implode('；', $mismatches);
+            }
+            return new WP_Error('duplicate_quiz_migration_not_safe', $message, $plan);
+        }
+
+        global $wpdb;
+        $attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+        $answers_table = $wpdb->prefix . 'tutor_quiz_attempt_answers';
+        $attempt_ids = array_values(array_filter(array_map('intval', (array)($plan['attempt_ids'] ?? array()))));
+        $affected_registration_ids = array_values(array_filter(array_map('intval', (array)($plan['registration_ids'] ?? array()))));
+        if (empty($attempt_ids)) {
+            self::append_duplicate_quiz_migration_log($source_quiz_id, $target_quiz_id, array(
+                'status' => 'no_attempts',
+                'attempts_moved' => 0,
+                'answers_moved' => 0,
+                'registrations_recalculated' => 0,
+            ));
+            return array_merge($plan, array(
+                'migrated' => true,
+                'attempts_moved' => 0,
+                'answers_moved' => 0,
+                'registrations_recalculated' => 0,
+            ));
+        }
+
+        $question_map = (array)($plan['question_map'] ?? array());
+        $answer_map = (array)($plan['answer_map'] ?? array());
+        $attempt_placeholders = implode(',', array_fill(0, count($attempt_ids), '%d'));
+        $answer_rows = (array)$wpdb->get_results($wpdb->prepare(
+            "SELECT attempt_answer_id, question_id, given_answer
+             FROM {$answers_table}
+             WHERE quiz_attempt_id IN ({$attempt_placeholders})",
+            $attempt_ids
+        ), ARRAY_A);
+        foreach ($answer_rows as $answer_row) {
+            $question_id = (int)($answer_row['question_id'] ?? 0);
+            if ($question_id > 0 && empty($question_map[$question_id])) {
+                return new WP_Error('duplicate_quiz_question_mapping_missing', '部分作答題目無法對應到保留測驗，未執行移轉。');
+            }
+        }
+
+        $wpdb->query('START TRANSACTION');
+        $answers_moved = 0;
+        foreach ($answer_rows as $answer_row) {
+            $answer_id = (int)($answer_row['attempt_answer_id'] ?? 0);
+            if ($answer_id <= 0) {
+                continue;
+            }
+            $source_question_id = (int)($answer_row['question_id'] ?? 0);
+            $target_question_id = $source_question_id > 0 ? (int)($question_map[$source_question_id] ?? 0) : 0;
+            $updated = $wpdb->update(
+                $answers_table,
+                array(
+                    'quiz_id' => $target_quiz_id,
+                    'question_id' => $target_question_id,
+                    'given_answer' => self::remap_duplicate_quiz_given_answer((string)($answer_row['given_answer'] ?? ''), $answer_map),
+                ),
+                array('attempt_answer_id' => $answer_id),
+                array('%d', '%d', '%s'),
+                array('%d')
+            );
+            if ($updated === false) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('duplicate_quiz_answer_update_failed', '更新 Tutor 作答答案時失敗，已取消移轉。');
+            }
+            $answers_moved++;
+        }
+
+        $updated_attempts = $wpdb->query($wpdb->prepare(
+            "UPDATE {$attempts_table} SET quiz_id=%d WHERE quiz_id=%d",
+            $target_quiz_id,
+            $source_quiz_id
+        ));
+        if ($updated_attempts === false) {
+            $wpdb->query('ROLLBACK');
+            return new WP_Error('duplicate_quiz_attempt_update_failed', '更新 Tutor 作答測驗 ID 時失敗，已取消移轉。');
+        }
+
+        self::clear_course_topic_resource_cache((int)($plan['tutor_course_id'] ?? 0));
+        $registrations_recalculated = 0;
+        foreach ($affected_registration_ids as $registration_id) {
+            $best_score = self::get_registration_best_quiz_score($registration_id, $target_quiz_id, (int)($plan['tutor_course_id'] ?? 0));
+            $updated = $wpdb->update(
+                TPMA_CR_DB::table('regs'),
+                array('test_score' => $best_score > 0 ? $best_score . '%' : ''),
+                array('id' => $registration_id),
+                array('%s'),
+                array('%d')
+            );
+            if ($updated === false) {
+                $wpdb->query('ROLLBACK');
+                return new WP_Error('duplicate_quiz_score_update_failed', '重新計算 TPMA 測驗成績時失敗，已取消移轉。');
+            }
+            $registrations_recalculated++;
+        }
+
+        $wpdb->query('COMMIT');
+        $summary = array(
+            'status' => 'migrated',
+            'attempts_moved' => (int)$updated_attempts,
+            'answers_moved' => $answers_moved,
+            'registrations_recalculated' => $registrations_recalculated,
+        );
+        self::append_duplicate_quiz_migration_log($source_quiz_id, $target_quiz_id, $summary);
+        return array_merge($plan, $summary, array('migrated' => true));
+    }
+
+    private static function build_duplicate_quiz_migration_plan(int $source_quiz_id, int $target_quiz_id) {
+        if ($source_quiz_id <= 0 || $target_quiz_id <= 0 || $source_quiz_id === $target_quiz_id || !self::is_active()) {
+            return new WP_Error('invalid_duplicate_quiz_migration', '請選擇不同且有效的來源測驗與保留測驗。');
+        }
+        if (!self::is_qualifying_quiz($source_quiz_id) || !self::is_qualifying_quiz($target_quiz_id)) {
+            return new WP_Error('duplicate_quiz_not_tpma_quiz', '來源與保留測驗都必須是 TPMA 課程底下的隨堂測驗。');
+        }
+
+        $source_course_id = self::get_tutor_course_id_for_quiz($source_quiz_id);
+        $target_course_id = self::get_tutor_course_id_for_quiz($target_quiz_id);
+        if ($source_course_id <= 0 || $source_course_id !== $target_course_id) {
+            return new WP_Error('duplicate_quiz_course_mismatch', '來源與保留測驗必須屬於同一個 Tutor 課程。');
+        }
+
+        global $wpdb;
+        $attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+        $answers_table = $wpdb->prefix . 'tutor_quiz_attempt_answers';
+        $questions_table = $wpdb->prefix . 'tutor_quiz_questions';
+        $question_answers_table = $wpdb->prefix . 'tutor_quiz_question_answers';
+        foreach (array($attempts_table, $answers_table, $questions_table, $question_answers_table) as $table) {
+            if (!$wpdb->get_var($wpdb->prepare('SHOW TABLES LIKE %s', $table))) {
+                return new WP_Error('duplicate_quiz_table_missing', '找不到 Tutor 測驗資料表，不能移轉。');
+            }
+        }
+
+        $comparison = self::compare_quiz_question_signatures($source_quiz_id, $target_quiz_id);
+        $mismatches = (array)$comparison['mismatches'];
+        $incomplete_attempts = (int)$wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$attempts_table}
+             WHERE quiz_id=%d
+               AND (COALESCE(attempt_status, '')='attempt_started' OR attempt_ended_at IS NULL)",
+            $source_quiz_id
+        ));
+        if ($incomplete_attempts > 0) {
+            $mismatches[] = sprintf('來源測驗仍有 %d 筆未完成作答，請等作答結束或人工確認後再移轉。', $incomplete_attempts);
+        }
+        $attempt_ids = array_values(array_filter(array_map('intval', (array)$wpdb->get_col($wpdb->prepare(
+            "SELECT attempt_id FROM {$attempts_table} WHERE quiz_id=%d ORDER BY attempt_id ASC",
+            $source_quiz_id
+        )))));
+        $registration_ids = array();
+        if (!empty($attempt_ids)) {
+            $placeholders = implode(',', array_fill(0, count($attempt_ids), '%d'));
+            $registration_ids = array_values(array_filter(array_map('intval', (array)$wpdb->get_col($wpdb->prepare(
+                "SELECT DISTINCT registration_id FROM " . TPMA_CR_DB::table('quiz_contexts') . " WHERE attempt_id IN ({$placeholders})",
+                $attempt_ids
+            )))));
+        }
+        $answers_count = empty($attempt_ids) ? 0 : (int)$wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$answers_table} WHERE quiz_attempt_id IN (" . implode(',', array_fill(0, count($attempt_ids), '%d')) . ")",
+            $attempt_ids
+        ));
+
+        return array(
+            'source_quiz_id' => $source_quiz_id,
+            'source_quiz_title' => (string)get_the_title($source_quiz_id),
+            'target_quiz_id' => $target_quiz_id,
+            'target_quiz_title' => (string)get_the_title($target_quiz_id),
+            'tutor_course_id' => $source_course_id,
+            'tutor_course_title' => (string)get_the_title($source_course_id),
+            'can_migrate' => empty($mismatches),
+            'mismatches' => $mismatches,
+            'question_map' => (array)$comparison['question_map'],
+            'answer_map' => (array)$comparison['answer_map'],
+            'source_question_count' => (int)$comparison['source_question_count'],
+            'target_question_count' => (int)$comparison['target_question_count'],
+            'attempt_count' => count($attempt_ids),
+            'incomplete_attempt_count' => $incomplete_attempts,
+            'answer_count' => $answers_count,
+            'registration_count' => count($registration_ids),
+            'attempt_ids' => $attempt_ids,
+            'registration_ids' => $registration_ids,
+        );
+    }
+
+    private static function compare_quiz_question_signatures(int $source_quiz_id, int $target_quiz_id): array {
+        $source_questions = self::get_quiz_question_signature_rows($source_quiz_id);
+        $target_questions = self::get_quiz_question_signature_rows($target_quiz_id);
+        $mismatches = array();
+        $question_map = array();
+        $answer_map = array();
+        if (count($source_questions) !== count($target_questions)) {
+            $mismatches[] = sprintf('題目數不同：來源 %d 題，保留 %d 題。', count($source_questions), count($target_questions));
+        }
+        $pairs = min(count($source_questions), count($target_questions));
+        for ($i = 0; $i < $pairs; $i++) {
+            $source = $source_questions[$i];
+            $target = $target_questions[$i];
+            $question_map[(int)$source['question_id']] = (int)$target['question_id'];
+            if ($source['signature'] !== $target['signature']) {
+                $mismatches[] = sprintf('第 %d 題內容或設定不同。', $i + 1);
+                continue;
+            }
+            $source_answers = (array)$source['answers'];
+            $target_answers = (array)$target['answers'];
+            if (count($source_answers) !== count($target_answers)) {
+                $mismatches[] = sprintf('第 %d 題答案數不同。', $i + 1);
+                continue;
+            }
+            for ($j = 0; $j < count($source_answers); $j++) {
+                if (($source_answers[$j]['signature'] ?? array()) !== ($target_answers[$j]['signature'] ?? array())) {
+                    $mismatches[] = sprintf('第 %d 題第 %d 個答案內容或設定不同。', $i + 1, $j + 1);
+                    continue 2;
+                }
+                $answer_map[(int)$source_answers[$j]['answer_id']] = (int)$target_answers[$j]['answer_id'];
+            }
+        }
+        if (self::get_quiz_passing_grade($source_quiz_id) !== self::get_quiz_passing_grade($target_quiz_id)) {
+            $mismatches[] = '通過分數不同。';
+        }
+
+        return array(
+            'mismatches' => array_values(array_unique($mismatches)),
+            'question_map' => $question_map,
+            'answer_map' => $answer_map,
+            'source_question_count' => count($source_questions),
+            'target_question_count' => count($target_questions),
+        );
+    }
+
+    private static function get_quiz_question_signature_rows(int $quiz_id): array {
+        global $wpdb;
+        $questions_table = $wpdb->prefix . 'tutor_quiz_questions';
+        $answers_table = $wpdb->prefix . 'tutor_quiz_question_answers';
+        $questions = (array)$wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$questions_table} WHERE quiz_id=%d ORDER BY question_order ASC, question_id ASC",
+            $quiz_id
+        ), ARRAY_A);
+        $rows = array();
+        foreach ($questions as $question) {
+            $question_id = (int)($question['question_id'] ?? 0);
+            $answers = (array)$wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$answers_table} WHERE belongs_question_id=%d ORDER BY answer_order ASC, answer_id ASC",
+                $question_id
+            ), ARRAY_A);
+            $answer_signatures = array();
+            foreach ($answers as $answer) {
+                $answer_signatures[] = array(
+                    'answer_id' => (int)($answer['answer_id'] ?? 0),
+                    'signature' => array(
+                        'type' => (string)($answer['belongs_question_type'] ?? ''),
+                        'title' => self::normalize_quiz_signature_text((string)($answer['answer_title'] ?? '')),
+                        'is_correct' => (string)($answer['is_correct'] ?? ''),
+                        'two_gap' => self::normalize_quiz_signature_text((string)($answer['answer_two_gap_match'] ?? '')),
+                        'view_format' => (string)($answer['answer_view_format'] ?? ''),
+                        'settings' => self::normalize_quiz_signature_value($answer['answer_settings'] ?? ''),
+                    ),
+                );
+            }
+            $rows[] = array(
+                'question_id' => $question_id,
+                'signature' => array(
+                    'title' => self::normalize_quiz_signature_text((string)($question['question_title'] ?? '')),
+                    'description' => self::normalize_quiz_signature_text((string)($question['question_description'] ?? '')),
+                    'explanation' => self::normalize_quiz_signature_text((string)($question['answer_explanation'] ?? '')),
+                    'type' => (string)($question['question_type'] ?? ''),
+                    'mark' => (string)(float)($question['question_mark'] ?? 0),
+                    'settings' => self::normalize_quiz_signature_value($question['question_settings'] ?? ''),
+                    'answers' => array_column($answer_signatures, 'signature'),
+                ),
+                'answers' => $answer_signatures,
+            );
+        }
+        return $rows;
+    }
+
+    private static function normalize_quiz_signature_text(string $value): string {
+        $value = wp_strip_all_tags(stripslashes($value));
+        return trim((string)preg_replace('/\s+/u', ' ', $value));
+    }
+
+    private static function normalize_quiz_signature_value($value) {
+        $value = maybe_unserialize($value);
+        if (is_array($value)) {
+            ksort($value);
+            foreach ($value as $key => $child) {
+                $value[$key] = self::normalize_quiz_signature_value($child);
+            }
+            return $value;
+        }
+        if (is_string($value)) {
+            return self::normalize_quiz_signature_text($value);
+        }
+        return $value;
+    }
+
+    private static function remap_duplicate_quiz_given_answer(string $raw, array $answer_map): string {
+        if (empty($answer_map) || $raw === '') {
+            return $raw;
+        }
+        $value = maybe_unserialize($raw);
+        $was_array = is_array($value);
+        $remap = static function($item) use (&$remap, $answer_map) {
+            if (is_array($item)) {
+                foreach ($item as $key => $child) {
+                    $item[$key] = $remap($child);
+                }
+                return $item;
+            }
+            if (is_numeric($item) && isset($answer_map[(int)$item])) {
+                return is_int($item) ? (int)$answer_map[(int)$item] : (string)$answer_map[(int)$item];
+            }
+            return $item;
+        };
+        $mapped = $remap($value);
+        if ($was_array || is_array($mapped)) {
+            return maybe_serialize($mapped);
+        }
+        return (string)$mapped;
+    }
+
+    private static function append_duplicate_quiz_migration_log(int $source_quiz_id, int $target_quiz_id, array $summary): void {
+        $logs = get_option('tpma_cr_duplicate_quiz_migrations', array());
+        $logs = is_array($logs) ? $logs : array();
+        array_unshift($logs, array_merge(array(
+            'created_at' => current_time('mysql'),
+            'admin_user_id' => get_current_user_id(),
+            'source_quiz_id' => $source_quiz_id,
+            'source_quiz_title' => (string)get_the_title($source_quiz_id),
+            'target_quiz_id' => $target_quiz_id,
+            'target_quiz_title' => (string)get_the_title($target_quiz_id),
+        ), $summary));
+        update_option('tpma_cr_duplicate_quiz_migrations', array_slice($logs, 0, 20), false);
+    }
+
+    public static function get_duplicate_quiz_migration_logs(): array {
+        $logs = get_option('tpma_cr_duplicate_quiz_migrations', array());
+        return is_array($logs) ? $logs : array();
+    }
+
+    public static function get_duplicate_quiz_migration_course_options(): array {
+        if (!self::is_active() || !class_exists('TPMA_CR_DB')) {
+            return array();
+        }
+        global $wpdb;
+        $courses = (array)$wpdb->get_results(
+            "SELECT id, course_name, tutor_course_id
+             FROM " . TPMA_CR_DB::table('courses') . "
+             WHERE tutor_course_id IS NOT NULL AND tutor_course_id>0
+             ORDER BY class_date DESC, id DESC",
+            ARRAY_A
+        );
+        $options = array();
+        foreach ($courses as $course) {
+            $tutor_course_id = (int)($course['tutor_course_id'] ?? 0);
+            $quiz_ids = self::get_qualifying_quiz_ids_for_course($tutor_course_id);
+            if (count($quiz_ids) < 2) {
+                continue;
+            }
+            $quizzes = array();
+            foreach ($quiz_ids as $quiz_id) {
+                $quizzes[] = array(
+                    'id' => $quiz_id,
+                    'title' => sprintf('#%d %s', $quiz_id, (string)get_the_title($quiz_id)),
+                );
+            }
+            $options[] = array(
+                'tpma_course_id' => (int)($course['id'] ?? 0),
+                'tutor_course_id' => $tutor_course_id,
+                'title' => sprintf(
+                    '%s（Tutor #%d）',
+                    (string)($course['course_name'] ?? get_the_title($tutor_course_id)),
+                    $tutor_course_id
+                ),
+                'quizzes' => $quizzes,
+            );
+        }
+        return $options;
     }
 
     /**
@@ -3055,17 +3461,24 @@ class TPMA_Tutor_Bridge {
             $contexts_by_attempt_id[(int) $context['attempt_id']] = $context;
         }
 
-        $qualifying_quiz_by_course = array();
+        $qualifying_quiz_ids_by_course = array();
+        $best_scores_by_registration_course = array();
         $attempt_user_names = array();
         $tutor_course_titles = array();
         $issues = array();
         foreach ($attempts as $attempt) {
             $attempt_id = (int) ($attempt['attempt_id'] ?? 0);
-            $tutor_course_id = (int) ($attempt['course_id'] ?? 0);
             if ($attempt_id <= 0) {
                 continue;
             }
             $context = $contexts_by_attempt_id[$attempt_id] ?? array();
+            $tutor_course_id = (int) ($attempt['course_id'] ?? 0);
+            if ($tutor_course_id <= 0) {
+                $tutor_course_id = (int)($context['tutor_course_id'] ?? 0);
+            }
+            if ($tutor_course_id <= 0) {
+                $tutor_course_id = self::get_tutor_course_id_for_quiz((int)($attempt['quiz_id'] ?? 0));
+            }
             $course = $courses_by_tutor_id[$tutor_course_id] ?? array();
             $course_is_linked = !empty($course['course_is_linked']);
             if (!$course && !array_key_exists($tutor_course_id, $tutor_course_titles)) {
@@ -3080,8 +3493,8 @@ class TPMA_Tutor_Bridge {
                     'course_is_linked' => false,
                 );
             }
-            if ($course_is_linked && !array_key_exists($tutor_course_id, $qualifying_quiz_by_course)) {
-                $qualifying_quiz_by_course[$tutor_course_id] = self::get_qualifying_quiz_for_course($tutor_course_id);
+            if ($course_is_linked && !array_key_exists($tutor_course_id, $qualifying_quiz_ids_by_course)) {
+                $qualifying_quiz_ids_by_course[$tutor_course_id] = self::get_qualifying_quiz_ids_for_course($tutor_course_id);
             }
 
             $identity = $context ?: array(
@@ -3101,8 +3514,24 @@ class TPMA_Tutor_Bridge {
                     $dedicated_user_ids_by_course_id[$tpma_course_id][(int) ($attempt['user_id'] ?? 0)]
                 );
             }
+            $registration_id = (int)($identity['registration_id'] ?? 0);
+            $attempt_quiz_id = (int)($attempt['quiz_id'] ?? 0);
             $identity['quiz_is_qualifying'] = $course_is_linked
-                && (int) ($attempt['quiz_id'] ?? 0) === (int) ($qualifying_quiz_by_course[$tutor_course_id] ?? 0);
+                && (
+                    in_array($attempt_quiz_id, (array)($qualifying_quiz_ids_by_course[$tutor_course_id] ?? array()), true)
+                    || self::quiz_can_count_for_registration_score($registration_id, $attempt_quiz_id, $tutor_course_id)
+                );
+            if ($course_is_linked && $registration_id > 0 && $tutor_course_id > 0) {
+                $best_score_key = $registration_id . ':' . $tutor_course_id;
+                if (!array_key_exists($best_score_key, $best_scores_by_registration_course)) {
+                    $best_scores_by_registration_course[$best_score_key] = self::get_registration_best_quiz_score(
+                        $registration_id,
+                        $attempt_quiz_id,
+                        $tutor_course_id
+                    );
+                }
+                $identity['expected_score'] = $best_scores_by_registration_course[$best_score_key];
+            }
             $identity['registration_matches_attempt_course'] = empty($context['tutor_course_id']) || (int) $context['tutor_course_id'] === $tutor_course_id;
 
             $diagnostic = self::classify_quiz_attempt_for_score_sync($attempt, $identity);
@@ -3133,6 +3562,51 @@ class TPMA_Tutor_Bridge {
         if ($topic_id <= 0 || sanitize_key((string)get_post_meta($topic_id, '_tpma_resource_type', true)) !== 'quiz') return false;
         $course_id = (int)get_post_field('post_parent', $topic_id);
         return $course_id > 0 && (int)get_post_meta($course_id, '_tpma_course_id', true) > 0;
+    }
+
+    private static function get_tutor_course_id_for_quiz(int $quiz_id): int {
+        if ($quiz_id <= 0) return 0;
+        $topic_id = (int)get_post_field('post_parent', $quiz_id);
+        return $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
+    }
+
+    private static function get_registration_for_tutor_course(int $reg_id, int $tutor_course_id, int $user_id = 0): ?array {
+        if ($reg_id <= 0 || $tutor_course_id <= 0) return null;
+        global $wpdb;
+        $sql = "SELECT r.*, c.tutor_course_id FROM " . TPMA_CR_DB::table('regs') . " r
+                JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
+                WHERE r.id=%d AND c.tutor_course_id=%d";
+        $args = array($reg_id, $tutor_course_id);
+        if ($user_id > 0) {
+            $sql .= " AND r.wp_user_id=%d";
+            $args[] = $user_id;
+        }
+        $sql .= " LIMIT 1";
+        $row = $wpdb->get_row($wpdb->prepare($sql, $args), ARRAY_A);
+        return $row ?: null;
+    }
+
+    private static function get_qualifying_quiz_ids_for_course(int $course_id): array {
+        if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return array();
+        if (isset(self::$qualifying_quiz_ids_cache[$course_id])) {
+            return self::$qualifying_quiz_ids_cache[$course_id];
+        }
+
+        global $wpdb;
+        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
+        $ids = (array)$wpdb->get_col($wpdb->prepare(
+            "SELECT q.ID FROM {$wpdb->posts} q
+             JOIN {$wpdb->posts} topic ON topic.ID=q.post_parent
+             JOIN {$wpdb->postmeta} resource ON resource.post_id=topic.ID
+                AND resource.meta_key='_tpma_resource_type' AND resource.meta_value='quiz'
+             WHERE q.post_type=%s AND q.post_status<>'trash' AND topic.post_parent=%d
+             ORDER BY topic.menu_order ASC, q.menu_order ASC, q.ID ASC",
+            $quiz_type,
+            $course_id
+        ));
+
+        self::$qualifying_quiz_ids_cache[$course_id] = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        return self::$qualifying_quiz_ids_cache[$course_id];
     }
 
     private static function enforce_topic_quiz_settings(int $topic_id): void {
@@ -3185,39 +3659,97 @@ class TPMA_Tutor_Bridge {
 
     private static function get_registration_for_quiz(int $reg_id, int $quiz_id, int $user_id = 0): ?array {
         if ($reg_id <= 0 || !self::is_qualifying_quiz($quiz_id)) return null;
-        $topic_id = (int)get_post_field('post_parent', $quiz_id);
-        $course_id = $topic_id > 0 ? (int)get_post_field('post_parent', $topic_id) : 0;
-        global $wpdb;
-        $sql = "SELECT r.*, c.tutor_course_id FROM " . TPMA_CR_DB::table('regs') . " r
-                JOIN " . TPMA_CR_DB::table('courses') . " c ON c.id=r.course_id
-                WHERE r.id=%d AND c.tutor_course_id=%d";
-        $args = array($reg_id, $course_id);
-        if ($user_id > 0) {
-            $sql .= " AND r.wp_user_id=%d";
-            $args[] = $user_id;
-        }
-        $sql .= " LIMIT 1";
-        $row = $wpdb->get_row($wpdb->prepare($sql, $args), ARRAY_A);
-        return $row ?: null;
+        $course_id = self::get_tutor_course_id_for_quiz($quiz_id);
+        return self::get_registration_for_tutor_course($reg_id, $course_id, $user_id);
     }
 
-    private static function get_registration_best_quiz_score(int $reg_id, int $quiz_id): float {
-        if ($reg_id <= 0 || $quiz_id <= 0) return 0.0;
+    private static function get_context_quiz_ids_for_registration_course(int $reg_id, int $tutor_course_id): array {
+        if ($reg_id <= 0 || $tutor_course_id <= 0) return array();
         global $wpdb;
+        $attempts_table = $wpdb->prefix . 'tutor_quiz_attempts';
+        $ids = (array)$wpdb->get_col($wpdb->prepare(
+            "SELECT DISTINCT a.quiz_id
+             FROM {$attempts_table} a
+             JOIN " . TPMA_CR_DB::table('quiz_contexts') . " qc ON qc.attempt_id=a.attempt_id
+             WHERE qc.registration_id=%d AND a.course_id=%d AND a.quiz_id>0
+               AND a.total_marks>0 AND COALESCE(a.attempt_status,'')<>'attempt_started'
+               AND a.attempt_ended_at IS NOT NULL",
+            $reg_id,
+            $tutor_course_id
+        ));
+        return array_values(array_unique(array_filter(array_map('intval', $ids))));
+    }
+
+    private static function get_registration_score_quiz_ids(int $reg_id, int $tutor_course_id): array {
+        if ($reg_id <= 0 || $tutor_course_id <= 0) return array();
+        return array_values(array_unique(array_merge(
+            self::get_qualifying_quiz_ids_for_course($tutor_course_id),
+            self::get_context_quiz_ids_for_registration_course($reg_id, $tutor_course_id)
+        )));
+    }
+
+    private static function quiz_can_count_for_registration_score(int $registration_id, int $quiz_id, int $tutor_course_id): bool {
+        if ($registration_id <= 0 || $quiz_id <= 0 || $tutor_course_id <= 0) return false;
+        if (in_array($quiz_id, self::get_qualifying_quiz_ids_for_course($tutor_course_id), true)) return true;
+        return in_array($quiz_id, self::get_context_quiz_ids_for_registration_course($registration_id, $tutor_course_id), true);
+    }
+
+    private static function get_registration_best_quiz_score(int $reg_id, int $quiz_id = 0, int $tutor_course_id = 0): float {
+        if ($reg_id <= 0) return 0.0;
+        if ($tutor_course_id <= 0 && $quiz_id > 0) {
+            $tutor_course_id = self::get_tutor_course_id_for_quiz($quiz_id);
+        }
+        if ($tutor_course_id <= 0) return 0.0;
+        $quiz_ids = self::get_registration_score_quiz_ids($reg_id, $tutor_course_id);
+        if (empty($quiz_ids)) return 0.0;
+
+        global $wpdb;
+        $placeholders = implode(',', array_fill(0, count($quiz_ids), '%d'));
+        $args = array_merge(array($reg_id), $quiz_ids);
         $score = $wpdb->get_var($wpdb->prepare(
             "SELECT MAX((a.earned_marks / NULLIF(a.total_marks, 0)) * 100)
              FROM {$wpdb->prefix}tutor_quiz_attempts a
              JOIN " . TPMA_CR_DB::table('quiz_contexts') . " qc ON qc.attempt_id=a.attempt_id
-             WHERE qc.registration_id=%d AND a.quiz_id=%d AND a.total_marks>0
+             JOIN " . TPMA_CR_DB::table('regs') . " r ON r.id=qc.registration_id
+             WHERE r.id=%d AND r.is_virtual_user=1 AND a.user_id=r.wp_user_id
+               AND a.quiz_id IN ({$placeholders}) AND a.total_marks>0
                AND COALESCE(a.attempt_status,'')<>'attempt_started'",
-            $reg_id,
-            $quiz_id
+            $args
         ));
         return $score === null ? 0.0 : round((float)$score, 1);
     }
 
-    private static function registration_has_passed_quiz(int $reg_id, int $quiz_id): bool {
-        return self::get_registration_best_quiz_score($reg_id, $quiz_id) >= self::get_quiz_passing_grade($quiz_id);
+    private static function registration_has_passed_quiz(int $reg_id, int $quiz_id, int $tutor_course_id = 0): bool {
+        if ($reg_id <= 0) return false;
+        if ($tutor_course_id <= 0 && $quiz_id > 0) {
+            $tutor_course_id = self::get_tutor_course_id_for_quiz($quiz_id);
+        }
+        if ($tutor_course_id <= 0) return false;
+
+        $quiz_ids = self::get_registration_score_quiz_ids($reg_id, $tutor_course_id);
+        if (empty($quiz_ids)) return false;
+
+        global $wpdb;
+        $placeholders = implode(',', array_fill(0, count($quiz_ids), '%d'));
+        $args = array_merge(array($reg_id), $quiz_ids);
+        $rows = (array)$wpdb->get_results($wpdb->prepare(
+            "SELECT a.quiz_id, MAX((a.earned_marks / NULLIF(a.total_marks, 0)) * 100) AS score
+             FROM {$wpdb->prefix}tutor_quiz_attempts a
+             JOIN " . TPMA_CR_DB::table('quiz_contexts') . " qc ON qc.attempt_id=a.attempt_id
+             JOIN " . TPMA_CR_DB::table('regs') . " r ON r.id=qc.registration_id
+             WHERE r.id=%d AND r.is_virtual_user=1 AND a.user_id=r.wp_user_id
+               AND a.quiz_id IN ({$placeholders}) AND a.total_marks>0
+               AND COALESCE(a.attempt_status,'')<>'attempt_started'
+             GROUP BY a.quiz_id",
+            $args
+        ), ARRAY_A);
+        foreach ($rows as $row) {
+            $attempt_quiz_id = (int)($row['quiz_id'] ?? 0);
+            if ($attempt_quiz_id > 0 && round((float)($row['score'] ?? 0), 1) >= self::get_quiz_passing_grade($attempt_quiz_id)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static function current_registration_has_passed_quiz(int $quiz_id, int $user_id = 0): bool {
@@ -3228,19 +3760,8 @@ class TPMA_Tutor_Bridge {
     }
 
     private static function get_qualifying_quiz_for_course(int $course_id): int {
-        if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return 0;
-        global $wpdb;
-        $quiz_type = function_exists('tutor') ? tutor()->quiz_post_type : 'tutor_quiz';
-        return (int)$wpdb->get_var($wpdb->prepare(
-            "SELECT q.ID FROM {$wpdb->posts} q
-             JOIN {$wpdb->posts} topic ON topic.ID=q.post_parent
-             JOIN {$wpdb->postmeta} resource ON resource.post_id=topic.ID
-                AND resource.meta_key='_tpma_resource_type' AND resource.meta_value='quiz'
-             WHERE q.post_type=%s AND q.post_status<>'trash' AND topic.post_parent=%d
-             ORDER BY topic.menu_order ASC, q.menu_order ASC, q.ID ASC LIMIT 1",
-            $quiz_type,
-            $course_id
-        ));
+        $quiz_ids = self::get_qualifying_quiz_ids_for_course($course_id);
+        return (int)($quiz_ids[0] ?? 0);
     }
 
     /**
@@ -3294,8 +3815,12 @@ class TPMA_Tutor_Bridge {
             "SELECT registration_id FROM " . TPMA_CR_DB::table('quiz_contexts') . " WHERE attempt_id=%d", $attempt_id
         )) : 0;
         if ($mapped_reg_id <= 0) return;
-        if (self::get_registration_for_quiz($mapped_reg_id, $quiz_id, $wp_user_id) === null) return;
-        $best_score = self::get_registration_best_quiz_score($mapped_reg_id, $quiz_id);
+        $tutor_course_id = (int)($attempt['course_id'] ?? 0);
+        if ($tutor_course_id <= 0) {
+            $tutor_course_id = self::get_tutor_course_id_for_quiz($quiz_id);
+        }
+        if (self::get_registration_for_tutor_course($mapped_reg_id, $tutor_course_id, $wp_user_id) === null) return;
+        $best_score = self::get_registration_best_quiz_score($mapped_reg_id, $quiz_id, $tutor_course_id);
         $wpdb->update($regs_table, array('test_score'=>$best_score . '%'), array('id'=>$mapped_reg_id), array('%s'), array('%d'));
     }
 
