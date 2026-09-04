@@ -12,6 +12,7 @@ S.create = function createState(){
     pageSize: 50,
     currentPage: 1,
     viewMode: 'nested',
+    nestedYear: now.getFullYear(),
     nestedMonth: now.getMonth() + 1,
     filter: {
       q: '',
@@ -307,11 +308,65 @@ S.getGroupMonth = function getGroupMonth(ctx, group){
   return new Date(ts).getMonth() + 1;
 };
 
-S.buildNestedMonths = function buildNestedMonths(ctx, groups){
+S.getGroupYear = function getGroupYear(ctx, group){
+  const ts = S.getGroupSortTimestamp(ctx, group);
+  if (!isFinite(ts) || ts === Number.MAX_SAFE_INTEGER) return 0;
+  return new Date(ts).getFullYear();
+};
+
+S.createNestedMonthBucket = function createNestedMonthBucket(){
   const months = {};
   for (let month = 1; month <= 12; month += 1) {
     months[month] = [];
   }
+  return months;
+};
+
+S.buildNestedYears = function buildNestedYears(ctx, groups){
+  const years = {};
+  const yearList = [];
+
+  const ensureYear = function(year){
+    const y = parseInt(year, 10);
+    if (!y) return null;
+    if (!years[y]) {
+      years[y] = S.createNestedMonthBucket();
+      yearList.push(y);
+    }
+    return years[y];
+  };
+
+  const adjusting = [];
+
+  (groups || []).forEach(function(group){
+    if (S.isAdjustingGroup(group)) {
+      if ((group.rows || []).length > 0) {
+        adjusting.push(group);
+      }
+      return;
+    }
+
+    const year = S.getGroupYear(ctx, group);
+    const month = S.getGroupMonth(ctx, group);
+    const bucket = ensureYear(year);
+    if (bucket && bucket[month]) bucket[month].push(group);
+  });
+
+  if (!yearList.length) {
+    ensureYear(new Date().getFullYear());
+  }
+
+  yearList.sort(function(a, b){ return a - b; });
+
+  return {
+    years: years,
+    yearList: yearList,
+    adjusting: adjusting
+  };
+};
+
+S.buildNestedMonths = function buildNestedMonths(ctx, groups){
+  const months = S.createNestedMonthBucket();
   months.adjusting = [];
 
   (groups || []).forEach(function(group){
@@ -331,8 +386,15 @@ S.buildNestedMonths = function buildNestedMonths(ctx, groups){
 
 S.getNestedMonthGroups = function getNestedMonthGroups(ctx){
   const month = (ctx.state && ctx.state.nestedMonth) || 0;
+  const year = parseInt((ctx.state && ctx.state.nestedYear) || 0, 10) || new Date().getFullYear();
+  const nestedYears = (ctx.data && ctx.data.nestedYears) || null;
+  if (month === 'adjusting') {
+    return nestedYears ? (nestedYears.adjusting || []) : (((ctx.data && ctx.data.nestedMonths) || {}).adjusting || []);
+  }
+  if (nestedYears && nestedYears.years && nestedYears.years[year]) {
+    return nestedYears.years[year][month] || [];
+  }
   const months = (ctx.data && ctx.data.nestedMonths) || {};
-  if (month === 'adjusting') return months.adjusting || [];
   return months[month] || [];
 };
 
@@ -502,7 +564,17 @@ S.apply = function applyFiltersAndSort(ctx){
   ctx.data.currentGroups = S.buildClassGroups(ctx, list);
   ctx.data.currentPages = S.paginateClassGroups(ctx.data.currentGroups, ctx.state.pageSize);
   ctx.data.nestedGroups = S.sortNestedGroups(ctx, ctx.data.currentGroups.concat(S.buildCourseOnlyGroups(ctx, ctx.data.currentGroups)));
+  ctx.data.nestedYears = S.buildNestedYears(ctx, ctx.data.nestedGroups);
   ctx.data.nestedMonths = S.buildNestedMonths(ctx, ctx.data.nestedGroups);
+  if (ctx.data.nestedYears && ctx.data.nestedYears.yearList && ctx.data.nestedYears.yearList.length) {
+    const selectedYear = parseInt(ctx.state.nestedYear || 0, 10);
+    if (ctx.data.nestedYears.yearList.indexOf(selectedYear) === -1) {
+      const currentYear = new Date().getFullYear();
+      ctx.state.nestedYear = ctx.data.nestedYears.yearList.indexOf(currentYear) !== -1
+        ? currentYear
+        : ctx.data.nestedYears.yearList[0];
+    }
+  }
   ctx.state.currentPage = 1;
 };
 

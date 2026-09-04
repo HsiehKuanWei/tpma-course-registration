@@ -481,6 +481,7 @@ body{
   background:transparent;
 }
 
+.tpma-nested-year-tabs,
 .tpma-nested-month-tabs{
   display:flex;
   flex-wrap:wrap;
@@ -488,11 +489,19 @@ body{
   margin:0 0 14px;
 }
 
+.tpma-nested-year-tabs{
+  align-items:center;
+  padding:4px;
+  border-radius:8px;
+  background:#edf3fb;
+  border:1px solid #d7e1ef;
+}
+
+.tpma-nested-year-tab,
 .tpma-nested-month-tab{
   border:1px solid #d7e1ef;
   background:#fff;
   color:var(--tpma-reg-muted);
-  border-radius:999px;
   padding:8px 14px;
   font-size:13px;
   font-weight:700;
@@ -500,12 +509,22 @@ body{
   transition:all .2s ease;
 }
 
+.tpma-nested-year-tab{
+  border-radius:6px;
+}
+
+.tpma-nested-month-tab{
+  border-radius:999px;
+}
+
+.tpma-nested-year-tab:hover,
 .tpma-nested-month-tab:hover{
   border-color:#b6d4fe;
   color:var(--tpma-primary-color);
   background:#f7fbff;
 }
 
+.tpma-nested-year-tab.is-active,
 .tpma-nested-month-tab.is-active{
   background:#162033;
   border-color:#162033;
@@ -954,15 +973,43 @@ body{
 
 @media (max-width: 1100px){
   .tpma-reg-nested-main-header,
-  .tpma-reg-class-grid-layout,
-  .tpma-reg-student-grid-layout{
-    grid-template-columns:30px 26px 1fr;
+  .tpma-reg-class-grid-layout{
+    grid-template-columns:30px 26px minmax(132px, .95fr) minmax(220px, 1.6fr) minmax(112px, .85fr) minmax(84px, .65fr);
+    gap:10px;
   }
 
-  .tpma-reg-nested-main-header > *:nth-child(n+4),
-  .tpma-reg-class-grid-layout > *:nth-child(n+4),
-  .tpma-reg-student-grid-layout > *:nth-child(n+4){
-    display:none;
+  .tpma-reg-student-grid-layout{
+    grid-template-columns:30px 26px minmax(120px, .9fr) minmax(130px, 1fr) minmax(130px, 1fr) minmax(150px, 1.15fr) minmax(74px, .6fr);
+    gap:10px;
+  }
+
+  .tpma-reg-nested-main-header{
+    padding:10px 14px;
+    font-size:12px;
+  }
+
+  .tpma-reg-class-summary{
+    padding:14px;
+  }
+
+  .tpma-reg-class-title{
+    font-size:14px;
+  }
+
+  .tpma-reg-student-card .tpma-reg-card-summary{
+    padding:10px 12px;
+  }
+
+  .tpma-reg-grid .tpma-reg-cell,
+  .tpma-reg-grid .tpma-reg-class-cell,
+  .tpma-reg-grid .tpma-reg-student-head{
+    padding-left:4px;
+    padding-right:4px;
+    font-size:13px;
+  }
+
+  .tpma-status-pill{
+    white-space:normal;
   }
 
   .tpma-reg-class-body{
@@ -1003,11 +1050,13 @@ body{
     display:none;
   }
 
+  .tpma-nested-year-tabs,
   .tpma-nested-month-tabs{
     gap:6px;
     margin-bottom:12px;
   }
 
+  .tpma-nested-year-tab,
   .tpma-nested-month-tab{
     padding:7px 12px;
     font-size:12px;

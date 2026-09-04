@@ -1303,10 +1303,40 @@ R.renderFlatTable = function renderFlatTable(ctx, tbody){
 
 R.renderNestedTable = function renderNestedTable(ctx, tbody){
   const pageGroups = S.getNestedMonthGroups(ctx);
-  const hasAdjustingTab = !!(((ctx.data || {}).nestedMonths || {}).adjusting || []).length;
+  const nestedYears = ((ctx.data || {}).nestedYears || {});
+  const yearList = Array.isArray(nestedYears.yearList) && nestedYears.yearList.length
+    ? nestedYears.yearList
+    : [ctx.state.nestedYear || new Date().getFullYear()];
+  const hasAdjustingTab = !!((nestedYears.adjusting || (((ctx.data || {}).nestedMonths || {}).adjusting || [])).length);
+  const selectedYear = parseInt(ctx.state.nestedYear || yearList[0], 10) || new Date().getFullYear();
+
+  const yearTabs = document.createElement('div');
+  yearTabs.className = 'tpma-nested-year-tabs';
+  yearTabs.setAttribute('role', 'group');
+  yearTabs.setAttribute('aria-label', '年度切換');
+  yearList.forEach(function(year){
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'tpma-nested-year-tab' + (parseInt(year, 10) === selectedYear ? ' is-active' : '');
+    btn.textContent = year + '年';
+    btn.dataset.year = String(year);
+    btn.addEventListener('click', function(){
+      const nextYear = parseInt(this.dataset.year || '', 10);
+      if (!nextYear || nextYear === ctx.state.nestedYear) return;
+      ctx.state.nestedYear = nextYear;
+      if (ctx.state.nestedMonth === ADJUSTING_VALUE) {
+        ctx.state.nestedMonth = new Date().getMonth() + 1;
+      }
+      R.renderTable(ctx);
+    });
+    yearTabs.appendChild(btn);
+  });
+  tbody.appendChild(yearTabs);
 
   const tabs = document.createElement('div');
   tabs.className = 'tpma-nested-month-tabs';
+  tabs.setAttribute('role', 'group');
+  tabs.setAttribute('aria-label', '月份切換');
   for (let month = 1; month <= 12; month += 1) {
     const btn = document.createElement('button');
     btn.type = 'button';
@@ -1341,7 +1371,7 @@ R.renderNestedTable = function renderNestedTable(ctx, tbody){
     empty.className = 'tpma-empty-row';
     empty.textContent = ctx.state.nestedMonth === ADJUSTING_VALUE
       ? ADJUSTING_LABEL + '查無課程資料。'
-      : ctx.state.nestedMonth + ' 月查無課程資料。';
+      : selectedYear + ' 年 ' + ctx.state.nestedMonth + ' 月查無課程資料。';
     tbody.appendChild(empty);
     return;
   }
