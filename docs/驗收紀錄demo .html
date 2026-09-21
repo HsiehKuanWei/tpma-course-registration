@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>工程結算驗收證明書</title>
+  <style>
+    /* --------------------------------------------------
+     * 1. 頁面規範與變數
+     * -------------------------------------------------- */
+    :root {
+      --page-width: 210mm;
+      --page-height: 297mm;
+      --page-padding: 12.7mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "DFKai-SB","BiauKai","KaiTi",serif;
+      line-height: 1.0;
+      color: #222;
+    }
+
+    /* --------------------------------------------------
+     * 2. 螢幕預覽模式 (@media screen)
+     * 利用 CSS 漸層與背景網格，模擬出「真實紙張邊界線」
+     * -------------------------------------------------- */
+    @media screen {
+      body {
+        background-color: #dcdcdc;
+        padding: 40px 0;
+      }
+
+      .toolbar {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 48px;
+        background: #1e293b;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        z-index: 1000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      }
+
+      .toolbar button {
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 6px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      /* 主內容區域：長度不限，會隨內容無限延伸 */
+      .document-container {
+        width: var(--page-width);
+        margin: 40px auto 0;
+        padding: var(--page-padding);
+        background-color: #ffffff;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        position: relative;
+
+        /* 繪製螢幕預覽時的 A4 自動切頁輔助線 (每 297mm 畫出一條紅虛線) */
+        background-image: linear-gradient(to bottom, transparent calc(297mm - 1px), #ef4444 calc(297mm - 1px), #ef4444 297mm);
+        background-size: 100% 297mm;
+      }
+    }
+
+    /* --------------------------------------------------
+     * 3. 內容排版與斷頁規則 (關鍵設定)
+     * -------------------------------------------------- */
+    h1 {
+      font-size: 22pt;
+      margin-bottom: 20px;
+      border-bottom: 2px solid #000;
+      padding-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 15pt;
+      margin: 20px 0 10px;
+      /* 防孤行：防止標題獨自留在頁尾，標題會自動與下一個元素連在一起換頁 */
+      break-after: avoid;
+    }
+
+    p {
+      font-size: 11pt;
+      margin: 5px;
+      text-align: justify;
+    }
+
+    /* 表格自動跨頁與標頭重複 */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 5px;
+      font-size: 10.5pt;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f1f5f9;
+    }
+
+    thead {
+      display: table-header-group; /* 列印時自動在每頁頂部重複表頭 */
+    }
+
+    tr {
+      break-inside: avoid; /* 避免表格列從中間拆開 */
+    }
+
+    /* 防撕裂卡片/區塊 */
+    .card {
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #2563eb;
+      padding: 16px;
+      margin: 16px 0;
+      background: #f8fafc;
+      
+      /* 自動切頁的核心：整個區塊保持完整，若剩餘空間不足就整個移到下一頁 */
+      break-inside: avoid;
+    }
+
+    /* --------------------------------------------------
+     * 4. 實際列印樣式 (@media print)
+     * -------------------------------------------------- */
+    @page {
+      size: A4 portrait;
+      margin: var(--page-padding); /* 實際列印頁邊距 */
+    }
+
+    @media print {
+      body {
+        background: none;
+      }
+
+      .toolbar {
+        display: none !important;
+      }
+
+      .document-container {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        box-shadow: none;
+        background: none; /* 移除輔助線 */
+      }
+
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+/*自定義*/
+    .flex{
+      display: flex;
+      gap: 16px;
+      break-inside: avoid; /* 防止此並列區塊被切斷到兩頁 */
+    }
+    .title{
+      justify-content:space-around;
+      margin-bottom: 16px;
+    }  
+    .info{
+      justify-content:space-between;
+    }      
+
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <span>A4 自動切頁預覽（紅色虛線表示螢幕預估的實體頁邊界）</span>
+    <button onclick="window.print()">開啟列印 / 另存 PDF</button>
+  </div>
+
+  <!-- 單一連續容器，內容自由流動 -->
+  <div class="document-container">
+    <div class="flex title">
+      <div>
+        <h3 data-auto="鄉鎮名稱">臺東縣卑南鄉公所</h3>
+      </div>
+      <div>
+        <h3>■全部　□部份</h3>
+      </div>
+    </div>
+    <h2>驗收紀錄</h2>
+    <div class="flex info">
+      <div style="width: 50%;">
+        <p data-manual="">時間:114.12.05</p>
+      </div>
+      <div style="width: 50%;">
+        <p data-manual="">第一頁 共一頁</p>
+      </div>
+    </div>
+<table >
+  <colgroup>
+<col style="width: 16.5%">
+<col style="width: 16.5%">
+<col style="width: 17%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<tbody>
+  <tr>
+    <td colspan="1">案號及契約號</td>
+    <td colspan="1">BNA11403</td>
+    <td colspan="1">廠商名稱</td>
+    <td colspan="2">鴻林水電工程行</td>
+
+  </tr>
+  <tr>
+    <td colspan="1">標的名稱及數量摘要</td>
+    <td colspan="2">114年度路燈新設工程開口契約</td>
+    <td colspan="1">驗收批次</td>
+    <td colspan="1">決算驗收</td>
+
+  </tr>
+  <tr>
+    <td colspan="1">採購金額</td>
+    <td colspan="4">■未達公告金額　□公告金額以上未達查核金額　□查核金額以上未達巨額　□巨額</td>
+  </tr>
+  <tr>
+    <td colspan="1">履約期限</td>
+    <td colspan="2">114年12月31日</td>
+    <td colspan="1">決算金額</td>
+    <td colspan="1">1,389,644元整</td>
+  </tr>
+  <tr>
+    <td colspan="1">完成履約日期</td>
+    <td colspan="1">114年11月20日</td>
+    <td colspan="1">履約有無逾期</td>
+    <td colspan="2">□逾期　■未逾期</td>
+  </tr>
+  <tr>
+    <td colspan="1">契約金額</td>
+    <td colspan="1">新台幣壹佰肆拾萬元整</td>
+    <td colspan="1">契約變更或加减價次數</td>
+    <td colspan="2"></td>
+  </tr>							
+  <tr>
+    <td colspan="5">
+      <p>[驗收經過]： 114年度路燈新設工程決算驗收</p>							
+      <p>內容</p>
+      <p>[驗收結果]:</p>
+      <p>■ 與竣工圖說貨樣規定相符。</p>							
+      <p>□ 與契約圖說貨樣規定不符及其情形:</p>
+      <br>
+      <br>
+      <p>[改善、拆除、重作、退貨、換貨之期限]:</p>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="1" rowspan="2">記錄</td>
+    <td colspan="2">廠商</td>
+    <td colspan="2" rowspan="2">會驗人員(無者免)</td>
+  </tr>
+  <tr>
+    <td colspan="1">代表</td>
+    <td colspan="1">專任工程人員</td>
+  </tr>
+  <tr>
+    <td colspan="1">(簽章)</td>
+    <td colspan="1">(無者免)<br>(簽章)</td>
+    <td colspan="1">(非屬營造業者免)<br>(簽章)</td>
+    <td colspan="1">(簽章)</td>
+    <td colspan="1">(簽章)</td>
+  </tr>
+  <tr>
+    <td colspan="2">協驗人員(無者免)</td>
+    <td colspan="1">本機關監驗人員</td>
+    <td colspan="1">上級機關監驗人員或授權自辦文號</td>
+    <td colspan="1">主驗人員</td>
+  </tr>
+  <tr>
+    <td colspan="1">(簽章)</td>
+    <td colspan="1">(簽章)</td>
+    <td colspan="1">(未達公告金額而無者免)	<br>(簽章)</td>
+    <td colspan="1">(未達查核金額者免)(簽章)</td>
+    <td colspan="1">(簽章)</td>
+  </tr>
+</tbody></table>
+  </div>
+</body>
+</html>

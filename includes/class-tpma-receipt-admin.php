@@ -25,19 +25,19 @@ class TPMA_CR_Receipt_Admin {
     }
 
     public static function add_receipt_admin_page(): void {
-        add_menu_page(
+        add_submenu_page(
+            TPMA_CR_Admin_Pages::PARENT_SLUG,
             'TPMA 收據管理',
             'TPMA 收據管理',
             'manage_options',
             'tpma-cr-receipts',
-            array(__CLASS__, 'render_receipt_admin_page'),
-            'dashicons-media-spreadsheet',
-            58
+            array(__CLASS__, 'render_receipt_admin_page')
         );
     }
 
     public static function enqueue_receipt_admin_assets(string $hook): void {
-        if ($hook !== 'toplevel_page_tpma-cr-receipts' || !self::can_manage()) {
+        $page = isset($_GET['page']) ? sanitize_key((string) wp_unslash($_GET['page'])) : '';
+        if ($page !== 'tpma-cr-receipts' || !self::can_manage()) {
             return;
         }
         $version = defined('TPMA_CR_VERSION') ? TPMA_CR_VERSION : null;

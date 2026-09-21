@@ -335,6 +335,11 @@
     targetSel.innerHTML = '<option value="">選擇目標課程</option>';
     state.allCourses
       .filter(c => String(c.id) !== String(sourceId) && parseInt(c.is_active, 10) !== 0)
+      .sort((a, b) => {
+        const aLabel = `${a.course_code || a.id} ${a.course_name || ''}`.trim();
+        const bLabel = `${b.course_code || b.id} ${b.course_name || ''}`.trim();
+        return aLabel.localeCompare(bLabel, 'zh-Hant', { numeric: true, sensitivity: 'base' });
+      })
       .forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.id;
@@ -358,13 +363,36 @@
       confirmBtn.disabled = true;
       try {
         const json = await ns.apiMergeCourse(sourceId, targetId);
-        await ns.fetchAll();
-        ns.buildLecturerFilter();
-        ns.applyFilters();
+        let refreshFailed = false;
+        try {
+          await ns.fetchAll();
+          ns.buildLecturerFilter();
+          ns.applyFilters();
+        } catch (refreshError) {
+          refreshFailed = true;
+          console.warn('Course merge succeeded, but refresh failed:', refreshError);
+        }
         backdrop.classList.remove('open');
         modal.classList.remove('open');
-        w.alert(`已合併課程，搬移報名 ${json.moved_regs || 0} 筆，場次 ${json.moved_sessions || 0} 筆`);
+        w.alert(`已合併課程，搬移報名 ${json.moved_regs || 0} 筆，場次 ${json.moved_sessions || 0} 筆${refreshFailed ? '。清單重新載入失敗，請重新整理頁面查看最新資料' : ''}`);
       } catch (e) {
+        const message = e && e.message ? e.message : '';
+        if (/Unexpected token|not valid JSON|JSON|Failed to fetch/i.test(message)) {
+          try {
+            const courses = await w.TPMAPublic.api.fetchJson(state.apiBase + '/admin/courses', { method: 'GET' }, state.nonce);
+            if (Array.isArray(courses) && !courses.some(c => String(c.id) === String(sourceId))) {
+              state.allCourses = courses;
+              ns.buildLecturerFilter();
+              ns.applyFilters();
+              backdrop.classList.remove('open');
+              modal.classList.remove('open');
+              w.alert('已合併課程，清單已重新載入。');
+              return;
+            }
+          } catch (verifyError) {
+            console.warn('Course merge JSON parse failed and verification also failed:', verifyError);
+          }
+        }
         errorEl.textContent = e.message || '合併課程失敗';
         errorEl.style.display = 'block';
       } finally {

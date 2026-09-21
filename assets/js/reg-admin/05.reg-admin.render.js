@@ -418,6 +418,7 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
   const courseSel = document.getElementById(cid);
   const dateSel = document.getElementById(did);
   if (!courseSel || !dateSel) return;
+  const canEditInactiveLegacy = !row.woocommerce_order_id;
 
   courseSel.innerHTML = '<option value="">請選擇課程</option>';
   const adjustingCourseOpt = document.createElement('option');
@@ -440,10 +441,10 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
     group.label = lecturer;
 
     courseGroups[lecturer].forEach(c=>{
-      if (String(c.is_active) === '0' && String(c.id) !== String(row.course_id || '')) return;
+      if (!canEditInactiveLegacy && String(c.is_active) === '0' && String(c.id) !== String(row.course_id || '')) return;
       const opt = document.createElement('option');
       opt.value = c.id || '';
-      opt.textContent = c.course_name || '';
+      opt.textContent = (c.course_name || '') + (String(c.is_active) === '0' ? '（停用）' : '');
       if (String(c.id) === String(row.course_id || '')) opt.selected = true;
       group.appendChild(opt);
     });
@@ -479,7 +480,7 @@ R.populateEditCourseAndDate = function populateEditCourseAndDate(ctx, row){
 
       course.sessions.forEach(s=>{
         if (!s.session_datetime) return;
-        if (String(s.is_active) === '0' && String(s.id) !== String(row.session_id || '')) return;
+        if (!canEditInactiveLegacy && String(s.is_active) === '0' && String(s.id) !== String(row.session_id || '')) return;
         const sessionValue = String(s.session_datetime);
         const opt = document.createElement('option');
         opt.value = sessionValue;

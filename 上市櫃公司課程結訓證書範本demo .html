@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>結訓證書</title>
+  <style>
+    /* --------------------------------------------------
+     * 1. 頁面規範與變數
+     * -------------------------------------------------- */
+    :root {
+      --page-width: 210mm;
+      --page-height: 297mm;
+      --page-padding: 50mm 35mm;
+      --certificate-bg: url("docs/證書.png");
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: "DFKai-SB","BiauKai","KaiTi",serif;
+      line-height: 1.0;
+      color: #222;
+    }
+
+    .document-container {
+      width: var(--page-width);
+      height: var(--page-height);
+      margin: 0 auto;
+      padding: var(--page-padding);
+      background-color: #ffffff;
+      background-image: var(--certificate-bg);
+      background-repeat: no-repeat;
+      background-position: center;
+      background-size: 100% 100%;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* --------------------------------------------------
+     * 2. 螢幕預覽模式 (@media screen)
+     * 利用 CSS 漸層與背景網格，模擬出「真實紙張邊界線」
+     * -------------------------------------------------- */
+    @media screen {
+      body {
+        background-color: #dcdcdc;
+        padding: 40px 0;
+      }
+
+      .toolbar {
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 48px;
+        background: #1e293b;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 24px;
+        z-index: 1000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      }
+
+      .toolbar button {
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 6px 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      /* 主內容區域：固定為 A4 尺寸，螢幕預覽即為實際版面 */
+      .document-container {
+        margin: 40px auto 0;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+      }
+    }
+
+    /* --------------------------------------------------
+     * 3. 內容排版與斷頁規則 (關鍵設定)
+     * -------------------------------------------------- */
+    h1 {
+      font-size: 30pt;
+      margin-bottom: 20px;
+      padding-bottom: 8px;
+    }
+
+    h2 {
+      font-size: 15pt;
+      margin: 20px 0 10px;
+      /* 防孤行：防止標題獨自留在頁尾，標題會自動與下一個元素連在一起換頁 */
+      break-after: avoid;
+    }
+
+    p {
+      font-size: 16pt;
+      margin: 5px;
+      text-align: left;
+      
+      line-height: 1.75;
+      width: 100%;
+    }
+
+    
+    .justify-single-line{
+      text-align-last: justify;
+    }
+
+    /* 表格自動跨頁與標頭重複 */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 5px;
+      font-size: 10.5pt;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f1f5f9;
+    }
+
+    thead {
+      display: table-header-group; /* 列印時自動在每頁頂部重複表頭 */
+    }
+
+    tr {
+      break-inside: avoid; /* 避免表格列從中間拆開 */
+    }
+
+    /* 防撕裂卡片/區塊 */
+    .card {
+      border: 1px solid #e2e8f0;
+      border-left: 4px solid #2563eb;
+      padding: 16px;
+      margin: 16px 0;
+      background: #f8fafc;
+      
+      /* 自動切頁的核心：整個區塊保持完整，若剩餘空間不足就整個移到下一頁 */
+      break-inside: avoid;
+    }
+
+    /* --------------------------------------------------
+     * 4. 實際列印樣式 (@media print)
+     * -------------------------------------------------- */
+    @page {
+      size: A4 portrait;
+      margin: 0;
+    }
+
+    @media print {
+      html,
+      body {
+        width: var(--page-width);
+        height: var(--page-height);
+        background: none;
+      }
+
+      .toolbar {
+        display: none !important;
+      }
+
+      .document-container {
+        width: var(--page-width);
+        height: var(--page-height);
+        margin: 0;
+        padding: var(--page-padding);
+        box-shadow: none;
+        background-image: var(--certificate-bg);
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: 100% 100%;
+      }
+
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+    }
+/*自定義*/
+    .flex{
+      display: flex;
+      gap: 16px;
+      break-inside: avoid; /* 防止此並列區塊被切斷到兩頁 */
+    }
+    .title{
+      justify-content:space-around;
+      margin-bottom: 16px;
+    }  
+    .info{
+      justify-content:space-between;
+    }      
+
+    .font_bold{font-weight: bold;}
+    .font_underline{text-decoration: underline;}
+    .font_gray{color:#cbd5e1;}
+    .font_small{font-size: 14pt;}
+    .font_center{text-align: center;}
+    .font_right{text-align: right;}       
+    .inline_block{display:inline-block;width:100%;}
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <span>A4 自動切頁預覽（紅色虛線表示螢幕預估的實體頁邊界）</span>
+    <button onclick="window.print()">開啟列印 / 另存 PDF</button>
+  </div>
+
+  <!-- 單一連續容器，內容自由流動 -->
+  <div class="document-container">
+    <h1 class="font_center" style="letter-spacing: 3mm;">結訓證書</h1>
+    <p class="font_right font_small">證書編號：台專證字«結訓證號»號</p>
+    <p>«公司名稱» «職稱» «姓名» <br>
+      <span class="justify-single-line inline_block">於中華民國«YYY»年«MM»月«DD»日，<br>
+      參加社團法人台灣專案管理學會(TPMA)<br>
+      辦理上市櫃董事進修課程<br>
+      「«課程名稱»」</span>
+      共3小時，經考核通過結訓。<br>
+      (課程時數符合上市上櫃公司董事進修推行要點共3小時) <br>
+      <span class="font_center inline_block">特頒此證，以茲證明</span></p>
+      <p style="position: absolute; bottom: 87mm;left:80mm;">理事長</p>
+      <p style="position: absolute;bottom: 32mm;width: calc(100% - 70mm);" class="justify-single-line inline_block">中華民國«YYY»年«MM»月«DD»日</p>
+  </div>
+</body>
+</html>

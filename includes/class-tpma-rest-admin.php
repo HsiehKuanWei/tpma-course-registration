@@ -34,6 +34,12 @@ class TPMA_CR_REST_Admin
             'permission_callback' => array(__CLASS__, 'can_manage'),
         ));
 
+        register_rest_route($ns, '/admin/reports/summary', array(
+            'methods'  => 'GET',
+            'callback' => array(__CLASS__, 'admin_reports_summary'),
+            'permission_callback' => array(__CLASS__, 'can_manage'),
+        ));
+
         // 課程 / 場次
         register_rest_route($ns, '/admin/courses', array(
             'methods'  => 'GET',
@@ -187,6 +193,29 @@ class TPMA_CR_REST_Admin
             return null;
         }
         return (int) round((float)$clean);
+    }
+
+    private static function infer_amount_from_text($text)
+    {
+        $text = trim((string)$text);
+        if ($text === '') {
+            return null;
+        }
+        if (preg_match('/(?:金額|費用|學費|匯款|實收|收款|繳費)[：:\s]*(?:NT\\$|NTD|TWD|\\$)?\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)/iu', $text, $m)) {
+            return self::normalize_amount($m[1]);
+        }
+        if (preg_match('/(?:NT\\$|NTD|TWD|\\$)\\s*([0-9][0-9,]*(?:\\.[0-9]+)?)/iu', $text, $m)) {
+            return self::normalize_amount($m[1]);
+        }
+        if (preg_match('/([0-9][0-9,]*(?:\\.[0-9]+)?)\\s*(?:元|圓)/u', $text, $m)) {
+            return self::normalize_amount($m[1]);
+        }
+        return null;
+    }
+
+    private static function infer_legacy_amount_from_duration($duration_minutes)
+    {
+        return (int)$duration_minutes === 180 ? 3000 : null;
     }
 
     /* ---------- Shortcodes ---------- */
@@ -375,7 +404,7 @@ public static function admin_get_regs($request)
  * by the receipt workflow once a receipt has been issued, rather than by the
  * original checkout meta.
  */
-private static function overlay_active_receipt_fields(array $rows): array
+    private static function overlay_active_receipt_fields(array $rows): array
 {
     global $wpdb;
 
@@ -409,6 +438,1573 @@ private static function overlay_active_receipt_fields(array $rows): array
     unset($row);
 
     return $rows;
+}
+
+/* ---------- 統計報表 ---------- */
+
+public static function admin_reports_summary($request)
+{
+    global $wpdb;
+
+    $year = absint($request->get_param('year'));
+    $month = absint($request->get_param('month'));
+    $date_from = self::normalize_report_date($request->get_param('date_from'));
+    $date_to = self::normalize_report_date($request->get_param('date_to'));
+    $course_id = absint($request->get_param('course_id'));
+    $lecturer_code = sanitize_text_field((string)$request->get_param('lecturer_code'));
+    $payment_status = sanitize_key((string)$request->get_param('payment_status'));
+    $status = sanitize_key((string)$request->get_param('status'));
+    $receipt_status = sanitize_key((string)$request->get_param('receipt_status'));
+
+    if ($year <= 0 && $date_from === '' && $date_to === '') {
+        $year = (int) current_time('Y');
+    }
+    if ($month < 1 || $month > 12) {
+        $month = 0;
+    }
+
+    $rows = self::report_registration_rows(array(
+        'year'           => $year,
+        'month'          => $month,
+        'date_from'      => $date_from,
+        'date_to'        => $date_to,
+        'course_id'      => $course_id,
+        'lecturer_code'  => $lecturer_code,
+        'status'         => $status,
+        'receipt_status' => $receipt_status,
+    ));
+    $rows = self::filter_report_rows_by_payment_status(
+        self::enrich_report_rows_with_orders($rows),
+        $payment_status
+    );
+
+    $unopened_rows = self::build_report_unopened_courses(array(
+        'year'          => $year,
+        'month'         => $month,
+        'date_from'     => $date_from,
+        'date_to'       => $date_to,
+        'course_id'     => $course_id,
+        'lecturer_code' => $lecturer_code,
+    ));
+
+    $summary = self::build_report_summary($rows, array(
+        'year'      => $year,
+        'month'     => $month,
+        'date_from' => $date_from,
+        'date_to'   => $date_to,
+        'unopened_rows' => $unopened_rows,
+    ));
+
+    $analysis_year = $year > 0 ? $year : (int) current_time('Y');
+    if ($year <= 0 && $date_from !== '') {
+        $analysis_year = (int) substr($date_from, 0, 4);
+    }
+
+    $base_analysis_filters = array(
+        'course_id'      => $course_id,
+        'lecturer_code'  => $lecturer_code,
+        'status'         => $status,
+        'receipt_status' => $receipt_status,
+    );
+    $yearly_rows = self::report_analysis_rows($base_analysis_filters, $payment_status);
+    $yearly_unopened_rows = self::build_report_unopened_courses($base_analysis_filters);
+    $monthly_rows = self::report_analysis_rows(array_merge($base_analysis_filters, array(
+        'year' => $analysis_year,
+    )), $payment_status);
+    $monthly_unopened_rows = self::build_report_unopened_courses(array_merge($base_analysis_filters, array(
+        'year' => $analysis_year,
+    )));
+    $summary['analysis'] = array(
+        'yearly'       => self::build_report_period_analysis($yearly_rows, 'year', 0, array('unopened_rows' => $yearly_unopened_rows)),
+        'monthly'      => self::build_report_period_analysis($monthly_rows, 'month', $analysis_year, array('unopened_rows' => $monthly_unopened_rows)),
+        'monthly_year' => $analysis_year,
+    );
+    $summary['unopened'] = $unopened_rows;
+    $summary['unopened_overview'] = self::build_unopened_overview_groups($unopened_rows);
+    $summary['finance']['lecturer_fees'] = self::build_report_lecturer_fees($rows);
+    $summary['finance']['overview'] = self::build_finance_overview($summary);
+    $summary['comparisons'] = self::build_report_comparisons(
+        $base_analysis_filters,
+        $payment_status,
+        $analysis_year,
+        $month,
+        $date_from,
+        $date_to
+    );
+
+    $summary['available'] = self::report_filter_options();
+    $summary['filters'] = array(
+        'year'           => $year,
+        'month'          => $month,
+        'date_from'      => $date_from,
+        'date_to'        => $date_to,
+        'course_id'      => $course_id,
+        'lecturer_code'  => $lecturer_code,
+        'payment_status' => $payment_status,
+        'status'         => $status,
+        'receipt_status' => $receipt_status,
+    );
+
+    return rest_ensure_response($summary);
+}
+
+private static function report_analysis_rows(array $filters, string $payment_status): array
+{
+    return self::filter_report_rows_by_payment_status(
+        self::enrich_report_rows_with_orders(self::report_registration_rows($filters)),
+        $payment_status
+    );
+}
+
+private static function filter_report_rows_by_payment_status(array $rows, string $payment_status): array
+{
+    if ($payment_status === '') {
+        return $rows;
+    }
+    return array_values(array_filter($rows, static function ($row) use ($payment_status) {
+        return sanitize_key((string)($row['payment_status_effective'] ?? '')) === $payment_status;
+    }));
+}
+
+private static function normalize_report_date($value): string
+{
+    $value = trim(str_replace('/', '-', (string)$value));
+    if ($value === '') {
+        return '';
+    }
+    if (preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $value, $m)) {
+        return sprintf('%04d-%02d-%02d', (int)$m[1], (int)$m[2], (int)$m[3]);
+    }
+    return '';
+}
+
+private static function report_date_expr(): string
+{
+    return "COALESCE(DATE(s.session_datetime), r.class_date, DATE(r.created_at))";
+}
+
+private static function report_registration_rows(array $filters): array
+{
+    global $wpdb;
+
+    $regs_table = TPMA_CR_DB::table('regs');
+    $courses_table = TPMA_CR_DB::table('courses');
+    $sessions_table = TPMA_CR_DB::table('sessions');
+    $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
+    $lecturer_join_sql = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
+    $date_expr = self::report_date_expr();
+
+    $receipt_status_sql = "COALESCE(ar.status, r.receipt_status, '')";
+    $where = array('1=1');
+    $params = array();
+
+    if (!empty($filters['date_from'])) {
+        $where[] = "{$date_expr} >= %s";
+        $params[] = $filters['date_from'];
+    }
+    if (!empty($filters['date_to'])) {
+        $where[] = "{$date_expr} <= %s";
+        $params[] = $filters['date_to'];
+    }
+    if (empty($filters['date_from']) && empty($filters['date_to']) && !empty($filters['year'])) {
+        $where[] = "YEAR({$date_expr}) = %d";
+        $params[] = (int)$filters['year'];
+        if (!empty($filters['month'])) {
+            $where[] = "MONTH({$date_expr}) = %d";
+            $params[] = (int)$filters['month'];
+        }
+    }
+    if (!empty($filters['course_id'])) {
+        $where[] = 'r.course_id = %d';
+        $params[] = (int)$filters['course_id'];
+    }
+    if (!empty($filters['lecturer_code'])) {
+        $where[] = 'c.lecturer_code = %s';
+        $params[] = (string)$filters['lecturer_code'];
+    }
+    if (!empty($filters['status'])) {
+        $where[] = 'r.status = %s';
+        $params[] = (string)$filters['status'];
+    }
+    if (!empty($filters['receipt_status'])) {
+        $where[] = "{$receipt_status_sql} = %s";
+        $params[] = (string)$filters['receipt_status'];
+    }
+
+    $sql = "
+        SELECT
+            r.id,
+            r.reg_no,
+            r.course_id,
+            r.session_id,
+            r.created_at,
+            r.class_date,
+            r.student_name,
+            r.company_name,
+            r.note,
+            r.remit_amount,
+            r.status,
+            r.payment_status,
+            r.receipt_status,
+            r.receipt_type,
+            r.access_mode,
+            r.woocommerce_order_id,
+            r.test_score,
+            r.certificate_id,
+            {$date_expr} AS report_date,
+            c.course_code,
+            c.course_name,
+            c.lecturer_code,
+            c.is_active AS course_is_active,
+            c.duration_minutes,
+            {$lecturer_display_sql} AS lecturer,
+            s.delivery_mode,
+            {$receipt_status_sql} AS receipt_status_effective
+        FROM {$regs_table} r
+        LEFT JOIN {$courses_table} c ON c.id = r.course_id
+        LEFT JOIN {$sessions_table} s ON s.id = r.session_id
+        LEFT JOIN {$lecturers_table} l ON {$lecturer_join_sql}
+        LEFT JOIN (
+            SELECT ro.order_id, rec.status
+            FROM " . TPMA_CR_DB::table('receipt_orders') . " ro
+            INNER JOIN " . TPMA_CR_DB::table('receipts') . " rec ON rec.id = ro.receipt_id
+            WHERE ro.active_slot = 1
+        ) ar ON ar.order_id = r.woocommerce_order_id
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY report_date ASC, r.id ASC
+    ";
+
+    if (!empty($params)) {
+        $sql = $wpdb->prepare($sql, ...$params);
+    }
+
+    $rows = $wpdb->get_results($sql, ARRAY_A);
+    return is_array($rows) ? $rows : array();
+}
+
+    private static function enrich_report_rows_with_orders(array $rows): array
+    {
+        if (empty($rows)) {
+            return array();
+        }
+
+    $orders = array();
+    foreach ($rows as $row) {
+        $order_id = (int)($row['woocommerce_order_id'] ?? 0);
+        if ($order_id > 0) {
+            $orders[$order_id] = null;
+        }
+    }
+
+    if (!empty($orders) && function_exists('wc_get_order')) {
+        foreach (array_keys($orders) as $order_id) {
+            $order = wc_get_order($order_id);
+            $orders[$order_id] = $order ? array(
+                'status' => $order->get_status(),
+                'total'  => (float)$order->get_total(),
+            ) : null;
+        }
+    }
+
+    foreach ($rows as &$row) {
+        $order_id = (int)($row['woocommerce_order_id'] ?? 0);
+        $order_data = $order_id > 0 && array_key_exists($order_id, $orders) ? $orders[$order_id] : null;
+        $row['order_total_effective'] = $order_data ? (float)$order_data['total'] : null;
+        $row['payment_status_effective'] = $order_data
+            ? (string)$order_data['status']
+            : sanitize_key((string)($row['payment_status'] ?? ''));
+        if ($order_id <= 0 && $row['payment_status_effective'] === '') {
+            $row['payment_status_effective'] = 'legacy';
+        }
+        $row['is_legacy_revenue'] = $order_id <= 0 ? 1 : 0;
+    }
+    unset($row);
+
+    $order_effective_counts = array();
+    if (!empty($orders)) {
+        global $wpdb;
+        $order_ids = array_values(array_filter(array_map('intval', array_keys($orders))));
+        if (!empty($order_ids)) {
+            $placeholders = implode(',', array_fill(0, count($order_ids), '%d'));
+            $order_reg_rows = $wpdb->get_results(
+                $wpdb->prepare(
+                    "SELECT woocommerce_order_id, student_name, status, payment_status FROM " . TPMA_CR_DB::table('regs') . " WHERE woocommerce_order_id IN ({$placeholders})",
+                    ...$order_ids
+                ),
+                ARRAY_A
+            );
+            $active_names = array();
+            foreach ((array)$order_reg_rows as $order_reg_row) {
+                $order_id = (int)($order_reg_row['woocommerce_order_id'] ?? 0);
+                $order_data = $order_id > 0 && array_key_exists($order_id, $orders) ? $orders[$order_id] : null;
+                $order_reg_row['payment_status_effective'] = $order_data
+                    ? (string)$order_data['status']
+                    : sanitize_key((string)($order_reg_row['payment_status'] ?? ''));
+                if (self::report_revenue_is_effective($order_reg_row)) {
+                    $name = trim((string)($order_reg_row['student_name'] ?? ''));
+                    $name_key = $name !== '' ? md5($name) : '';
+                    if ($name_key !== '') {
+                        $active_names[$order_id][$name_key] = true;
+                    }
+                }
+            }
+            foreach ((array)$order_reg_rows as $order_reg_row) {
+                $order_id = (int)($order_reg_row['woocommerce_order_id'] ?? 0);
+                $order_data = $order_id > 0 && array_key_exists($order_id, $orders) ? $orders[$order_id] : null;
+                $order_reg_row['payment_status_effective'] = $order_data
+                    ? (string)$order_data['status']
+                    : sanitize_key((string)($order_reg_row['payment_status'] ?? ''));
+                if (self::report_revenue_is_effective($order_reg_row)) {
+                    if (!isset($order_effective_counts[$order_id])) {
+                        $order_effective_counts[$order_id] = 0;
+                    }
+                    $order_effective_counts[$order_id]++;
+                    continue;
+                }
+                $name = trim((string)($order_reg_row['student_name'] ?? ''));
+                $name_key = $name !== '' ? md5($name) : '';
+                if (self::report_row_is_cancelled($order_reg_row) && ($name_key === '' || empty($active_names[$order_id][$name_key]))) {
+                    if (!isset($order_effective_counts[$order_id])) {
+                        $order_effective_counts[$order_id] = 0;
+                    }
+                    $order_effective_counts[$order_id]++;
+                }
+            }
+        }
+    }
+
+    $legacy_amount_hints = self::build_legacy_amount_hints($rows);
+
+    foreach ($rows as &$row) {
+        $order_id = (int)($row['woocommerce_order_id'] ?? 0);
+        $row['report_revenue_amount'] = 0.0;
+        if (!self::report_revenue_is_effective($row)) {
+            continue;
+        }
+        if ($order_id > 0) {
+            $denominator = max(1, (int)($order_effective_counts[$order_id] ?? 0));
+            $row['report_revenue_amount'] = (float)($row['order_total_effective'] ?? 0) / $denominator;
+        } else {
+            $amount = self::normalize_amount($row['remit_amount'] ?? null);
+            if ($amount === null || $amount <= 0) {
+                $amount = self::infer_amount_from_text((string)($row['note'] ?? ''));
+            }
+            if ($amount === null || $amount <= 0) {
+                $amount = self::report_amount_hint_value($legacy_amount_hints, $row);
+            }
+            if ($amount === null || $amount <= 0) {
+                $amount = self::infer_legacy_amount_from_duration($row['duration_minutes'] ?? null);
+            }
+            $row['report_revenue_amount'] = (float)($amount ?? 0);
+        }
+    }
+    unset($row);
+
+    return $rows;
+}
+
+private static function report_amount_hint_keys(array $row): array
+{
+    $keys = array();
+    $session_id = (int)($row['session_id'] ?? 0);
+    if ($session_id > 0) {
+        $keys[] = 'session:' . $session_id;
+    }
+    $course_id = (int)($row['course_id'] ?? 0);
+    if ($course_id > 0) {
+        $keys[] = 'course:' . $course_id;
+    }
+    $course_name = trim((string)($row['course_name'] ?? ''));
+    $lecturer = trim((string)($row['lecturer'] ?? ''));
+    if ($course_name !== '' && $lecturer !== '') {
+        $keys[] = 'course-lecturer:' . md5($course_name . '|' . $lecturer);
+    }
+    if ($course_name !== '') {
+        $keys[] = 'course-name:' . md5($course_name);
+    }
+    return $keys;
+}
+
+private static function report_add_amount_hint(array &$hints, array $row): void
+{
+    $amount = self::normalize_amount($row['remit_amount'] ?? null);
+    if ($amount === null || $amount <= 0) {
+        $amount = self::infer_amount_from_text((string)($row['note'] ?? ''));
+    }
+    if ($amount === null || $amount <= 0) {
+        return;
+    }
+
+    foreach (self::report_amount_hint_keys($row) as $key) {
+        if (!isset($hints[$key])) {
+            $hints[$key] = array();
+        }
+        if (!isset($hints[$key][$amount])) {
+            $hints[$key][$amount] = 0;
+        }
+        $hints[$key][$amount]++;
+    }
+}
+
+private static function report_amount_hint_value(array $hints, array $row): ?int
+{
+    foreach (self::report_amount_hint_keys($row) as $key) {
+        if (empty($hints[$key])) {
+            continue;
+        }
+        arsort($hints[$key], SORT_NUMERIC);
+        $amounts = array_keys($hints[$key]);
+        return isset($amounts[0]) ? (int)$amounts[0] : null;
+    }
+    return null;
+}
+
+private static function build_legacy_amount_hints(array $rows): array
+{
+    $hints = array();
+    $course_ids = array();
+    $course_names = array();
+
+    foreach ($rows as $row) {
+        if ((int)($row['woocommerce_order_id'] ?? 0) <= 0) {
+            self::report_add_amount_hint($hints, $row);
+        }
+        $course_id = (int)($row['course_id'] ?? 0);
+        if ($course_id > 0) {
+            $course_ids[$course_id] = true;
+        }
+        $course_name = trim((string)($row['course_name'] ?? ''));
+        if ($course_name !== '') {
+            $course_names[$course_name] = true;
+        }
+    }
+
+    if (empty($course_ids) && empty($course_names)) {
+        return $hints;
+    }
+
+    global $wpdb;
+    $regs_table = TPMA_CR_DB::table('regs');
+    $courses_table = TPMA_CR_DB::table('courses');
+    $sessions_table = TPMA_CR_DB::table('sessions');
+    $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
+    $lecturer_join_sql = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
+
+    $where = array('(r.woocommerce_order_id IS NULL OR r.woocommerce_order_id = 0)');
+    $params = array();
+    $or = array();
+    if (!empty($course_ids)) {
+        $ids = array_values(array_map('intval', array_keys($course_ids)));
+        $or[] = 'r.course_id IN (' . implode(',', array_fill(0, count($ids), '%d')) . ')';
+        array_push($params, ...$ids);
+    }
+    if (!empty($course_names)) {
+        $names = array_values(array_keys($course_names));
+        $or[] = 'c.course_name IN (' . implode(',', array_fill(0, count($names), '%s')) . ')';
+        array_push($params, ...$names);
+    }
+    if (!empty($or)) {
+        $where[] = '(' . implode(' OR ', $or) . ')';
+    }
+
+    $sql = "
+        SELECT r.course_id, r.session_id, r.note, r.remit_amount, c.course_name, {$lecturer_display_sql} AS lecturer
+        FROM {$regs_table} r
+        LEFT JOIN {$courses_table} c ON c.id = r.course_id
+        LEFT JOIN {$sessions_table} s ON s.id = r.session_id
+        LEFT JOIN {$lecturers_table} l ON {$lecturer_join_sql}
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY r.id DESC
+        LIMIT 2000
+    ";
+    if (!empty($params)) {
+        $sql = $wpdb->prepare($sql, ...$params);
+    }
+
+    $hint_rows = $wpdb->get_results($sql, ARRAY_A);
+    foreach ((array)$hint_rows as $hint_row) {
+        self::report_add_amount_hint($hints, $hint_row);
+    }
+
+    return $hints;
+}
+
+private static function report_filter_options(): array
+{
+    global $wpdb;
+
+    $courses_table = TPMA_CR_DB::table('courses');
+    $regs_table = TPMA_CR_DB::table('regs');
+    $sessions_table = TPMA_CR_DB::table('sessions');
+    $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $lecturer_schema = TPMA_CR_DB::get_lecturer_schema();
+    $date_expr = self::report_date_expr();
+
+    $years = $wpdb->get_col("
+        SELECT DISTINCT YEAR({$date_expr}) AS y
+        FROM {$regs_table} r
+        LEFT JOIN {$sessions_table} s ON s.id = r.session_id
+        WHERE {$date_expr} IS NOT NULL
+        ORDER BY y DESC
+    ");
+
+    $courses = $wpdb->get_results("
+        SELECT DISTINCT c.id, c.course_code, c.course_name, c.is_active
+        FROM {$courses_table} c
+        INNER JOIN {$regs_table} r ON r.course_id = c.id
+        ORDER BY c.is_active DESC, c.course_name ASC
+    ", ARRAY_A);
+
+    $lecturers = $wpdb->get_results("
+        SELECT DISTINCT l.{$lecturer_schema['code']} AS lecturer_code,
+               CONCAT(l.{$lecturer_schema['name']},
+                 CASE WHEN l.{$lecturer_schema['title']} IS NULL OR l.{$lecturer_schema['title']} = '' THEN '' ELSE CONCAT(' ', l.{$lecturer_schema['title']}) END
+               ) AS lecturer
+        FROM {$lecturers_table} l
+        INNER JOIN {$courses_table} c ON l.{$lecturer_schema['code']} = c.lecturer_code
+        INNER JOIN {$regs_table} r ON r.course_id = c.id
+        WHERE l.{$lecturer_schema['code']} IS NOT NULL AND l.{$lecturer_schema['code']} <> ''
+        ORDER BY lecturer ASC
+    ", ARRAY_A);
+
+    return array(
+        'years' => array_values(array_map('intval', (array)$years)),
+        'courses' => is_array($courses) ? $courses : array(),
+        'lecturers' => is_array($lecturers) ? $lecturers : array(),
+    );
+}
+
+private static function report_amount_from_row(array $row, array &$seen_orders): float
+{
+    return (float)($row['report_revenue_amount'] ?? 0);
+}
+
+private static function report_class_sort_date(array $class): string
+{
+    $date = (string)($class['class_date'] ?? '');
+    return $date !== '' && $date !== '未指定' && $date !== '未排班' ? $date : '0000-00-00';
+}
+
+private static function report_revenue_is_effective(array $row): bool
+{
+    $reg_status = sanitize_key((string)($row['status'] ?? ''));
+    $pay_status = sanitize_key((string)($row['payment_status_effective'] ?? ''));
+    if (in_array($reg_status, array('cancelled', 'hold_refunded'), true)) {
+        return false;
+    }
+    return !in_array($pay_status, array('cancelled', 'refunded', 'failed'), true);
+}
+
+private static function report_row_is_cancelled(array $row): bool
+{
+    $reg_status = sanitize_key((string)($row['status'] ?? ''));
+    $pay_status = sanitize_key((string)($row['payment_status_effective'] ?? ''));
+
+    return in_array($reg_status, array('cancelled', 'hold_refunded'), true)
+        || in_array($pay_status, array('cancelled', 'refunded'), true);
+}
+
+private static function report_group_add(array &$groups, string $key, string $label, int $learners, float $revenue): void
+{
+    if (!isset($groups[$key])) {
+        $groups[$key] = array('label' => $label, 'learners' => 0, 'revenue' => 0);
+    }
+    $groups[$key]['learners'] += $learners;
+    $groups[$key]['revenue'] += $revenue;
+}
+
+private static function report_sort_groups(array $groups, int $limit = 12, string $field = 'learners'): array
+{
+    usort($groups, static function ($a, $b) use ($field) {
+        $left = (float)($a[$field] ?? 0);
+        $right = (float)($b[$field] ?? 0);
+        if ($left === $right) {
+            return strcmp((string)($a['label'] ?? ''), (string)($b['label'] ?? ''));
+        }
+        return $left < $right ? 1 : -1;
+    });
+    return array_slice(array_values($groups), 0, $limit);
+}
+
+private static function report_class_key_from_row(array $row): string
+{
+    $session_id = (int)($row['session_id'] ?? 0);
+    if ($session_id > 0) {
+        return 'session:' . $session_id;
+    }
+
+    $course_id = (int)($row['course_id'] ?? 0);
+    $course_key = $course_id > 0 ? (string)$course_id : trim((string)($row['course_name'] ?? ''));
+    $report_date = (string)($row['report_date'] ?? '');
+    if ($report_date === '') {
+        $report_date = (string)($row['class_date'] ?? '');
+    }
+
+    return 'legacy:' . $course_key . ':' . ($report_date !== '' ? substr($report_date, 0, 10) : 'undated');
+}
+
+private static function report_effective_end_date(string $date_to = ''): string
+{
+    $today = current_time('Y-m-d');
+    if ($date_to === '' || $date_to > $today) {
+        return $today;
+    }
+    return $date_to;
+}
+
+private static function report_row_is_future(array $row): bool
+{
+    $report_date = (string)($row['report_date'] ?? '');
+    if ($report_date === '') {
+        return false;
+    }
+    return substr($report_date, 0, 10) > current_time('Y-m-d');
+}
+
+private static function build_report_unopened_courses(array $filters): array
+{
+    global $wpdb;
+
+    $courses_table = TPMA_CR_DB::table('courses');
+    $sessions_table = TPMA_CR_DB::table('sessions');
+    $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
+    $lecturer_join_sql = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
+
+    $where = array('1=1');
+    $params = array();
+    $session_date = 'DATE(s.session_datetime)';
+    $effective_date_to = self::report_effective_end_date((string)($filters['date_to'] ?? ''));
+
+    if (!empty($filters['date_from'])) {
+        $where[] = "({$session_date} >= %s OR (s.id IS NULL AND c.class_date >= %s))";
+        $params[] = $filters['date_from'];
+        $params[] = $filters['date_from'];
+    }
+    if ($effective_date_to !== '') {
+        $where[] = "({$session_date} <= %s OR (s.id IS NULL AND c.class_date <= %s))";
+        $params[] = $effective_date_to;
+        $params[] = $effective_date_to;
+    }
+    if (empty($filters['date_from']) && empty($filters['date_to']) && !empty($filters['year'])) {
+        $where[] = "(YEAR({$session_date}) = %d OR (s.id IS NULL AND YEAR(c.class_date) = %d))";
+        $params[] = (int)$filters['year'];
+        $params[] = (int)$filters['year'];
+        if (!empty($filters['month'])) {
+            $where[] = "(MONTH({$session_date}) = %d OR (s.id IS NULL AND MONTH(c.class_date) = %d))";
+            $params[] = (int)$filters['month'];
+            $params[] = (int)$filters['month'];
+        }
+    }
+    if (!empty($filters['course_id'])) {
+        $where[] = 'c.id = %d';
+        $params[] = (int)$filters['course_id'];
+    }
+    if (!empty($filters['lecturer_code'])) {
+        $where[] = 'c.lecturer_code = %s';
+        $params[] = (string)$filters['lecturer_code'];
+    }
+
+    $sql = "
+        SELECT
+            c.id AS course_id,
+            c.course_code,
+            c.course_name,
+            c.is_active,
+            {$lecturer_display_sql} AS lecturer,
+            s.id AS session_id,
+            s.session_datetime
+        FROM {$courses_table} c
+        LEFT JOIN {$sessions_table} s ON s.course_id = c.id
+        LEFT JOIN {$lecturers_table} l ON {$lecturer_join_sql}
+        WHERE " . implode(' AND ', $where) . "
+        ORDER BY COALESCE(s.session_datetime, c.class_date, c.updated_at) DESC, c.course_name ASC
+    ";
+    if (!empty($params)) {
+        $sql = $wpdb->prepare($sql, ...$params);
+    }
+
+    $rows = $wpdb->get_results($sql, ARRAY_A);
+    if (!is_array($rows)) {
+        return array();
+    }
+
+    $candidates = array();
+    foreach ($rows as $row) {
+        $session_datetime = (string)($row['session_datetime'] ?? '');
+        $key = !empty($row['session_id'])
+            ? 'session:' . (int)$row['session_id']
+            : 'course:' . (int)$row['course_id'] . ':unscheduled';
+        $candidates[$key] = array(
+            'key'         => $key,
+            'course_id'   => (int)($row['course_id'] ?? 0),
+            'label'       => trim((string)($row['course_name'] ?? '')) ?: '調整中',
+            'course_code' => (string)($row['course_code'] ?? ''),
+            'lecturer'    => trim((string)($row['lecturer'] ?? '')) ?: '調整中',
+            'class_date'  => $session_datetime !== '' ? substr($session_datetime, 0, 10) : '未排班',
+            'class_count' => 1,
+            'class_count_total' => 1,
+            'learners'    => 0,
+            'learners_total' => 0,
+            'inactive_count' => 0,
+            'is_active'   => (int)($row['is_active'] ?? 0),
+            'reason'      => '0 人報名',
+        );
+    }
+
+    $registration_rows = self::enrich_report_rows_with_orders(self::report_registration_rows(array(
+        'year'          => (int)($filters['year'] ?? 0),
+        'month'         => (int)($filters['month'] ?? 0),
+        'date_from'     => (string)($filters['date_from'] ?? ''),
+        'date_to'       => $effective_date_to,
+        'course_id'     => (int)($filters['course_id'] ?? 0),
+        'lecturer_code' => (string)($filters['lecturer_code'] ?? ''),
+    )));
+
+    foreach ($registration_rows as $row) {
+        $key = self::report_class_key_from_row($row);
+        if (!isset($candidates[$key])) {
+            $course_id = (int)($row['course_id'] ?? 0);
+            $unscheduled_key = $course_id > 0 ? 'course:' . $course_id . ':unscheduled' : '';
+            if ($unscheduled_key !== '' && isset($candidates[$unscheduled_key])) {
+                $key = $unscheduled_key;
+            }
+        }
+        if (!isset($candidates[$key])) {
+            continue;
+        }
+        $candidates[$key]['learners_total']++;
+        if (!self::report_row_is_cancelled($row)) {
+            $candidates[$key]['learners']++;
+        }
+        if (self::report_row_is_unopened_inactive($row)) {
+            $candidates[$key]['inactive_count']++;
+        }
+    }
+
+    $unopened = array();
+    foreach ($candidates as $candidate) {
+        $learners = (int)$candidate['learners_total'];
+        $inactive_count = (int)$candidate['inactive_count'];
+        if ($learners === 0) {
+            $unopened[] = $candidate;
+            continue;
+        }
+        if ($learners <= 3 && $inactive_count === $learners) {
+            $candidate['reason'] = '3 人以下且皆為取消/退費/保留';
+            $unopened[] = $candidate;
+        }
+    }
+
+    return array_values($unopened);
+}
+
+private static function report_row_is_unopened_inactive(array $row): bool
+{
+    $pay_status = sanitize_key((string)($row['payment_status_effective'] ?? ''));
+    $reg_status = sanitize_key((string)($row['status'] ?? ''));
+
+    return in_array($pay_status, array('cancelled', 'refunded', 'on-hold'), true)
+        || in_array($reg_status, array('cancelled', 'hold_refunded', 'hold'), true);
+}
+
+private static function build_report_class_summaries(array $rows): array
+{
+    $classes = array();
+
+    foreach ($rows as $row) {
+        $class_key = self::report_class_key_from_row($row);
+        if (!isset($classes[$class_key])) {
+            $report_date = (string)($row['report_date'] ?? '');
+            $duration_minutes = max(0, (int)($row['duration_minutes'] ?? 180));
+            $classes[$class_key] = array(
+                'key'              => $class_key,
+                'course_id'        => (int)($row['course_id'] ?? 0),
+                'course'           => trim((string)($row['course_name'] ?? '')) ?: '調整中',
+                'course_code'      => (string)($row['course_code'] ?? ''),
+                'lecturer'         => trim((string)($row['lecturer'] ?? '')) ?: '調整中',
+                'class_date'       => $report_date !== '' ? substr($report_date, 0, 10) : '未指定',
+                'class_count'      => 1,
+                'class_count_total'=> 1,
+                'learners'         => 0,
+                'learners_total'   => 0,
+                'total_revenue'    => 0,
+                'revenue'          => 0,
+                'duration_hours'   => round($duration_minutes / 60, 2),
+                'billable_hours'   => 0,
+                'lecturer_fee'     => 0,
+                'fee'              => 0,
+                'net_revenue'      => 0,
+                'live_learners'     => 0,
+                'recorded_learners' => 0,
+                'registrations'    => array(),
+            );
+        }
+
+        $is_cancelled = self::report_row_is_cancelled($row);
+        $delivery_mode = sanitize_key((string)($row['delivery_mode'] ?? ''));
+        $access_mode = sanitize_key((string)($row['access_mode'] ?? ''));
+        if ($delivery_mode === 'recorded') {
+            $access_mode = 'recorded';
+        } elseif ($access_mode === '') {
+            $access_mode = 'live';
+        }
+        $classes[$class_key]['learners_total']++;
+        if (!$is_cancelled) {
+            $classes[$class_key]['learners']++;
+            if ($access_mode === 'recorded') {
+                $classes[$class_key]['recorded_learners']++;
+            } else {
+                $classes[$class_key]['live_learners']++;
+            }
+        }
+        if (self::report_revenue_is_effective($row)) {
+            $seen_orders = array();
+            $amount = self::report_amount_from_row($row, $seen_orders);
+            $classes[$class_key]['total_revenue'] += $amount;
+            $classes[$class_key]['revenue'] += $amount;
+        }
+        $classes[$class_key]['registrations'][] = array(
+            'reg_no'       => (string)($row['reg_no'] ?? ''),
+            'student_name' => (string)($row['student_name'] ?? ''),
+            'company_name' => (string)($row['company_name'] ?? ''),
+            'status'       => sanitize_key((string)($row['status'] ?? '')),
+            'payment'      => sanitize_key((string)($row['payment_status_effective'] ?? '')),
+            'access_mode'  => $access_mode,
+            'amount'       => (float)($row['report_revenue_amount'] ?? 0),
+            'cancelled'    => $is_cancelled ? 1 : 0,
+        );
+    }
+
+    foreach ($classes as &$class) {
+        $class['class_count'] = (int)$class['learners'] > 0 ? 1 : 0;
+        if (self::report_class_sort_date($class) <= current_time('Y-m-d')) {
+            $learners = (int)$class['learners'];
+            $is_all_recorded = $learners > 0
+                && (int)($class['live_learners'] ?? 0) === 0
+                && (int)($class['recorded_learners'] ?? 0) === $learners;
+            $billable_hours = $is_all_recorded ? 0 : ($learners < 4 ? ($learners / 2) : (float)$class['duration_hours']);
+            $class['billable_hours'] = round($billable_hours, 2);
+            $class['lecturer_fee'] = (int)round($billable_hours * 2000);
+            $class['fee'] = $class['lecturer_fee'];
+        }
+        $class['total_revenue'] = (int)round((float)$class['total_revenue']);
+        $class['revenue'] = $class['total_revenue'];
+        $class['net_revenue'] = $class['total_revenue'] - (int)$class['lecturer_fee'];
+    }
+    unset($class);
+
+    usort($classes, static function ($a, $b) {
+        return strcmp(self::report_class_sort_date($b), self::report_class_sort_date($a));
+    });
+
+    return array_values($classes);
+}
+
+private static function merge_unopened_classes_into_summaries(array $class_summaries, array $unopened_rows): array
+{
+    if (empty($unopened_rows)) {
+        return $class_summaries;
+    }
+
+    $existing = array();
+    foreach ($class_summaries as $class) {
+        $key = (string)($class['key'] ?? '');
+        if ($key !== '') {
+            $existing[$key] = true;
+        }
+        $course_id = (int)($class['course_id'] ?? 0);
+        $class_date = self::report_class_sort_date($class);
+        if ($course_id > 0 && $class_date !== '0000-00-00') {
+            $existing['course-date:' . $course_id . ':' . $class_date] = true;
+        }
+    }
+
+    foreach ($unopened_rows as $row) {
+        $key = (string)($row['key'] ?? '');
+        $course_id = (int)($row['course_id'] ?? 0);
+        $class_date = (string)($row['class_date'] ?? '');
+        $date_key = $course_id > 0 && $class_date !== '' && $class_date !== '未排班'
+            ? 'course-date:' . $course_id . ':' . substr($class_date, 0, 10)
+            : '';
+
+        if (($key !== '' && isset($existing[$key])) || ($date_key !== '' && isset($existing[$date_key]))) {
+            continue;
+        }
+
+        $summary_key = $key !== '' ? $key : 'unopened:' . $course_id . ':' . ($class_date !== '' ? $class_date : 'undated');
+        $class_summaries[] = array(
+            'key'              => $summary_key,
+            'course_id'        => $course_id,
+            'course'           => (string)($row['label'] ?? '調整中'),
+            'course_code'      => (string)($row['course_code'] ?? ''),
+            'lecturer'         => (string)($row['lecturer'] ?? '調整中'),
+            'class_date'       => $class_date !== '' ? $class_date : '未排班',
+            'class_count'      => 0,
+            'class_count_total'=> (int)($row['class_count_total'] ?? 1),
+            'learners'         => (int)($row['learners'] ?? 0),
+            'learners_total'   => (int)($row['learners_total'] ?? 0),
+            'total_revenue'    => 0,
+            'revenue'          => 0,
+            'duration_hours'   => 0,
+            'billable_hours'   => 0,
+            'lecturer_fee'     => 0,
+            'fee'              => 0,
+            'net_revenue'      => 0,
+            'reason'           => (string)($row['reason'] ?? '未開班'),
+            'registrations'    => array(),
+        );
+
+        $existing[$summary_key] = true;
+        if ($date_key !== '') {
+            $existing[$date_key] = true;
+        }
+    }
+
+    usort($class_summaries, static function ($a, $b) {
+        return strcmp(self::report_class_sort_date($b), self::report_class_sort_date($a));
+    });
+
+    return array_values($class_summaries);
+}
+
+private static function build_report_overview_groups(array $class_summaries): array
+{
+    return array(
+        'course'   => self::build_report_overview_group($class_summaries, 'course'),
+        'lecturer' => self::build_report_overview_group($class_summaries, 'lecturer'),
+    );
+}
+
+private static function build_report_overview_group(array $class_summaries, string $group_by): array
+{
+    $groups = array();
+
+    foreach ($class_summaries as $class) {
+        $key = $group_by === 'lecturer' ? 'lecturer:' . (string)$class['lecturer'] : 'course:' . (string)$class['course_id'] . ':' . (string)$class['course'];
+        $label = $group_by === 'lecturer' ? (string)$class['lecturer'] : (string)$class['course'];
+        if (!isset($groups[$key])) {
+            $groups[$key] = array(
+                'key'           => $key,
+                'label'         => $label,
+                'learners'      => 0,
+                'learners_total'=> 0,
+                'class_count'   => 0,
+                'class_count_total' => 0,
+                'total_revenue' => 0,
+                'lecturer_fee'  => 0,
+                'net_revenue'   => 0,
+                'details'       => array(),
+            );
+        }
+        $groups[$key]['learners'] += (int)$class['learners'];
+        $groups[$key]['learners_total'] += (int)($class['learners_total'] ?? $class['learners']);
+        $groups[$key]['class_count'] += (int)$class['class_count'];
+        $groups[$key]['class_count_total'] += (int)($class['class_count_total'] ?? $class['class_count']);
+        $groups[$key]['total_revenue'] += (int)$class['total_revenue'];
+        $groups[$key]['lecturer_fee'] += (int)$class['lecturer_fee'];
+        $groups[$key]['net_revenue'] += (int)$class['net_revenue'];
+        $groups[$key]['details'][] = $class;
+    }
+
+    usort($groups, static function ($a, $b) {
+        $left = (int)($a['learners'] ?? 0);
+        $right = (int)($b['learners'] ?? 0);
+        if ($left === $right) {
+            $left_total = (int)($a['learners_total'] ?? 0);
+            $right_total = (int)($b['learners_total'] ?? 0);
+            if ($left_total !== $right_total) {
+                return $left_total < $right_total ? 1 : -1;
+            }
+            return strcmp((string)$a['label'], (string)$b['label']);
+        }
+        return $left < $right ? 1 : -1;
+    });
+
+    return array_values($groups);
+}
+
+private static function build_unopened_overview_groups(array $rows): array
+{
+    $classes = array_map(static function ($row) {
+        return array(
+            'key'           => 'unopened:' . (string)($row['course_id'] ?? '') . ':' . (string)($row['class_date'] ?? ''),
+            'course_id'     => (int)($row['course_id'] ?? 0),
+            'course'        => (string)($row['label'] ?? '調整中'),
+            'course_code'   => (string)($row['course_code'] ?? ''),
+            'lecturer'      => (string)($row['lecturer'] ?? '調整中'),
+            'class_date'    => (string)($row['class_date'] ?? '未排班'),
+            'class_count'   => (int)($row['class_count'] ?? 1),
+            'class_count_total' => (int)($row['class_count_total'] ?? 1),
+            'learners'      => (int)($row['learners'] ?? 0),
+            'learners_total'=> (int)($row['learners_total'] ?? $row['learners'] ?? 0),
+            'total_revenue' => 0,
+            'lecturer_fee'  => 0,
+            'net_revenue'   => 0,
+            'reason'        => (string)($row['reason'] ?? '0 人報名'),
+            'registrations' => array(),
+        );
+    }, $rows);
+
+    return self::build_report_overview_groups($classes);
+}
+
+private static function build_finance_overview(array $summary): array
+{
+    $kpis = $summary['kpis'] ?? array();
+    $statuses = $summary['distributions']['finance_status'] ?? array();
+    $rows = array();
+    foreach ($statuses as $status) {
+        $revenue = (int)round((float)($status['amount'] ?? 0));
+        $rows[] = array(
+            'label'         => (string)($status['label'] ?? 'unknown'),
+            'learners'      => (int)($status['count'] ?? 0),
+            'learners_total'=> (int)($status['count_total'] ?? $status['count'] ?? 0),
+            'class_count'   => 0,
+            'class_count_total' => 0,
+            'total_revenue' => $revenue,
+            'lecturer_fee'  => 0,
+            'net_revenue'   => $revenue,
+        );
+    }
+    return array(
+        'totals' => array(
+            'label'         => '總計',
+            'learners'      => (int)($kpis['total_learners'] ?? 0),
+            'learners_total'=> (int)($kpis['total_learners_all'] ?? $kpis['total_learners'] ?? 0),
+            'class_count'   => (int)($kpis['class_count'] ?? 0),
+            'class_count_total' => (int)($kpis['class_count_total'] ?? $kpis['class_count'] ?? 0),
+            'total_revenue' => (int)($kpis['total_revenue'] ?? 0),
+            'lecturer_fee'  => (int)($kpis['lecturer_fee_total'] ?? 0),
+            'net_revenue'   => (int)($kpis['total_revenue'] ?? 0) - (int)($kpis['lecturer_fee_total'] ?? 0),
+        ),
+        'payment_statuses' => $rows,
+    );
+}
+
+private static function build_report_lecturer_fees(array $rows): array
+{
+    return array_values(array_filter(self::build_report_class_summaries($rows), static function ($class) {
+        return self::report_class_sort_date($class) <= current_time('Y-m-d');
+    }));
+}
+
+private static function ensure_report_monthly_series(array $monthly, array $context): array
+{
+    $year = (int)($context['year'] ?? 0);
+    $month = (int)($context['month'] ?? 0);
+    $has_custom_range = !empty($context['date_from']) || !empty($context['date_to']);
+
+    if ($year <= 0 || $month > 0 || $has_custom_range) {
+        ksort($monthly);
+        return $monthly;
+    }
+
+    for ($i = 1; $i <= 12; $i++) {
+        $period = sprintf('%04d-%02d', $year, $i);
+        if (!isset($monthly[$period])) {
+            $monthly[$period] = array(
+                'period'        => $period,
+                'learners'      => 0,
+                'learners_total'=> 0,
+                'class_count'   => 0,
+                'class_count_total' => 0,
+                'revenue'       => 0,
+                'total_revenue' => 0,
+                'lecturer_fee'  => 0,
+                'net_revenue'   => 0,
+            );
+        }
+    }
+
+    ksort($monthly);
+    return $monthly;
+}
+
+private static function build_report_period_analysis(array $rows, string $period_type, int $year = 0, array $context = array()): array
+{
+    $periods = array();
+    $classes = self::build_report_class_summaries($rows);
+    $classes = self::merge_unopened_classes_into_summaries($classes, (array)($context['unopened_rows'] ?? array()));
+
+    foreach ($classes as $class) {
+        $report_date = self::report_class_sort_date($class);
+        if ($period_type === 'year') {
+            $period = $report_date !== '' ? substr($report_date, 0, 4) : '未指定';
+        } else {
+            $period = $report_date !== '' ? substr($report_date, 0, 7) : '未指定';
+        }
+
+        if (!isset($periods[$period])) {
+            $periods[$period] = array(
+                'period'        => $period,
+                'learners'      => 0,
+                'learners_total'=> 0,
+                'class_count'   => 0,
+                'class_count_total' => 0,
+                'revenue'       => 0,
+                'total_revenue' => 0,
+                'lecturer_fee'  => 0,
+                'net_revenue'   => 0,
+            );
+        }
+
+        $periods[$period]['learners'] += (int)$class['learners'];
+        $periods[$period]['learners_total'] += (int)($class['learners_total'] ?? $class['learners']);
+        $periods[$period]['class_count'] += (int)$class['class_count'];
+        $periods[$period]['class_count_total'] += (int)($class['class_count_total'] ?? $class['class_count']);
+        $periods[$period]['revenue'] += (int)$class['total_revenue'];
+        $periods[$period]['total_revenue'] += (int)$class['total_revenue'];
+        $periods[$period]['lecturer_fee'] += (int)$class['lecturer_fee'];
+        $periods[$period]['net_revenue'] += (int)$class['net_revenue'];
+    }
+
+    if ($period_type === 'month') {
+        $periods = self::ensure_report_monthly_series($periods, array(
+            'year'      => $year,
+            'month'     => 0,
+            'date_from' => '',
+            'date_to'   => '',
+        ));
+    } else {
+        ksort($periods);
+    }
+
+    return array_values(array_map(static function ($row) {
+        $row['revenue'] = (int) round((float)($row['revenue'] ?? 0));
+        $row['total_revenue'] = (int) round((float)($row['total_revenue'] ?? $row['revenue']));
+        $row['lecturer_fee'] = (int) round((float)($row['lecturer_fee'] ?? 0));
+        $row['net_revenue'] = (int) round((float)($row['net_revenue'] ?? 0));
+        return $row;
+    }, $periods));
+}
+
+private static function build_report_comparisons(array $base_filters, string $payment_status, int $year, int $month, string $date_from, string $date_to): array
+{
+    $current_month = $month >= 1 && $month <= 12 ? $month : (int) current_time('n');
+    $previous_month_year = $year;
+    $previous_month = $current_month - 1;
+    if ($previous_month < 1) {
+        $previous_month = 12;
+        $previous_month_year--;
+    }
+
+    $comparisons = array(
+        'year' => self::build_report_comparison_pair(
+            array_merge($base_filters, array('year' => $year)),
+            array_merge($base_filters, array('year' => $year - 1)),
+            $payment_status,
+            sprintf('%04d', $year),
+            sprintf('%04d', $year - 1)
+        ),
+        'month' => self::build_report_comparison_pair(
+            array_merge($base_filters, array('year' => $year, 'month' => $current_month)),
+            array_merge($base_filters, array('year' => $previous_month_year, 'month' => $previous_month)),
+            $payment_status,
+            sprintf('%04d-%02d', $year, $current_month),
+            sprintf('%04d-%02d', $previous_month_year, $previous_month)
+        ),
+    );
+
+    if ($date_from !== '' && $date_to !== '') {
+        try {
+            $from = new DateTimeImmutable($date_from);
+            $to = new DateTimeImmutable($date_to);
+            if ($to < $from) {
+                throw new Exception('Invalid comparison range');
+            }
+            $days = $from->diff($to)->days + 1;
+            $previous_to = $from->modify('-1 day');
+            $previous_from = $previous_to->modify('-' . ($days - 1) . ' days');
+            $comparisons['period'] = self::build_report_comparison_pair(
+                array_merge($base_filters, array('date_from' => $from->format('Y-m-d'), 'date_to' => $to->format('Y-m-d'))),
+                array_merge($base_filters, array('date_from' => $previous_from->format('Y-m-d'), 'date_to' => $previous_to->format('Y-m-d'))),
+                $payment_status,
+                $from->format('Y-m-d') . ' 至 ' . $to->format('Y-m-d'),
+                $previous_from->format('Y-m-d') . ' 至 ' . $previous_to->format('Y-m-d')
+            );
+        } catch (Exception $e) {
+            $comparisons['period'] = self::empty_report_comparison_pair('請先選擇有效日期區間', '前一段等長期間');
+        }
+    } else {
+        $comparisons['period'] = self::empty_report_comparison_pair('請先選擇日期區間', '前一段等長期間');
+    }
+
+    return $comparisons;
+}
+
+private static function build_report_comparison_pair(array $current_filters, array $previous_filters, string $payment_status, string $current_label, string $previous_label): array
+{
+    $current = self::report_comparison_metrics(self::report_analysis_rows($current_filters, $payment_status));
+    $previous = self::report_comparison_metrics(self::report_analysis_rows($previous_filters, $payment_status));
+
+    return array(
+        'current_label'  => $current_label,
+        'previous_label' => $previous_label,
+        'metrics'        => self::report_comparison_metric_rows($current, $previous),
+    );
+}
+
+private static function empty_report_comparison_pair(string $current_label, string $previous_label): array
+{
+    return array(
+        'current_label'  => $current_label,
+        'previous_label' => $previous_label,
+        'metrics'        => self::report_comparison_metric_rows(
+            self::report_comparison_metrics(array()),
+            self::report_comparison_metrics(array())
+        ),
+    );
+}
+
+private static function report_comparison_metrics(array $rows): array
+{
+    $summary = self::build_report_summary($rows);
+    $kpis = $summary['kpis'] ?? array();
+
+    return array(
+        'learners'             => (float)($kpis['total_learners'] ?? 0),
+        'revenue'              => (float)($kpis['total_revenue'] ?? 0),
+        'courses'              => (float)($kpis['course_count'] ?? 0),
+        'classes'              => (float)($kpis['class_count'] ?? 0),
+        'lecturer_fees'        => (float)($kpis['lecturer_fee_total'] ?? 0),
+        'companies'            => (float)($kpis['company_count'] ?? 0),
+        'pending_payment'      => (float)($kpis['pending_payment_count'] ?? 0),
+        'pending_receipt'      => (float)($kpis['pending_receipt_count'] ?? 0),
+        'completed_rate'       => (float)($kpis['completed_rate'] ?? 0),
+        'test_completion_rate' => (float)($kpis['test_completion_rate'] ?? 0),
+    );
+}
+
+private static function report_comparison_metric_rows(array $current, array $previous): array
+{
+    $definitions = array(
+        array('key' => 'learners', 'label' => '總人次', 'type' => 'number'),
+        array('key' => 'revenue', 'label' => '總收入', 'type' => 'money'),
+        array('key' => 'courses', 'label' => '課程數', 'type' => 'number'),
+        array('key' => 'classes', 'label' => '班數', 'type' => 'number'),
+        array('key' => 'lecturer_fees', 'label' => '講師費', 'type' => 'money'),
+        array('key' => 'companies', 'label' => '公司數', 'type' => 'number'),
+        array('key' => 'pending_payment', 'label' => '待付款/核帳', 'type' => 'number'),
+        array('key' => 'completed_rate', 'label' => '已結訓率', 'type' => 'percent'),
+        array('key' => 'test_completion_rate', 'label' => '測驗完成率', 'type' => 'percent'),
+    );
+
+    $rows = array();
+    foreach ($definitions as $definition) {
+        $key = $definition['key'];
+        $current_value = (float)($current[$key] ?? 0);
+        $previous_value = (float)($previous[$key] ?? 0);
+        $delta = $current_value - $previous_value;
+        $delta_rate = $previous_value !== 0.0 ? round(($delta / abs($previous_value)) * 100, 1) : null;
+        $rows[] = array(
+            'key'        => $key,
+            'label'      => $definition['label'],
+            'type'       => $definition['type'],
+            'current'    => $current_value,
+            'previous'   => $previous_value,
+            'delta'      => $delta,
+            'delta_rate' => $delta_rate,
+        );
+    }
+
+    return $rows;
+}
+
+private static function build_report_summary(array $rows, array $context = array()): array
+{
+    $class_summaries = self::build_report_class_summaries($rows);
+    $class_summaries = self::merge_unopened_classes_into_summaries($class_summaries, (array)($context['unopened_rows'] ?? array()));
+    $seen_total_orders = array();
+    $monthly_seen_orders = array();
+    $monthly_classes = array();
+    $monthly_classes_total = array();
+    $course_seen_orders = array();
+    $course_classes = array();
+    $company_seen_orders = array();
+    $lecturer_seen_orders = array();
+    $finance_seen_orders = array();
+
+    $monthly = array();
+    $course_rank = array();
+    $company_rank = array();
+    $lecturer_rank = array();
+    $payment_statuses = array();
+    $registration_statuses = array();
+    $receipt_statuses = array();
+    $finance_status = array();
+    $teaching_courses = array();
+
+    $companies = array();
+    $courses = array();
+    $classes = array();
+    $classes_total = array();
+    $total_revenue = 0.0;
+    $active_learner_rows = 0;
+    $pending_payment_count = 0;
+    $pending_receipt_count = 0;
+    $completed_count = 0;
+    $test_done_count = 0;
+    $active_rows = 0;
+
+    foreach ($rows as $row) {
+        $report_date = (string)($row['report_date'] ?? '');
+        $period = $report_date !== '' ? substr($report_date, 0, 7) : '未指定';
+        $course_id = (int)($row['course_id'] ?? 0);
+        $course_label = trim((string)($row['course_name'] ?? ''));
+        if ($course_label === '') {
+            $course_label = '調整中';
+        }
+        $company_label = trim((string)($row['company_name'] ?? ''));
+        if ($company_label === '') {
+            $company_label = '（無公司）';
+        }
+        $lecturer_label = trim((string)($row['lecturer'] ?? ''));
+        if ($lecturer_label === '') {
+            $lecturer_label = '調整中';
+        }
+
+        $pay_status = sanitize_key((string)($row['payment_status_effective'] ?? ''));
+        if ($pay_status === '') {
+            $pay_status = !empty($row['is_legacy_revenue']) ? 'legacy' : 'unknown';
+        }
+        $reg_status = sanitize_key((string)($row['status'] ?? ''));
+        if ($reg_status === '') {
+            $reg_status = 'unknown';
+        }
+        $receipt_status = sanitize_key((string)($row['receipt_status_effective'] ?? ''));
+        if ($receipt_status === '') {
+            $receipt_status = 'pending';
+        }
+        $course_key = $course_id > 0 ? 'course:' . $course_id : 'course:' . $course_label;
+        $class_key = self::report_class_key_from_row($row);
+        $is_cancelled = self::report_row_is_cancelled($row);
+
+        $effective_revenue = self::report_revenue_is_effective($row);
+        $revenue = self::report_amount_from_row($row, $seen_total_orders);
+        $total_revenue += $revenue;
+
+        if (!isset($monthly[$period])) {
+            $monthly[$period] = array(
+                'period'        => $period,
+                'learners'      => 0,
+                'learners_total'=> 0,
+                'class_count'   => 0,
+                'class_count_total' => 0,
+                'revenue'       => 0,
+                'total_revenue' => 0,
+                'lecturer_fee'  => 0,
+                'net_revenue'   => 0,
+            );
+            $monthly_seen_orders[$period] = array();
+            $monthly_classes[$period] = array();
+            $monthly_classes_total[$period] = array();
+        }
+        $monthly[$period]['learners_total']++;
+        $monthly_classes_total[$period][$class_key] = true;
+        if (!$is_cancelled) {
+            $monthly[$period]['learners']++;
+            $monthly_classes[$period][$class_key] = true;
+        }
+        $period_revenue = self::report_amount_from_row($row, $monthly_seen_orders[$period]);
+        $monthly[$period]['revenue'] += $period_revenue;
+        $monthly[$period]['total_revenue'] += $period_revenue;
+
+        $classes_total[$class_key] = true;
+        if (!$is_cancelled) {
+            $classes[$class_key] = true;
+            $active_learner_rows++;
+        }
+        if (!isset($course_seen_orders[$course_key])) {
+            $course_seen_orders[$course_key] = array();
+        }
+        self::report_group_add($course_rank, $course_key, $course_label, $is_cancelled ? 0 : 1, self::report_amount_from_row($row, $course_seen_orders[$course_key]));
+        if (!isset($course_classes[$course_key])) {
+            $course_classes[$course_key] = array();
+        }
+        if (!$is_cancelled) {
+            $course_classes[$course_key][$class_key] = true;
+        }
+
+        $company_key = 'company:' . $company_label;
+        if (!isset($company_seen_orders[$company_key])) {
+            $company_seen_orders[$company_key] = array();
+        }
+        self::report_group_add($company_rank, $company_key, $company_label, $is_cancelled ? 0 : 1, self::report_amount_from_row($row, $company_seen_orders[$company_key]));
+
+        $lecturer_key = 'lecturer:' . $lecturer_label;
+        if (!isset($lecturer_seen_orders[$lecturer_key])) {
+            $lecturer_seen_orders[$lecturer_key] = array();
+        }
+        self::report_group_add($lecturer_rank, $lecturer_key, $lecturer_label, $is_cancelled ? 0 : 1, self::report_amount_from_row($row, $lecturer_seen_orders[$lecturer_key]));
+
+        if (!isset($payment_statuses[$pay_status])) {
+            $payment_statuses[$pay_status] = array('label' => $pay_status, 'count' => 0);
+        }
+        $payment_statuses[$pay_status]['count']++;
+
+        if (!isset($registration_statuses[$reg_status])) {
+            $registration_statuses[$reg_status] = array('label' => $reg_status, 'count' => 0);
+        }
+        $registration_statuses[$reg_status]['count']++;
+
+        if (!isset($receipt_statuses[$receipt_status])) {
+            $receipt_statuses[$receipt_status] = array('label' => $receipt_status, 'count' => 0);
+        }
+        $receipt_statuses[$receipt_status]['count']++;
+
+        if (!isset($finance_status[$pay_status])) {
+            $finance_status[$pay_status] = array('label' => $pay_status, 'count' => 0, 'count_total' => 0, 'amount' => 0);
+            $finance_seen_orders[$pay_status] = array();
+        }
+        $finance_status[$pay_status]['count_total']++;
+        if (!$is_cancelled) {
+            $finance_status[$pay_status]['count']++;
+        }
+        $finance_status[$pay_status]['amount'] += self::report_amount_from_row($row, $finance_seen_orders[$pay_status]);
+
+        if (!isset($teaching_courses[$course_key])) {
+            $teaching_courses[$course_key] = array('label' => $course_label, 'learners' => 0, 'class_count' => 0, 'test_done' => 0, 'completed' => 0);
+        }
+        if (!$is_cancelled) {
+            $teaching_courses[$course_key]['learners']++;
+        }
+
+        $companies[$company_label] = true;
+        if ($course_id > 0) {
+            $courses[$course_id] = true;
+        }
+
+        if (in_array($pay_status, array('pending', 'on-hold', 'processing'), true)) {
+            $pending_payment_count++;
+        }
+        if (in_array($receipt_status, array('', 'pending', 'generated', 'awaiting_scan', 'scanned'), true)) {
+            $pending_receipt_count++;
+        }
+        if (!$is_cancelled) {
+            $active_rows++;
+        }
+        if ($reg_status === 'completed' && !$is_cancelled) {
+            $completed_count++;
+            $teaching_courses[$course_key]['completed']++;
+        }
+        if (trim((string)($row['test_score'] ?? '')) !== '' && !$is_cancelled) {
+            $test_done_count++;
+            $teaching_courses[$course_key]['test_done']++;
+        }
+    }
+
+    foreach ($class_summaries as $class) {
+        $class_key = (string)($class['key'] ?? '');
+        if ($class_key === '') {
+            continue;
+        }
+        $classes_total[$class_key] = true;
+        if ((int)($class['class_count'] ?? 0) > 0) {
+            $classes[$class_key] = true;
+        }
+        $class_course_id = (int)($class['course_id'] ?? 0);
+        if ($class_course_id > 0) {
+            $courses[$class_course_id] = true;
+        }
+
+        $class_period = substr(self::report_class_sort_date($class), 0, 7);
+        if ($class_period === '0000-00') {
+            $class_period = '未指定';
+        }
+        if (!isset($monthly[$class_period])) {
+            $monthly[$class_period] = array(
+                'period'        => $class_period,
+                'learners'      => 0,
+                'learners_total'=> 0,
+                'class_count'   => 0,
+                'class_count_total' => 0,
+                'revenue'       => 0,
+                'total_revenue' => 0,
+                'lecturer_fee'  => 0,
+                'net_revenue'   => 0,
+            );
+        }
+        if (!isset($monthly_classes_total[$class_period])) {
+            $monthly_classes_total[$class_period] = array();
+        }
+        $monthly_classes_total[$class_period][$class_key] = true;
+        if ((int)($class['class_count'] ?? 0) > 0) {
+            if (!isset($monthly_classes[$class_period])) {
+                $monthly_classes[$class_period] = array();
+            }
+            $monthly_classes[$class_period][$class_key] = true;
+        }
+    }
+
+    $monthly = self::ensure_report_monthly_series($monthly, $context);
+    foreach ($monthly as $period => &$period_row) {
+        $period_row['class_count'] = isset($monthly_classes[$period]) ? count($monthly_classes[$period]) : (int)($period_row['class_count'] ?? 0);
+        $period_row['class_count_total'] = isset($monthly_classes_total[$period]) ? count($monthly_classes_total[$period]) : (int)($period_row['class_count_total'] ?? $period_row['class_count'] ?? 0);
+        $period_row['learners_total'] = (int)($period_row['learners_total'] ?? $period_row['learners'] ?? 0);
+        $period_row['lecturer_fee'] = 0;
+        $period_row['net_revenue'] = (int)round((float)($period_row['total_revenue'] ?? $period_row['revenue'] ?? 0));
+    }
+    unset($period_row);
+    foreach ($class_summaries as $class) {
+        $period = substr(self::report_class_sort_date($class), 0, 7);
+        if (!isset($monthly[$period])) {
+            continue;
+        }
+        $monthly[$period]['lecturer_fee'] += (int)($class['lecturer_fee'] ?? 0);
+        $monthly[$period]['net_revenue'] = (int)($monthly[$period]['total_revenue'] ?? $monthly[$period]['revenue'] ?? 0) - (int)$monthly[$period]['lecturer_fee'];
+    }
+    $lecturer_fee_total = 0;
+    foreach ($class_summaries as $class) {
+        $lecturer_fee_total += (int)($class['lecturer_fee'] ?? 0);
+    }
+    foreach ($course_rank as $key => &$course) {
+        $course['class_count'] = isset($course_classes[$key]) ? count($course_classes[$key]) : 0;
+    }
+    unset($course);
+    foreach ($teaching_courses as $key => &$course) {
+        $learners = max(1, (int)$course['learners']);
+        $course['class_count'] = isset($course_classes[$key]) ? count($course_classes[$key]) : (int)($course['class_count'] ?? 0);
+        $course['test_rate'] = round(((int)$course['test_done'] / $learners) * 100, 1);
+        $course['completed_rate'] = round(((int)$course['completed'] / $learners) * 100, 1);
+    }
+    unset($course);
+
+    return array(
+        'kpis' => array(
+            'total_learners'          => $active_learner_rows,
+            'active_learners'         => $active_learner_rows,
+            'total_learners_all'      => count($rows),
+            'total_revenue'           => (int)round($total_revenue),
+            'course_count'            => count($courses),
+            'class_count'             => count($classes),
+            'class_count_total'       => count($classes_total),
+            'lecturer_fee_total'      => $lecturer_fee_total,
+            'company_count'           => count($companies),
+            'pending_payment_count'   => $pending_payment_count,
+            'pending_receipt_count'   => $pending_receipt_count,
+            'completed_rate'          => $active_rows > 0 ? round(($completed_count / $active_rows) * 100, 1) : 0,
+            'test_completion_rate'    => count($rows) > 0 ? round(($test_done_count / count($rows)) * 100, 1) : 0,
+        ),
+        'overview' => self::build_report_overview_groups($class_summaries),
+        'trends' => array(
+            'monthly' => array_values($monthly),
+        ),
+        'rankings' => array(
+            'courses'   => self::report_sort_groups($course_rank, 12, 'learners'),
+            'companies' => self::report_sort_groups($company_rank, 12, 'revenue'),
+            'lecturers' => self::report_sort_groups($lecturer_rank, 12, 'learners'),
+            'teaching'  => self::report_sort_groups($teaching_courses, 12, 'learners'),
+        ),
+        'distributions' => array(
+            'payment_status'      => array_values($payment_statuses),
+            'registration_status' => array_values($registration_statuses),
+            'receipt_status'      => array_values($receipt_statuses),
+            'finance_status'      => array_values($finance_status),
+        ),
+    );
 }
 
 
@@ -856,7 +2452,7 @@ public static function admin_quiz_summary($request)
         $course_name = trim((string)($reg['course_name'] ?? ''));
         $session_datetime = trim((string)($reg['session_datetime'] ?? ''));
         $date = $session_datetime !== '' ? substr($session_datetime, 0, 10) : (string)($reg['class_date'] ?? '');
-        $raw_sheet_name = trim($date . ' ' . ($course_name !== '' ? $course_name : '未命名課程'));
+        $raw_sheet_name = trim($date . ' ' . ($course_name !== '' ? $course_name : '調整中'));
         $sheet_key = $raw_sheet_name !== '' ? $raw_sheet_name : '測驗摘要';
         $sheet_name = self::excel_sheet_name($raw_sheet_name !== '' ? $raw_sheet_name : '測驗摘要');
         if (!isset($sheets[$sheet_key])) {
