@@ -28,7 +28,12 @@ API.fetchJson = async function fetchJson(url, options, nonce){
     }
   };
 
-  const res = await fetch(url, fetchOptions);
+  let res;
+  try {
+    res = await fetch(url, fetchOptions);
+  } catch (e) {
+    throw new Error((e && e.message ? e.message : 'Failed to fetch') + '：' + url);
+  }
   if (!res.ok) {
     const errorData = await res.json().catch(() => null);
     const errorMessage = (errorData && errorData.message) ? errorData.message : `HTTP ${res.status}`;

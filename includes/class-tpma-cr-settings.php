@@ -69,9 +69,10 @@ class TPMA_CR_Settings {
     }
 
     public static function register_menu() {
-        add_options_page(
-            'TPMA Course Registration IDs',
-            'TPMA Course Registration IDs',
+        add_submenu_page(
+            TPMA_CR_Admin_Pages::PARENT_SLUG,
+            '課程設定',
+            '課程設定',
             'manage_options',
             'tpma-cr-settings',
             array(__CLASS__, 'render_page')
@@ -483,7 +484,7 @@ class TPMA_CR_Settings {
         $notice = self::get_notice();
 
         echo '<div class="wrap">';
-        echo '<h1>TPMA Course Registration IDs</h1>';
+        echo '<h1>上市櫃課程設定</h1>';
         if ($notice) {
             $class = $notice['type'] === 'error' ? 'notice notice-error' : 'notice notice-success';
             echo '<div class="' . esc_attr($class) . '"><p>' . esc_html($notice['message']) . '</p></div>';
@@ -658,7 +659,7 @@ class TPMA_CR_Settings {
     }
 
     protected static function get_page_url() {
-        return admin_url('options-general.php?page=tpma-cr-settings');
+        return admin_url('admin.php?page=tpma-cr-settings');
     }
 
     protected static function set_notice($message, $type = 'success') {

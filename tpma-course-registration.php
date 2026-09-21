@@ -62,6 +62,7 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-rest-admin.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-mail-dispatcher.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-cr-mailer-registration.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-import.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-admin-pages.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-cr-dependencies.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-cr-settings.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-woo-shared.php';
@@ -83,6 +84,9 @@ add_action('plugins_loaded', function () {
     }
     if (class_exists('TPMA_CR_Settings')) {
         TPMA_CR_Settings::init();
+    }
+    if (class_exists('TPMA_CR_Admin_Pages')) {
+        TPMA_CR_Admin_Pages::init();
     }
     if (class_exists('TPMA_Woo_Special_Product')
         && (!class_exists('TPMA_CR_Dependencies') || TPMA_CR_Dependencies::has_woocommerce())

@@ -142,7 +142,7 @@ class TPMA_Tutor_Bridge {
 
     private static function get_google_meet_authorization_message(int $user_id, int $meet_post_id = 0): string {
         if ($user_id <= 0) {
-            return '尚未完成 Google Meet 共用授權。請任一網站管理員至「設定 → TPMA Course Registration IDs」執行「授權／更新共用 Meet」。';
+            return '尚未完成 Google Meet 共用授權。請任一網站管理員至「上市櫃課程 → 課程設定」執行「授權／更新共用 Meet」。';
         }
 
         $user = get_user_by('id', $user_id);
@@ -150,7 +150,7 @@ class TPMA_Tutor_Bridge {
         if ($meet_post_id > 0 && !get_post_meta($meet_post_id, self::MEET_SERVICE_USER_META, true)) {
             return '此既有 Meet 的原建立帳號「' . $name . '」尚未授權或授權已失效。請以該帳號登入並重新授權。';
         }
-        return 'Google Meet 共用授權已失效。請任一網站管理員至「設定 → TPMA Course Registration IDs」重新執行「授權／更新共用 Meet」。';
+        return 'Google Meet 共用授權已失效。請任一網站管理員至「上市櫃課程 → 課程設定」重新執行「授權／更新共用 Meet」。';
     }
 
     /**
@@ -1248,7 +1248,7 @@ class TPMA_Tutor_Bridge {
         $token = $google_event->client->getAccessToken();
         $access_token = is_array($token) ? (string) ($token['access_token'] ?? '') : '';
         if ($access_token === '') {
-            return new WP_Error('meet_settings_scope_required', 'Google Meet 開放權限尚未授權，請至「設定 → TPMA Course Registration IDs」執行授權。', array('status' => 403));
+            return new WP_Error('meet_settings_scope_required', 'Google Meet 開放權限尚未授權，請至「上市櫃課程 → 課程設定」執行授權。', array('status' => 403));
         }
 
         $space_name = self::resolve_meet_space_name($path, $access_token);

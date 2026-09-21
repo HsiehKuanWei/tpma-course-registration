@@ -62,12 +62,25 @@
     return l ? util.lecturerLabel(l) : '';
   };
 
+  ns.normalizeApiBase = function normalizeApiBase(apiBase) {
+    if (!apiBase) return '';
+    try {
+      const url = new URL(apiBase, w.location.href);
+      if (url.host === w.location.host) {
+        url.protocol = w.location.protocol;
+      }
+      return url.href.replace(/\/$/, '');
+    } catch (e) {
+      return String(apiBase).replace(/\/$/, '');
+    }
+  };
+
   /**
    * 注入設定（通常由 wp_localize_script 提供）
    * @param {{apiBase?:string, nonce?:string}} config
    */
   ns.setConfig = function setConfig(config) {
-    state.apiBase = (config && config.apiBase) ? config.apiBase : '';
+    state.apiBase = ns.normalizeApiBase((config && config.apiBase) ? config.apiBase : '');
     state.nonce = (config && config.nonce) ? config.nonce : '';
     state.formUrl = (config && config.formUrl) ? config.formUrl : '';
   };
