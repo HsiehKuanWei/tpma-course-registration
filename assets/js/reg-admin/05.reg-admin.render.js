@@ -260,7 +260,8 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
       case 'pending': sClass='tpma-status-pill-g1-pending'; break;
       case 'verifying': sClass='tpma-status-pill-g1-verifying'; break;
       case 'paid': sClass='tpma-status-pill-g1-paid'; break;
-      case 'cert_pending': sClass='tpma-status-pill-g1-cert'; break;
+      case 'cert_pending':
+      case 'cert_ready': sClass='tpma-status-pill-g1-cert'; break;
       case 'completed': sClass='tpma-status-pill-g1-completed'; break;
       case 'cancelled': sClass='tpma-status-pill-g1-cancelled'; break;
       default: sClass='tpma-status-pill-g1-pending';
@@ -280,7 +281,7 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
   }
 
   const tLabel = (testState === 'done') ? '已測驗' : '待測驗';
-  const hideG3 = (sCode === 'cancelled' || sCode === 'completed' || (sCode === 'cert_pending' && testState !== 'notyet'));
+  const hideG3 = (sCode === 'cancelled' || sCode === 'completed' || ((sCode === 'cert_pending' || sCode === 'cert_ready') && testState !== 'notyet'));
   if (!hideG3 && !hideStatusByPayment) {
     const g3Class = (testState === 'done') ? 'tpma-status-pill-g3-done' : 'tpma-status-pill-g3-notyet';
     icons.push('<span class="tpma-status-pill '+g3Class+'" title="測驗狀態: '+U.esc(tLabel)+'">'+U.esc(tLabel)+'</span>');
@@ -359,7 +360,12 @@ R.renderDetailView = function renderDetailView(ctx, container, row){
   appendField('付款狀態 (WC)', L.paymentStatusLabel(row.payment_status));
   const receiptInfo = appendField('收據方式 / 狀態', R.receiptDisplayHtml(row, null), { html: true });
   appendField('測驗成績', row.test_score);
-  appendField('證書編號', row.certificate_id);
+  appendField('Tutor 證書識別', row.certificate_id);
+  appendField('正式證書編號', row.certificate_serial);
+  appendField('證書狀態', row.certificate_status);
+  appendField('測驗通過日期', row.certificate_passed_at);
+  appendField('證書產製日期', row.certificate_generated_at);
+  appendField('證書寄送日期', row.certificate_sent_at);
   appendField('匯款金額（元）', U.formatAmount(row.remit_amount));
   appendField('匯款帳號', row.remit_account);
   appendField('匯款日期', row.remit_paid_at);
@@ -789,7 +795,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
   );
   otherSection.querySelector('[data-field="status"]').id = `tpma-edit-status-${row.id}`;
   appendEditField(otherSection, '測驗成績', 'test_score', 'text', row.test_score);
-  appendEditField(otherSection, '證書編號', 'certificate_id', 'text', row.certificate_id);
+  appendEditField(otherSection, 'Tutor 證書識別', 'certificate_id', 'text', row.certificate_id);
   appendEditField(otherSection, '備註', 'note', 'textarea', row.note);
   detailContainer.appendChild(otherSection);
 

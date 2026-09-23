@@ -218,6 +218,20 @@ R20250101001,HSSA101,董事會運作實務,王小明,2025-03-01,張三,ABC公司
     </div>
 
     <div class="tpma-import-block">
+        <h3>匯入／更新既有證書編號（CSV 貼上）</h3>
+        <p>格式：<code>reg_no,certificate_serial</code></p>
+        <p class="tpma-import-note">僅接受與該筆報名課程年度一致的民國年格式，例如 2026 年課程為 <code>115A000001</code>。同一報名可更新尚未寄出的證書；已寄出、重複編號、找不到報名或年份不符的資料會略過並列出原因。匯入不會產生 PDF 或寄信。</p>
+        <form method="post" action="<?php echo $action_url; ?>">
+            <input type="hidden" name="action" value="tpma_import">
+            <input type="hidden" name="type" value="certificate_serials">
+            <?php wp_nonce_field('tpma_import_certificate_serials'); ?>
+            <textarea name="csv" class="tpma-import-textarea" placeholder="R20260101001,115A000001"></textarea>
+            <br>
+            <button type="submit" class="tpma-import-submit">匯入證書編號</button>
+        </form>
+    </div>
+
+    <div class="tpma-import-block">
         <h3>舊資料校正工具</h3>
         <p class="tpma-import-note">
 用途：

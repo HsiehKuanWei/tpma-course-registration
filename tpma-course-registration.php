@@ -69,6 +69,8 @@ require_once TPMA_CR_PATH . 'includes/class-tpma-woo-shared.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-admin-woo-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-receipt-service.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-receipt-admin.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-certificate-service.php';
+require_once TPMA_CR_PATH . 'includes/class-tpma-certificate-admin.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-thankyou-view.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-special-product.php';
 require_once TPMA_CR_PATH . 'includes/class-tpma-tutor-bridge.php';
@@ -106,6 +108,12 @@ add_action('plugins_loaded', function () {
     }
     if (class_exists('TPMA_CR_Receipt_Admin')) {
         TPMA_CR_Receipt_Admin::init();
+    }
+    if (class_exists('TPMA_CR_Certificate_Service')) {
+        TPMA_CR_Certificate_Service::init();
+    }
+    if (class_exists('TPMA_CR_Certificate_Admin')) {
+        TPMA_CR_Certificate_Admin::init();
     }
 }, 12);
 
@@ -156,6 +164,7 @@ add_action('rest_api_init', array('TPMA_CR_REST_Public', 'register_routes'));
 
 add_action('rest_api_init', array('TPMA_CR_REST_Admin', 'register_routes'));
 add_action('rest_api_init', array('TPMA_CR_Receipt_Admin', 'register_routes'));
+add_action('rest_api_init', array('TPMA_CR_Certificate_Admin', 'register_routes'));
 
 
 

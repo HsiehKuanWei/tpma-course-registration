@@ -136,6 +136,8 @@ class TPMA_CR_Mailer_Registration
                 'student_fee'               => array('label' => '每位學員費用', 'description' => 'remit_amount_per_learner 的別名。'),
                 'source'                    => array('label' => '報名來源', 'description' => '報名來源標記（例如前台/匯入）。'),
                 'note'                      => array('label' => '報名備註', 'description' => '報名備註內容。'),
+                'certificate_serial'        => array('label' => '正式證書編號', 'description' => '系統正式配置的結訓證書編號。'),
+                'certificate_status'        => array('label' => '證書狀態', 'description' => '證書產製或寄送狀態。'),
             ),
         ));
 
@@ -193,7 +195,7 @@ class TPMA_CR_Mailer_Registration
                     ),
                 ),
                 'certificate_ready' => array(
-                    'label'                => '證書完成',
+                    'label'                => '證書寄送',
                     'source'               => 'tpma-course-registration',
                     'note'                 => 'admin trigger',
                     'default_template_key' => 'certificate_ready',

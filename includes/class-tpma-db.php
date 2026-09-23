@@ -11,7 +11,9 @@ if (!defined('ABSPATH')) {
 class TPMA_CR_DB
 
 {
-    const SCHEMA_VERSION = '1.9.4';
+    // Bump whenever maybe_upgrade() gains a new table or column. Existing
+    // sites otherwise skip the runtime migration entirely.
+    const SCHEMA_VERSION = '1.9.5';
 
     private static $table_columns_cache = array();
 
@@ -60,6 +62,9 @@ class TPMA_CR_DB
 
             case 'receipt_revisions':
                 return $wpdb->prefix . 'tpma_receipt_revisions';
+
+            case 'certificates':
+                return $wpdb->prefix . 'tpma_certificates';
 
         }
 
@@ -374,6 +379,34 @@ class TPMA_CR_DB
             UNIQUE KEY receipt_revision_unique (receipt_id, revision),
             KEY receipt_idx (receipt_id)
         ) {$charset_collate};");
+
+        // ── certificates: one immutable, formally numbered certificate per registration ──
+        $certificates_table = self::table('certificates');
+        $wpdb->query("CREATE TABLE IF NOT EXISTS {$certificates_table} (
+            id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+            registration_id BIGINT UNSIGNED NOT NULL,
+            serial VARCHAR(16) NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            snapshot LONGTEXT NOT NULL,
+            generated_file VARCHAR(255) DEFAULT NULL,
+            passed_at DATETIME DEFAULT NULL,
+            issued_at DATETIME DEFAULT NULL,
+            generated_at DATETIME DEFAULT NULL,
+            sent_at DATETIME DEFAULT NULL,
+            created_by BIGINT UNSIGNED DEFAULT NULL,
+            updated_by BIGINT UNSIGNED DEFAULT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            UNIQUE KEY registration_unique (registration_id),
+            UNIQUE KEY serial_unique (serial),
+            KEY status_idx (status)
+        ) {$charset_collate};");
+
+        $passed_col = $wpdb->get_results("SHOW COLUMNS FROM {$regs_table} LIKE 'certificate_passed_at'");
+        if (empty($passed_col)) {
+            $wpdb->query("ALTER TABLE {$regs_table} ADD COLUMN certificate_passed_at DATETIME DEFAULT NULL AFTER certificate_id");
+        }
         if (!(bool)get_option('tpma_cr_portal_tokens_migrated_v1', false)) {
             $wpdb->query($wpdb->prepare("UPDATE {$tokens_table} SET expires_at=%s WHERE expires_at>%s", current_time('mysql'), current_time('mysql')));
             update_option('tpma_cr_portal_tokens_migrated_v1', 1, false);

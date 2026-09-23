@@ -106,6 +106,7 @@ UI.getSelectedRows = function getSelectedRows(ctx){
 UI.getBulkTargetElement = function getBulkTargetElement(action){
   const map = {
     update_field: 'tpma-bulk-target-update-field',
+    certificate: 'tpma-bulk-certificate-action',
     send_mail: 'tpma-bulk-mail-event',
     reset_course_mail_meta: 'tpma-bulk-reset-event',
     export_excel: 'tpma-bulk-export-type'
@@ -175,7 +176,7 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
   const primaryAction = ctx.dom.bulkAction ? (ctx.dom.bulkAction.value || '') : '';
   const targetEl = UI.getBulkTargetElement(primaryAction);
   const target = targetEl ? (targetEl.value || '') : '';
-  const action = primaryAction === 'receipt' ? target : primaryAction;
+  const action = (primaryAction === 'receipt' || primaryAction === 'certificate') ? target : primaryAction;
   const hasSel = ids.length > 0;
   const requiresSelection = !!primaryAction && primaryAction !== 'export_excel';
   const sessionContext = action === 'update_field' && target === 'session_id'
@@ -220,6 +221,12 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
     hint = '可作廢所有已開立但未作廢的收據；作廢後可重新開立，已作廢項目會略過。';
   } else if (action === 'receipt_merge') {
     hint = '所選資料會去重成 Woo 訂單；未寄的既有收據會先作廢，再開立一張合併收據。付款人、統編、收據方式及開立資格皆須相符。';
+  } else if (action === 'certificate_allocate') {
+    hint = '直接依勾選的報名資料檢查測驗成績；合格者將配發下一張正式編號並產製 PDF。';
+  } else if (action === 'certificate_render') {
+    hint = '重製已配發正式編號的證書 PDF；不變更證書編號、內容快照或寄送紀錄。';
+  } else if (action === 'certificate_send') {
+    hint = '以 certificate_ready 寄送；未付款資料可寄送但會標記為課後付款，已寄資料需確認後才重寄。';
   } else if (action === 'update_field' && target === 'session_id') {
     hint = sessionContext && sessionContext.valid
       ? '僅可移動至同一課程的啟用場次；系統會重建課程入口與 Meet 連結。'
@@ -232,7 +239,7 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
   if (ctx.dom.bulkHint) ctx.dom.bulkHint.textContent = hint;
 
   const valueEl = UI.getBulkValueElement(target);
-  const targetRequired = primaryAction === 'receipt' || action === 'update_field' || action === 'send_mail';
+  const targetRequired = primaryAction === 'receipt' || primaryAction === 'certificate' || action === 'update_field' || action === 'send_mail';
   const targetReady = !targetRequired || !!target;
   const needsValue = action === 'update_field';
   const hasValue = !needsValue || (valueEl && valueEl.value !== '');
@@ -403,7 +410,7 @@ UI.applyBulk = async function applyBulk(ctx){
   if (!primaryAction) return;
   const targetEl = UI.getBulkTargetElement(primaryAction);
   const target = targetEl ? (targetEl.value || '') : '';
-  const action = primaryAction === 'receipt' ? target : primaryAction;
+  const action = (primaryAction === 'receipt' || primaryAction === 'certificate') ? target : primaryAction;
   if (!action || (action !== 'export_excel' && !ids.length)) return;
   const valueEl = UI.getBulkValueElement(target);
   const value = valueEl ? (valueEl.value || '') : '';
@@ -445,6 +452,21 @@ UI.applyBulk = async function applyBulk(ctx){
     payload.force = false;
     const scope = target === 'receipt_notice' ? ('將依收據去重寄送；合併收據只會寄送一次') : ('將檢查 ' + ids.length + ' 位學員');
     if (!confirm(scope + '，伺服器會自動排除不符合資格或無有效路由者。確定寄送？')) return;
+  } else if (['certificate_allocate', 'certificate_render', 'certificate_send'].indexOf(action) !== -1) {
+    const labels = {
+      certificate_allocate: '批次配發證書（配號並產製 PDF）',
+      certificate_render: '批次重製證書 PDF',
+      certificate_send: '批次寄送證書'
+    };
+    payload.action = action;
+    payload.force = false;
+    if (action === 'certificate_send') {
+      const rows = UI.getSelectedRows(ctx);
+      const alreadySent = rows.filter(row => String(row.certificate_status || '') === 'sent').length;
+      if (alreadySent && !confirm('所選資料含 ' + alreadySent + ' 筆已寄證書。確定後會強制重寄這些證書；其餘符合條件者照常寄送。')) return;
+      payload.force = alreadySent > 0;
+    }
+    if (!confirm('確定要' + labels[action] + '（共 ' + ids.length + ' 筆報名資料）？')) return;
   } else if (action === 'reset_course_mail_meta') {
     payload.action = 'reset_course_mail_meta';
     payload.event_key = target;

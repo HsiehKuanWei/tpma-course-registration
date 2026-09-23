@@ -252,6 +252,7 @@ public static function admin_get_regs($request)
     $regs_table      = TPMA_CR_DB::table('regs');
     $courses_table   = TPMA_CR_DB::table('courses');
     $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $certificates_table = TPMA_CR_DB::table('certificates');
     $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
     $lecturer_join_sql    = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
 
@@ -368,7 +369,12 @@ public static function admin_get_regs($request)
             s.delivery_mode,
             {$lecturer_display_sql} AS lecturer,
             r.woocommerce_order_id,
-            r.payment_status
+            r.payment_status,
+            cert.serial AS certificate_serial,
+            cert.status AS certificate_status,
+            cert.issued_at AS certificate_issued_at,
+            cert.generated_at AS certificate_generated_at,
+            cert.sent_at AS certificate_sent_at
         FROM {$regs_table} r
         LEFT JOIN {$courses_table} c
             ON c.id = r.course_id
@@ -376,6 +382,8 @@ public static function admin_get_regs($request)
             ON s.id = r.session_id
         LEFT JOIN {$lecturers_table} l
             ON {$lecturer_join_sql}
+        LEFT JOIN {$certificates_table} cert
+            ON cert.registration_id = r.id
         WHERE " . implode(' AND ', $where) . "
         ORDER BY r.created_at DESC
     ";
@@ -591,6 +599,7 @@ private static function report_registration_rows(array $filters): array
     $courses_table = TPMA_CR_DB::table('courses');
     $sessions_table = TPMA_CR_DB::table('sessions');
     $lecturers_table = TPMA_CR_DB::table('lecturers');
+    $certificates_table = TPMA_CR_DB::table('certificates');
     $lecturer_display_sql = TPMA_CR_DB::sql_lecturer_display('l');
     $lecturer_join_sql = TPMA_CR_DB::sql_lecturer_join_on_course('l', 'c');
     $date_expr = self::report_date_expr();
@@ -652,6 +661,12 @@ private static function report_registration_rows(array $filters): array
             r.woocommerce_order_id,
             r.test_score,
             r.certificate_id,
+            r.certificate_passed_at,
+            cert.serial AS certificate_serial,
+            cert.status AS certificate_status,
+            cert.issued_at AS certificate_issued_at,
+            cert.generated_at AS certificate_generated_at,
+            cert.sent_at AS certificate_sent_at,
             {$date_expr} AS report_date,
             c.course_code,
             c.course_name,
@@ -665,6 +680,7 @@ private static function report_registration_rows(array $filters): array
         LEFT JOIN {$courses_table} c ON c.id = r.course_id
         LEFT JOIN {$sessions_table} s ON s.id = r.session_id
         LEFT JOIN {$lecturers_table} l ON {$lecturer_join_sql}
+        LEFT JOIN {$certificates_table} cert ON cert.registration_id=r.id
         LEFT JOIN (
             SELECT ro.order_id, rec.status
             FROM " . TPMA_CR_DB::table('receipt_orders') . " ro
@@ -2402,6 +2418,8 @@ public static function admin_bulk_registrations($request)
             return new WP_Error('invalid_event', '不支援的寄件事件', array('status' => 400));
         }
         $result = self::bulk_send_mail($ids, $event_key, $force);
+    } elseif (in_array($action, array('certificate_allocate', 'certificate_render', 'certificate_send'), true)) {
+        $result = self::bulk_certificate_operation($ids, $action, $force);
     } elseif ($action === 'reset_course_mail_meta') {
         $result = self::bulk_reset_course_mail_meta($ids, $event_key);
     } else {
@@ -3049,6 +3067,11 @@ private static function bulk_send_mail(array $ids, string $event_key, bool $forc
             $result = self::bulk_add_skip($result, $id, 'registration_not_found');
             continue;
         }
+        if ($event_key === 'certificate_ready') {
+            $part = TPMA_CR_Mail_Dispatcher::send_certificate_for_registration($row, array('force' => $force));
+            $result = self::merge_bulk_result($result, $part);
+            continue;
+        }
         $order_id = (int)($row['woocommerce_order_id'] ?? 0);
         if ($order_id <= 0) {
             $result['processed']++;
@@ -3074,12 +3097,6 @@ private static function bulk_send_mail(array $ids, string $event_key, bool $forc
         if (!$order) {
             $result['processed']++;
             $result = self::bulk_add_skip($result, $id, 'order_not_found');
-            continue;
-        }
-
-        if ($event_key === 'certificate_ready') {
-            $part = TPMA_CR_Mail_Dispatcher::send_certificate_email($order, $row, array('force' => $force));
-            $result = self::merge_bulk_result($result, $part);
             continue;
         }
 
@@ -3136,6 +3153,63 @@ private static function bulk_send_mail(array $ids, string $event_key, bool $forc
         $result = self::merge_bulk_result($result, $part);
     }
 
+    return $result;
+}
+
+/** Run certificate actions directly from the selected registration records. */
+private static function bulk_certificate_operation(array $ids, string $action, bool $force): array
+{
+    $result = self::empty_bulk_result();
+    if (!class_exists('TPMA_CR_Certificate_Service')) {
+        return self::bulk_add_fail($result, 0, 'certificate_service_unavailable', '證書服務尚未載入。');
+    }
+
+    $rows = self::get_registration_rows($ids);
+    foreach ($ids as $id) {
+        $row = $rows[$id] ?? null;
+        if (!$row) {
+            $result['processed']++;
+            $result = self::bulk_add_skip($result, $id, 'registration_not_found');
+            continue;
+        }
+
+        if ($action === 'certificate_send') {
+            if (!class_exists('TPMA_CR_Mail_Dispatcher')) {
+                $result['processed']++;
+                $result = self::bulk_add_fail($result, $id, 'mailer_unavailable', '寄件模組未載入。');
+                continue;
+            }
+            $part = TPMA_CR_Mail_Dispatcher::send_certificate_for_registration($row, array('force' => $force));
+            $result = self::merge_bulk_result($result, $part);
+            continue;
+        }
+
+        $result['processed']++;
+        if ($action === 'certificate_allocate') {
+            $certificate = TPMA_CR_Certificate_Service::allocate_for_registration((int) $id);
+            if (is_wp_error($certificate)) {
+                $code = $certificate->get_error_code();
+                $result = $code === 'tpma_certificate_already_allocated'
+                    ? self::bulk_add_skip($result, $id, $code, $certificate->get_error_message())
+                    : self::bulk_add_fail($result, $id, $code, $certificate->get_error_message());
+            } else {
+                $result['updated']++;
+            }
+            continue;
+        }
+
+        $certificate = TPMA_CR_Certificate_Service::get_for_registration((int) $id);
+        if (!$certificate || trim((string) ($certificate['serial'] ?? '')) === '') {
+            $result = self::bulk_add_skip($result, $id, 'certificate_missing', '尚未配發正式證書編號，請先批次配發證書。');
+            continue;
+        }
+        $rendered = TPMA_CR_Certificate_Service::render_current_pdf((int) $certificate['id']);
+        if (is_wp_error($rendered)) {
+            $result = self::bulk_add_fail($result, $id, $rendered->get_error_code(), $rendered->get_error_message());
+        } else {
+            $result['updated']++;
+        }
+    }
     return $result;
 }
 

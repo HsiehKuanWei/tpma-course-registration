@@ -29,6 +29,7 @@ $TPMA_ENUM = [
   // 報名狀態
   'regStatus' => [
     'cert_pending' => '待發證',
+    'cert_ready'   => '待寄證',
     'completed'    => '已結訓',
     'hold'         => '保留中',
     'hold_refunded' => '待退款',
@@ -313,6 +314,7 @@ $TPMA_OPTIONS_FOR_JS = [
         <option value="">選擇操作</option>
         <option value="update_field">更新欄位</option>
         <option value="receipt">收據</option>
+        <option value="certificate">證書</option>
         <option value="send_mail">批次寄信</option>
         <option value="reset_course_mail_meta">重置課程寄件紀錄</option>
         <option value="export_excel">匯出 Excel</option>
@@ -363,6 +365,12 @@ $TPMA_OPTIONS_FOR_JS = [
         <option value="receipt_download">批次下載收據</option>
         <option value="receipt_void">批次作廢收據</option>
         <option value="receipt_merge">合併開立收據</option>
+      </select>
+      <select id="tpma-bulk-certificate-action" class="tpma-bulk-target" data-bulk-for="certificate">
+        <option value="">選擇證書操作</option>
+        <option value="certificate_allocate">批次配發證書（配號並產製 PDF）</option>
+        <option value="certificate_render">批次重製證書 PDF</option>
+        <option value="certificate_send">批次寄送證書</option>
       </select>
       <select id="tpma-bulk-reset-event" class="tpma-bulk-target" data-bulk-for="reset_course_mail_meta">
         <option value="">全部課程寄件紀錄</option>

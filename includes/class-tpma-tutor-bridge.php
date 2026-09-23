@@ -3752,6 +3752,44 @@ class TPMA_Tutor_Bridge {
         return false;
     }
 
+    /**
+     * Return the first verified passing attempt for a registration.
+     *
+     * This is intentionally public for the certificate migration: older quiz
+     * attempts predate certificate_passed_at, so their score alone is not a
+     * reliable substitute for the Tutor quiz-specific passing grade.
+     */
+    public static function get_first_passing_attempt_at(int $reg_id): string {
+        if ($reg_id <= 0) return '';
+        global $wpdb;
+        $tutor_course_id = (int) $wpdb->get_var($wpdb->prepare(
+            'SELECT c.tutor_course_id FROM ' . TPMA_CR_DB::table('regs') . ' r LEFT JOIN ' . TPMA_CR_DB::table('courses') . ' c ON c.id=r.course_id WHERE r.id=%d',
+            $reg_id
+        ));
+        if ($tutor_course_id <= 0) return '';
+        $quiz_ids = self::get_registration_score_quiz_ids($reg_id, $tutor_course_id);
+        if (!$quiz_ids) return '';
+        $placeholders = implode(',', array_fill(0, count($quiz_ids), '%d'));
+        $args = array_merge(array($reg_id), $quiz_ids);
+        $rows = (array) $wpdb->get_results($wpdb->prepare(
+            "SELECT a.quiz_id, a.earned_marks, a.total_marks, a.attempt_ended_at
+             FROM {$wpdb->prefix}tutor_quiz_attempts a
+             JOIN " . TPMA_CR_DB::table('quiz_contexts') . " qc ON qc.attempt_id=a.attempt_id
+             JOIN " . TPMA_CR_DB::table('regs') . " r ON r.id=qc.registration_id
+             WHERE r.id=%d AND r.is_virtual_user=1 AND a.user_id=r.wp_user_id
+               AND a.quiz_id IN ({$placeholders}) AND a.total_marks>0
+               AND COALESCE(a.attempt_status,'')<>'attempt_started' AND a.attempt_ended_at IS NOT NULL
+             ORDER BY a.attempt_ended_at ASC, a.attempt_id ASC",
+            $args
+        ), ARRAY_A);
+        foreach ($rows as $row) {
+            $quiz_id = (int) ($row['quiz_id'] ?? 0);
+            $score = ((float) ($row['earned_marks'] ?? 0) / max(1, (float) ($row['total_marks'] ?? 0))) * 100;
+            if ($quiz_id > 0 && round($score, 1) >= self::get_quiz_passing_grade($quiz_id)) return (string) $row['attempt_ended_at'];
+        }
+        return '';
+    }
+
     private static function current_registration_has_passed_quiz(int $quiz_id, int $user_id = 0): bool {
         $reg_id = class_exists('TPMA_Course_Access') ? TPMA_Course_Access::current_registration_id() : 0;
         $user_id = $user_id > 0 ? $user_id : get_current_user_id();
@@ -3822,6 +3860,15 @@ class TPMA_Tutor_Bridge {
         if (self::get_registration_for_tutor_course($mapped_reg_id, $tutor_course_id, $wp_user_id) === null) return;
         $best_score = self::get_registration_best_quiz_score($mapped_reg_id, $quiz_id, $tutor_course_id);
         $wpdb->update($regs_table, array('test_score'=>$best_score . '%'), array('id'=>$mapped_reg_id), array('%s'), array('%d'));
+        if (class_exists('TPMA_CR_Certificate_Service') && self::registration_has_passed_quiz($mapped_reg_id, $quiz_id, $tutor_course_id)) {
+            // The first passing attempt is the formal certificate date. The
+            // certificate service allocates on passing; payment only controls
+            // the later completed-status projection after delivery.
+            TPMA_CR_Certificate_Service::record_quiz_pass(
+                $mapped_reg_id,
+                (string) ($attempt['attempt_ended_at'] ?? '')
+            );
+        }
     }
 
     public static function guard_quiz_start($quiz_id, $user_id): void {
@@ -4021,8 +4068,9 @@ class TPMA_Tutor_Bridge {
 
     /**
      * Hook: tutor_course_complete_after($course_id, $user_id).
-     * Updates TPMA registration status to cert_ready, stores certificate hash,
-     * and regenerates magic tokens. Certificate emails are sent manually from admin.
+     * Stores Tutor's native certificate hash and regenerates magic tokens.
+     * Formal certificate status is owned by TPMA_CR_Certificate_Service so an
+     * unallocated record remains correctly marked as 待發證.
      */
     public static function on_course_completed(int $course_id, int $user_id): void {
         if (!self::is_active()) {
@@ -4056,11 +4104,13 @@ class TPMA_Tutor_Bridge {
         foreach ($regs as $reg) {
             $reg_id = (int)$reg['id'];
 
-            $updates = ['status' => 'cert_ready'];
+            $updates = array();
             if ($cert_hash) {
                 $updates['certificate_id'] = $cert_hash;
             }
-            $wpdb->update($regs_table, $updates, ['id' => $reg_id], array_fill(0, count($updates), '%s'), ['%d']);
+            if ($updates) {
+                $wpdb->update($regs_table, $updates, ['id' => $reg_id], array_fill(0, count($updates), '%s'), ['%d']);
+            }
 
             self::regenerate_magic_urls_for_reg($reg_id);
 

@@ -743,13 +743,29 @@ class TPMA_CR_Mail_Dispatcher
         $reg_nos_text = implode(', ', $reg_nos);
 
         $invoice_type_raw = (string) $order->get_meta('_opay_invoice_type', true);
+        $invoice_type_display = '';
         if ($invoice_type_raw !== '') {
             $invoice_type_map = array(
                 'personal'   => '二聯式（個人）',
                 'company'    => '三聯式（公司）',
-                'tax_exempt' => '免開發票',
+                'tax_exempt' => '收據',
             );
             $invoice_type_label = $invoice_type_map[$invoice_type_raw] ?? $invoice_type_raw;
+
+            if ($invoice_type_raw === 'tax_exempt') {
+                $receipt_type_map = array(
+                    'electronic' => '電子收據',
+                    'paper'      => '紙本收據',
+                );
+                $receipt_type = sanitize_key((string) $order->get_meta('_tpma_receipt_type', true));
+
+                if (!isset($receipt_type_map[$receipt_type]) && class_exists('TPMA_CR_Receipt_Service')) {
+                    $receipt = TPMA_CR_Receipt_Service::get_receipt_for_order($order_id);
+                    $receipt_type = is_array($receipt) ? sanitize_key((string) ($receipt['receipt_type'] ?? '')) : '';
+                }
+
+                $invoice_type_display = $receipt_type_map[$receipt_type] ?? '';
+            }
         } else {
             $invoice_type_raw = (string) $order->get_meta('_tpma_invoice_type', true);
             if ($invoice_type_raw === '') {
@@ -767,7 +783,9 @@ class TPMA_CR_Mail_Dispatcher
         if ($invoice_vat_id === '') {
             $invoice_vat_id = (string) $order->get_meta('_opay_tax_id', true);
         }
-        $invoice_type_display = $invoice_type_label !== '' ? $invoice_type_label : '—';
+        if ($invoice_type_display === '') {
+            $invoice_type_display = $invoice_type_label !== '' ? $invoice_type_label : '—';
+        }
         if ($invoice_type_raw === 'three' || $invoice_type_raw === 'company') {
             $invoice_type_display .= '（公司抬頭：' . ($invoice_company !== '' ? $invoice_company : '—')
                 . '｜公司統編：' . ($invoice_vat_id !== '' ? $invoice_vat_id : '—') . '）';
@@ -952,7 +970,7 @@ class TPMA_CR_Mail_Dispatcher
             'remit_amount' => '訂單總額（order_total）',
             'payment_method_title' => '付款方式',
             'invoice_type' => '發票類型',
-            'invoice_type_display' => '發票類型（含抬頭/統編）',
+            'invoice_type_display' => '發票類型／收據方式（含抬頭/統編）',
             'invoice_company' => '公司抬頭',
             'invoice_vat_id' => '公司統編',
             'billing_name' => '帳單姓名（Woo 結帳填寫）',
@@ -1724,15 +1742,14 @@ class TPMA_CR_Mail_Dispatcher
     }
 
     private static function certificate_eligibility(WC_Order $order, array $reg): array {
-        if ($order->get_status() !== 'completed') {
-            return array('eligible' => false, 'reason' => 'order_not_completed');
+        if (!class_exists('TPMA_CR_Certificate_Service')) {
+            return array('eligible' => false, 'reason' => 'certificate_service_unavailable');
         }
-        $certificate_id = trim((string)($reg['certificate_id'] ?? ''));
-        $status = sanitize_key((string)($reg['status'] ?? ''));
-        if ($certificate_id === '' && $status !== 'cert_ready') {
+        $certificate = TPMA_CR_Certificate_Service::get_for_registration((int)($reg['id'] ?? 0));
+        if (!$certificate || empty($certificate['generated_file'])) {
             return array('eligible' => false, 'reason' => 'certificate_missing');
         }
-        return array('eligible' => true, 'reason' => '');
+        return array('eligible' => true, 'reason' => '', 'certificate' => $certificate);
     }
 
     private static function receipt_eligibility(WC_Order $order): array {
@@ -1744,7 +1761,9 @@ class TPMA_CR_Mail_Dispatcher
 
     /**
      * Send certificate_ready email for a single learner registration.
-     * Manual-only in normal flow; Tutor completion hook only updates status/certificate data.
+     * Manual sending is allowed before payment completes. The certificate service
+     * records delivery, but only projects the registration to 已結訓 after Woo
+     * reaches completed.
      *
      * @param WC_Order $order
      * @param array    $reg  Row from wp_tpma_registrations (ARRAY_A)
@@ -1762,6 +1781,11 @@ class TPMA_CR_Mail_Dispatcher
         if (empty($eligible['eligible'])) {
             return self::result_skip($result, $reg_id, (string)$eligible['reason']);
         }
+        $certificate = (array)($eligible['certificate'] ?? array());
+        $attachment = TPMA_CR_Certificate_Service::get_effective_file((int)($certificate['id'] ?? 0));
+        if (is_wp_error($attachment)) {
+            return self::result_fail($result, $reg_id, 'certificate_attachment_unavailable', $attachment->get_error_message());
+        }
 
         $sent_key = '_tpma_certificate_ready_sent_' . $reg_id;
         if (empty($options['force']) && $order->get_meta($sent_key, true) === 'yes') {
@@ -1771,6 +1795,8 @@ class TPMA_CR_Mail_Dispatcher
         $draft = self::apply_default_templates(self::get_draft_from_order($order));
         $learner = self::build_learner_from_reg($reg);
         $ctx = self::build_context($order, $draft, $learner);
+        $ctx['certificate_serial'] = (string)($certificate['serial'] ?? '');
+        $ctx['certificate_status'] = (string)($certificate['status'] ?? '');
         $route_context = array(
             'event_key'      => 'certificate_ready',
             'order'          => $order,
@@ -1789,6 +1815,7 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         $sent = false;
+        $all_deliveries_succeeded = true;
         foreach ($routes as $route) {
             $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
             $sources = self::extract_route_sources(is_array($route) ? $route : array());
@@ -1799,21 +1826,75 @@ class TPMA_CR_Mail_Dispatcher
             if (empty($recipients) && empty(self::get_copy_recipients_from_config($tpl))) {
                 continue;
             }
-            if (self::send_route_with_copy_fallback($tpl, $recipients, $ctx)) {
-                $sent = true;
-            }
-            if (self::send_route_copies_if_primary_sent($tpl, $recipients, $ctx)) {
-                $sent = true;
+            $recipients = self::get_primary_or_copy_recipients($recipients, $tpl);
+            foreach ($recipients as $to) {
+                try {
+                    $delivered = TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $ctx, 'attachments' => array($attachment)));
+                    $sent = $sent || (bool)$delivered;
+                    if (!$delivered) $all_deliveries_succeeded = false;
+                } catch (Throwable $e) {
+                    $all_deliveries_succeeded = false;
+                    error_log('[TPMA CR Mail] certificate send failed certificate=' . (int)($certificate['id'] ?? 0) . ': ' . $e->getMessage());
+                }
             }
         }
 
-        if (!$sent) {
+        if (!$sent || !$all_deliveries_succeeded) {
             self::notify_admin_unmatched_event('certificate_ready', array('reason' => 'routes_matched_but_no_mail_sent'), $order);
             return self::result_skip($result, $reg_id, 'no_recipients_or_send_failed');
         }
 
         $order->update_meta_data($sent_key, 'yes');
         $order->save();
+        $marked = TPMA_CR_Certificate_Service::mark_sent((int)($certificate['id'] ?? 0));
+        if (is_wp_error($marked)) {
+            return self::result_fail($result, $reg_id, 'certificate_mark_sent_failed', $marked->get_error_message());
+        }
+        $result['sent'] = 1;
+        return $result;
+    }
+
+    /** Single certificate_ready entry point used by reg-admin and certificate management. */
+    public static function send_certificate_for_registration(array $reg, $options = array()): array {
+        $order = !empty($reg['woocommerce_order_id']) && function_exists('wc_get_order') ? wc_get_order((int) $reg['woocommerce_order_id']) : false;
+        if ($order) {
+            return self::send_certificate_email($order, $reg, $options);
+        }
+        return self::send_legacy_certificate_email($reg, $options);
+    }
+
+    /**
+     * Send an imported/legacy certificate where its Woo order is no longer available.
+     * This deliberately uses the registered learner email and the same TPMA Mailer
+     * certificate template; it never fabricates an order just to satisfy routing.
+     */
+    public static function send_legacy_certificate_email(array $reg, array $options = array()): array {
+        $result = self::empty_mail_result();
+        $result['processed'] = 1;
+        $reg_id = (int) ($reg['id'] ?? 0);
+        $certificate = class_exists('TPMA_CR_Certificate_Service') ? TPMA_CR_Certificate_Service::get_for_registration($reg_id) : null;
+        if (!class_exists('TPMA_Mailer') || !$certificate) return self::result_fail($result, $reg_id, 'certificate_unavailable', '證書或 TPMA Mailer 無法使用。');
+        if (empty($options['force']) && !empty($certificate['sent_at'])) return self::result_skip($result, $reg_id, 'already_sent');
+        $attachment = TPMA_CR_Certificate_Service::get_effective_file((int) $certificate['id']);
+        if (is_wp_error($attachment)) return self::result_fail($result, $reg_id, 'certificate_attachment_unavailable', $attachment->get_error_message());
+        $learner = self::build_learner_from_reg($reg);
+        $context = array_merge($reg, array('certificate_serial' => (string) $certificate['serial'], 'certificate_status' => (string) $certificate['status']));
+        $route_context = array('event_key' => 'certificate_ready', 'order' => null, 'draft' => array('learners' => array($learner)), 'single_learner' => $learner, 'reg_context' => $context);
+        $routes = function_exists('tpma_mailer_get_event_routes_for_event') ? tpma_mailer_get_event_routes_for_event('certificate_ready', $route_context) : array();
+        if (!$routes) return self::result_skip($result, $reg_id, 'no_route');
+        $sent = false; $all_succeeded = true;
+        foreach ($routes as $route) {
+            $tpl = self::resolve_existing_template_key(self::extract_route_template((array) $route));
+            $sources = array_values(array_intersect(self::extract_route_sources((array) $route), array('tpma_cr_learner')));
+            if ($tpl === '' || !$sources) continue;
+            foreach (self::get_primary_or_copy_recipients(self::get_route_recipients($sources, $route_context), $tpl) as $to) {
+                try { $ok = TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $context, 'attachments' => array($attachment))); $sent = $sent || (bool) $ok; if (!$ok) $all_succeeded = false; }
+                catch (Throwable $e) { $all_succeeded = false; error_log('[TPMA CR Mail] legacy certificate send failed: ' . $e->getMessage()); }
+            }
+        }
+        if (!$sent || !$all_succeeded) return self::result_skip($result, $reg_id, 'no_recipients_or_send_failed');
+        $marked = TPMA_CR_Certificate_Service::mark_sent((int) $certificate['id']);
+        if (is_wp_error($marked)) return self::result_fail($result, $reg_id, 'certificate_mark_sent_failed', $marked->get_error_message());
         $result['sent'] = 1;
         return $result;
     }
@@ -2107,5 +2188,3 @@ class TPMA_CR_Mail_Dispatcher
     }
 
 }
-
-

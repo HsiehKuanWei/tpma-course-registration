@@ -8,6 +8,7 @@ class TPMA_CR_Settings {
     const OPTION_SPECIAL_PRODUCT_ID = 'tpma_cr_special_product_id';
     const OPTION_VIRTUAL_USER_ROLE = 'tpma_cr_virtual_user_role';
     const OPTION_AUTO_COURSE_MAIL_ENABLED = 'tpma_cr_auto_course_mail_enabled';
+    const OPTION_AUTO_CERTIFICATE_MAIL_ENABLED = 'tpma_cr_auto_certificate_mail_enabled';
 
     public static function init() {
         add_filter('tpma_special_product_id', array(__CLASS__, 'filter_special_product_id'), 10, 1);
@@ -52,6 +53,10 @@ class TPMA_CR_Settings {
 
     public static function is_auto_course_mail_enabled(): bool {
         return (bool) (int) get_option(self::OPTION_AUTO_COURSE_MAIL_ENABLED, 0);
+    }
+
+    public static function is_auto_certificate_mail_enabled(): bool {
+        return (bool) (int) get_option(self::OPTION_AUTO_CERTIFICATE_MAIL_ENABLED, 0);
     }
 
     public static function get_default_virtual_user_role() {
@@ -108,6 +113,7 @@ class TPMA_CR_Settings {
         }
         update_option(self::OPTION_VIRTUAL_USER_ROLE, $virtual_user_role, false);
         update_option(self::OPTION_AUTO_COURSE_MAIL_ENABLED, isset($_POST['tpma_cr_auto_course_mail_enabled']) ? 1 : 0, false);
+        update_option(self::OPTION_AUTO_CERTIFICATE_MAIL_ENABLED, isset($_POST['tpma_cr_auto_certificate_mail_enabled']) ? 1 : 0, false);
 
         // Save Tutor integration settings
         self::save_tutor_settings();
@@ -498,6 +504,7 @@ class TPMA_CR_Settings {
         self::render_product_select_row('特殊商品', 'tpma_cr_special_product_id', self::get_special_product_id(), '這個商品會啟用 TPMA 特殊報名流程。包含：TPMA 專用 checkout 欄位與摘要、草稿建單/處理、可訪客結帳、付款方式與按鈕文案調整、訂單完成/建立通知信、部分電子發票阻擋、禁止與其他商品混車、thankyou / order-pay / 特殊頁面判斷等。');
         self::render_product_select_row('報名商品', 'tpma_cr_wc_product_id', self::get_registration_product_id(), '這是實際加入購物車與建立報名訂單時使用的 Woo 商品。若你的前台特殊流程與實際建單商品是同一個，這裡可選和「特殊商品」相同的值。');
         self::render_role_select_row('虛擬會員角色', 'tpma_cr_virtual_user_role', self::get_virtual_user_role(), '當報名資料需要建立虛擬會員帳號時，系統會把新帳號套用成這個 WordPress 角色。建議使用專門給報名流程的角色，避免與一般前台會員混用。');
+        echo '<tr><th scope="row">證書自動寄送</th><td><label><input type="checkbox" name="tpma_cr_auto_certificate_mail_enabled" value="1" ' . checked(self::is_auto_certificate_mail_enabled(), true, false) . '> 在測驗通過且訂單完成後，自動寄送結訓證書 PDF</label><p class="description">預設關閉。關閉時，系統仍會自動配號與產生 PDF，請於報名管理使用「批次寄信 → 證書通知」人工寄送。</p></td></tr>';
         echo '</table>';
 
         self::render_tutor_settings_section();

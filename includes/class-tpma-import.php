@@ -51,6 +51,11 @@ class TPMA_CR_Import
                 $msg = self::backfill_legacy_amounts();
                 break;
 
+            case 'certificate_serials':
+                check_admin_referer('tpma_import_certificate_serials');
+                $msg = self::import_certificate_serials_csv($csv_raw);
+                break;
+
             default:
                 $msg = '未知的匯入類型';
         }
@@ -128,6 +133,28 @@ class TPMA_CR_Import
         }
 
         return $rows;
+    }
+
+    /** Import historical formal certificate serials without triggering issuance or mail. */
+    private static function import_certificate_serials_csv($csv_raw)
+    {
+        if (!class_exists('TPMA_CR_Certificate_Service')) {
+            return '證書服務尚未載入。';
+        }
+        $rows = self::parse_csv_rows($csv_raw);
+        if (empty($rows)) return '沒有資料可匯入。';
+        $created = 0; $updated = 0; $skipped = array();
+        foreach ($rows as $index => $cols) {
+            $reg_no = trim((string)($cols[0] ?? ''));
+            $serial = trim((string)($cols[1] ?? ''));
+            if ($index === 0 && (stripos($reg_no, 'reg_no') !== false || strpos($reg_no, '報名') !== false)) continue;
+            $result = TPMA_CR_Certificate_Service::import_serial($reg_no, $serial);
+            if ($result === 'created') { $created++; continue; }
+            if ($result === 'updated') { $updated++; continue; }
+            $skipped[] = '第' . ($index + 1) . '列' . ($reg_no !== '' ? '（' . $reg_no . '）' : '') . '：' . (is_wp_error($result) ? $result->get_error_message() : '匯入失敗。');
+        }
+        $message = "證書編號匯入完成：新增 {$created} 筆，更新 {$updated} 筆，略過 " . count($skipped) . ' 筆。';
+        return empty($skipped) ? $message : $message . "\n" . implode("\n", $skipped);
     }
 
     /* =========================================================

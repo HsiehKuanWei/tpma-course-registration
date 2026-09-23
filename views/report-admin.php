@@ -67,6 +67,7 @@ if (!defined('ABSPATH')) {
           <select id="tpma-report-status">
             <option value="">全部</option>
             <option value="cert_pending">待發證</option>
+            <option value="cert_ready">待寄證</option>
             <option value="completed">已結訓</option>
             <option value="hold">保留中</option>
             <option value="hold_refunded">待退款</option>
