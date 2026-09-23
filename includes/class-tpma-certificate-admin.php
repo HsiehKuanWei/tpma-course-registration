@@ -43,6 +43,9 @@ class TPMA_CR_Certificate_Admin {
 
     public static function list_certificates(WP_REST_Request $request) {
         global $wpdb;
+        // Repair only verified Tutor attempt timestamps written before the
+        // local-DATETIME timezone correction; guarded by a one-time option.
+        TPMA_CR_Certificate_Service::repair_recorded_pass_times();
         $certs = TPMA_CR_DB::table('certificates'); $regs = TPMA_CR_DB::table('regs'); $courses = TPMA_CR_DB::table('courses'); $sessions = TPMA_CR_DB::table('sessions');
         $page = max(1, absint($request->get_param('page'))); $per_page = min(100, max(10, absint($request->get_param('per_page')) ?: 20));
         $where = array('1=1'); $args = array();

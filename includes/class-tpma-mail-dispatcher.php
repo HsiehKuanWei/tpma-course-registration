@@ -1816,17 +1816,19 @@ class TPMA_CR_Mail_Dispatcher
 
         $sent = false;
         $all_deliveries_succeeded = true;
+        $copy_deliveries = array();
         foreach ($routes as $route) {
             $tpl = self::resolve_existing_template_key(self::extract_route_template($route));
             $sources = self::extract_route_sources(is_array($route) ? $route : array());
             if ($tpl === '') {
                 continue;
             }
-            $recipients = self::get_route_recipients($sources, $route_context);
-            if (empty($recipients) && empty(self::get_copy_recipients_from_config($tpl))) {
+            $primary_recipients = self::get_route_recipients($sources, $route_context);
+            $copy_recipients = self::get_copy_recipients_from_config($tpl);
+            if (empty($primary_recipients) && empty($copy_recipients)) {
                 continue;
             }
-            $recipients = self::get_primary_or_copy_recipients($recipients, $tpl);
+            $recipients = self::get_primary_or_copy_recipients($primary_recipients, $tpl);
             foreach ($recipients as $to) {
                 try {
                     $delivered = TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $ctx, 'attachments' => array($attachment)));
@@ -1837,11 +1839,27 @@ class TPMA_CR_Mail_Dispatcher
                     error_log('[TPMA CR Mail] certificate send failed certificate=' . (int)($certificate['id'] ?? 0) . ': ' . $e->getMessage());
                 }
             }
+            if (!empty($primary_recipients)) {
+                $copy_deliveries[] = array($tpl, array_values(array_diff($copy_recipients, $primary_recipients)));
+            }
         }
 
         if (!$sent || !$all_deliveries_succeeded) {
             self::notify_admin_unmatched_event('certificate_ready', array('reason' => 'routes_matched_but_no_mail_sent'), $order);
             return self::result_skip($result, $reg_id, 'no_recipients_or_send_failed');
+        }
+
+        // Keep certificate copies consistent with the receipt workflow: copies
+        // receive the same private PDF, but never change learner delivery state.
+        foreach ($copy_deliveries as $copy_delivery) {
+            list($tpl, $copy_recipients) = $copy_delivery;
+            foreach ($copy_recipients as $copy_to) {
+                try {
+                    TPMA_Mailer::send_template($tpl, $copy_to, array('reg_context' => $ctx, 'attachments' => array($attachment)));
+                } catch (Throwable $e) {
+                    error_log('[TPMA CR Mail] certificate copy send failed certificate=' . (int)($certificate['id'] ?? 0) . ': ' . $e->getMessage());
+                }
+            }
         }
 
         $order->update_meta_data($sent_key, 'yes');
@@ -1882,17 +1900,27 @@ class TPMA_CR_Mail_Dispatcher
         $route_context = array('event_key' => 'certificate_ready', 'order' => null, 'draft' => array('learners' => array($learner)), 'single_learner' => $learner, 'reg_context' => $context);
         $routes = function_exists('tpma_mailer_get_event_routes_for_event') ? tpma_mailer_get_event_routes_for_event('certificate_ready', $route_context) : array();
         if (!$routes) return self::result_skip($result, $reg_id, 'no_route');
-        $sent = false; $all_succeeded = true;
+        $sent = false; $all_succeeded = true; $copy_deliveries = array();
         foreach ($routes as $route) {
             $tpl = self::resolve_existing_template_key(self::extract_route_template((array) $route));
             $sources = array_values(array_intersect(self::extract_route_sources((array) $route), array('tpma_cr_learner')));
             if ($tpl === '' || !$sources) continue;
-            foreach (self::get_primary_or_copy_recipients(self::get_route_recipients($sources, $route_context), $tpl) as $to) {
+            $primary_recipients = self::get_route_recipients($sources, $route_context);
+            $copy_recipients = self::get_copy_recipients_from_config($tpl);
+            foreach (self::get_primary_or_copy_recipients($primary_recipients, $tpl) as $to) {
                 try { $ok = TPMA_Mailer::send_template($tpl, $to, array('reg_context' => $context, 'attachments' => array($attachment))); $sent = $sent || (bool) $ok; if (!$ok) $all_succeeded = false; }
                 catch (Throwable $e) { $all_succeeded = false; error_log('[TPMA CR Mail] legacy certificate send failed: ' . $e->getMessage()); }
             }
+            if (!empty($primary_recipients)) $copy_deliveries[] = array($tpl, array_values(array_diff($copy_recipients, $primary_recipients)));
         }
         if (!$sent || !$all_succeeded) return self::result_skip($result, $reg_id, 'no_recipients_or_send_failed');
+        foreach ($copy_deliveries as $copy_delivery) {
+            list($tpl, $copy_recipients) = $copy_delivery;
+            foreach ($copy_recipients as $copy_to) {
+                try { TPMA_Mailer::send_template($tpl, $copy_to, array('reg_context' => $context, 'attachments' => array($attachment))); }
+                catch (Throwable $e) { error_log('[TPMA CR Mail] legacy certificate copy send failed: ' . $e->getMessage()); }
+            }
+        }
         $marked = TPMA_CR_Certificate_Service::mark_sent((int) $certificate['id']);
         if (is_wp_error($marked)) return self::result_fail($result, $reg_id, 'certificate_mark_sent_failed', $marked->get_error_message());
         $result['sent'] = 1;

@@ -136,6 +136,42 @@ class TPMA_CR_Certificate_Service {
         return $updated;
     }
 
+    /**
+     * Correct pass times written while Tutor's local DATETIME was converted a
+     * second time through the WordPress timezone.  Only a verified Tutor first
+     * passing attempt is used, so manually assigned legacy scores are untouched.
+     */
+    public static function repair_recorded_pass_times(int $limit = 500): int {
+        if (!class_exists('TPMA_Tutor_Bridge')) return 0;
+        if ((bool) get_option('tpma_cr_certificate_pass_time_repaired_v1', false)) return 0;
+        global $wpdb;
+        $limit = max(1, min(1000, $limit));
+        $rows = (array) $wpdb->get_results(
+            "SELECT r.id FROM " . TPMA_CR_DB::table('regs') . " r
+             INNER JOIN " . TPMA_CR_DB::table('certificates') . " cert ON cert.registration_id=r.id
+             WHERE r.certificate_passed_at IS NOT NULL OR cert.passed_at IS NOT NULL
+             ORDER BY r.id ASC LIMIT {$limit}",
+            ARRAY_A
+        );
+        $updated = 0;
+        foreach ($rows as $row) {
+            $registration_id = (int) ($row['id'] ?? 0);
+            $passed_at = self::normalize_datetime(TPMA_Tutor_Bridge::get_first_passing_attempt_at($registration_id));
+            if ($passed_at === '') continue;
+            $registration_updated = $wpdb->query($wpdb->prepare(
+                'UPDATE ' . TPMA_CR_DB::table('regs') . ' SET certificate_passed_at=%s WHERE id=%d AND (certificate_passed_at IS NULL OR certificate_passed_at<>%s)',
+                $passed_at, $registration_id, $passed_at
+            ));
+            $certificate_updated = $wpdb->query($wpdb->prepare(
+                'UPDATE ' . TPMA_CR_DB::table('certificates') . ' SET passed_at=%s, updated_at=%s WHERE registration_id=%d AND (passed_at IS NULL OR passed_at<>%s)',
+                $passed_at, current_time('mysql'), $registration_id, $passed_at
+            ));
+            if ($registration_updated || $certificate_updated) $updated++;
+        }
+        if (count($rows) < $limit) update_option('tpma_cr_certificate_pass_time_repaired_v1', 1, false);
+        return $updated;
+    }
+
     public static function get($certificate_id) {
         global $wpdb;
         $row = $wpdb->get_row($wpdb->prepare('SELECT * FROM ' . TPMA_CR_DB::table('certificates') . ' WHERE id=%d', (int) $certificate_id), ARRAY_A);
@@ -464,7 +500,13 @@ class TPMA_CR_Certificate_Service {
     private static function auto_send_enabled(): bool { return class_exists('TPMA_CR_Settings') && TPMA_CR_Settings::is_auto_certificate_mail_enabled(); }
     private static function local_file_uri(string $path): string { $path = wp_normalize_path($path); return preg_match('/^[A-Za-z]:\//', $path) ? 'file:///' . $path : 'file://' . $path; }
     private static function is_valid_pdf(string $path): bool { return is_readable($path) && filesize($path) > 1024 && substr((string) file_get_contents($path, false, null, 0, 5), 0, 5) === '%PDF-'; }
-    private static function normalize_datetime(string $value): string { $timestamp = strtotime($value); return $timestamp ? wp_date('Y-m-d H:i:s', $timestamp) : ''; }
+    /** Tutor stores attempt_ended_at as the site's local SQL DATETIME. */
+    private static function normalize_datetime(string $value): string {
+        $value = trim($value);
+        if (preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $value)) return $value;
+        $timestamp = strtotime($value);
+        return $timestamp ? wp_date('Y-m-d H:i:s', $timestamp) : '';
+    }
     private static function roc_date(string $value): string { $timestamp = strtotime($value); return $timestamp ? (string) ((int) wp_date('Y', $timestamp) - 1911) . '年' . wp_date('m月d日', $timestamp) : ''; }
     private static function hydrate(array $row): array { $row['snapshot'] = is_array($row['snapshot']) ? $row['snapshot'] : (json_decode((string) $row['snapshot'], true) ?: array()); return $row; }
 }
