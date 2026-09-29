@@ -2115,6 +2115,9 @@ public static function admin_update_reg($request)
         'session_id',
         'class_date',
         'student_name',
+        // Company is also stored on the Woo order, but the registration is
+        // the source for certificate management and learner-specific records.
+        'company_name',
         'department',
         'job_title',
         'mobile',
@@ -2256,6 +2259,9 @@ public static function admin_update_reg($request)
 
     if (!empty($tpma_update)) {
         $wpdb->update($regs_table, $tpma_update, array('id' => $id));
+        if (class_exists('TPMA_CR_Certificate_Service')) {
+            TPMA_CR_Certificate_Service::sync_unsent_snapshot_for_registration($id);
+        }
         if (class_exists('TPMA_Tutor_Bridge')) {
             if (($tpma_update['status'] ?? '') === 'cancelled') {
                 TPMA_Tutor_Bridge::expire_tokens_for_registration($id);

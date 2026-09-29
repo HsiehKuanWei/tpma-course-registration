@@ -1158,6 +1158,8 @@ class TPMA_CR_Mail_Dispatcher
 
         $opt = wp_parse_args($options, array(
             'skip_tpma' => true,
+            // WooCommerce 後台手動重寄時，必須能重送同一既有事件。
+            'force'     => false,
         ));
         if (!empty($opt['skip_tpma']) && self::is_tpma_order_like($order)) {
             return false;
@@ -1191,7 +1193,7 @@ class TPMA_CR_Mail_Dispatcher
         }
 
         $sent_flag = '_tpma_mailer_sent_' . $flow_key;
-        if ($order->get_meta($sent_flag, true) === 'yes') {
+        if (empty($opt['force']) && $order->get_meta($sent_flag, true) === 'yes') {
             return false;
         }
 

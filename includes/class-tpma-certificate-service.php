@@ -265,6 +265,39 @@ class TPMA_CR_Certificate_Service {
         return $path;
     }
 
+    /**
+     * Keep an unissued certificate aligned with corrections made in reg-admin.
+     * A certificate that has already been emailed remains an immutable record.
+     * If a PDF existed, it is deliberately invalidated so it cannot be sent
+     * with outdated personal or course details.
+     */
+    public static function sync_unsent_snapshot_for_registration(int $registration_id): bool {
+        $certificate = self::get_for_registration($registration_id);
+        if (!$certificate || !empty($certificate['sent_at'])) return false;
+        $registration = self::get_registration($registration_id);
+        if (!$registration) return false;
+        $fresh = self::build_snapshot($registration, (string) ($certificate['serial'] ?? ''));
+        if (is_wp_error($fresh)) return false;
+        if (wp_json_encode($fresh) === wp_json_encode((array) ($certificate['snapshot'] ?? array()))) return false;
+
+        global $wpdb;
+        $updated = $wpdb->update(
+            TPMA_CR_DB::table('certificates'),
+            array(
+                'snapshot'       => wp_json_encode($fresh, JSON_UNESCAPED_UNICODE),
+                'generated_file' => null,
+                'generated_at'   => null,
+                'status'         => self::STATUS_PENDING,
+                'updated_by'     => get_current_user_id(),
+                'updated_at'     => current_time('mysql'),
+            ),
+            array('id' => (int) $certificate['id']),
+            array('%s', '%s', '%s', '%s', '%d', '%s'),
+            array('%d')
+        );
+        return $updated !== false && $updated > 0;
+    }
+
     /** Import/update pre-existing, never-sent certificate serials. */
     public static function import_serial(string $reg_no, string $serial) {
         global $wpdb;
