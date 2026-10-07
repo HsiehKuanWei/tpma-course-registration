@@ -30,6 +30,9 @@ API.updateRegistration = async function updateRegistration(ctx, payload){
     body: JSON.stringify(payload)
   }, ctx.nonce);
 
+  if (data && data.requires_completion_confirmation) {
+    return data;
+  }
   if (!data || !data.success) {
     const msg = (data && data.message) ? data.message : '更新失敗';
     throw new Error(msg);
@@ -43,6 +46,9 @@ API.bulkRegistrations = async function bulkRegistrations(ctx, payload){
     body: JSON.stringify(payload)
   }, ctx.nonce);
 
+  if (data && data.requires_completion_confirmation) {
+    return data;
+  }
   if (!data || data.success === false) {
     const msg = (data && data.message) ? data.message : '批次操作失敗';
     throw new Error(msg);
@@ -154,6 +160,17 @@ API.receiptBlob = async function receiptBlob(ctx, receiptId, download){
   if (!res.ok) {
     const data = await res.json().catch(() => null);
     throw new Error((data && data.message) ? data.message : ('無法讀取收據檔案（HTTP ' + res.status + '）'));
+  }
+  return await res.blob();
+};
+
+API.certificateBlob = async function certificateBlob(ctx, certificateId){
+  const res = await fetch(ctx.apiBase + '/admin/certificates/' + (parseInt(certificateId, 10) || 0) + '/file', {
+    method: 'GET', credentials: 'include', headers: { 'X-WP-Nonce': ctx.nonce }
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error((data && data.message) ? data.message : ('無法讀取證書檔案（HTTP ' + res.status + '）'));
   }
   return await res.blob();
 };

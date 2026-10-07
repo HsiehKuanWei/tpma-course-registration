@@ -10,6 +10,15 @@ const S = global.TPMARegAdmin.state;
 const R = global.TPMARegAdmin.render;
 const API = global.TPMARegAdmin.api;
 
+UI.confirmCompletionWarnings = function confirmCompletionWarnings(warnings){
+  const rows = Array.isArray(warnings) ? warnings : [];
+  const detail = rows.map(function(row){
+    const identity = [row.reg_no || ('#' + (row.id || '')), row.student_name || ''].filter(Boolean).join('／');
+    return identity + '：' + (Array.isArray(row.reasons) ? row.reasons.join('、') : '');
+  }).filter(Boolean).join('\n');
+  return global.confirm('以下資料尚有未完成作業：\n\n' + detail + '\n\n仍要標記為已結訓嗎？');
+};
+
 UI.buildHeaderFilterOptions = function buildHeaderFilterOptions(ctx){
   const courseSelect = document.getElementById('tpma-filter-course');
   if (courseSelect) {
@@ -577,7 +586,14 @@ UI.applyBulk = async function applyBulk(ctx){
   if (ctx.dom.bulkApply) ctx.dom.bulkApply.disabled = true;
   if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '處理中...';
   try{
-    const data = await API.bulkRegistrations(ctx, payload);
+    let data = await API.bulkRegistrations(ctx, payload);
+    if (data && data.requires_completion_confirmation) {
+      if (!UI.confirmCompletionWarnings(data.completion_warnings)) {
+        if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
+        return;
+      }
+      data = await API.bulkRegistrations(ctx, Object.assign({}, payload, { force_completion: true }));
+    }
     if (ctx.dom.bulkResult) ctx.dom.bulkResult.textContent = '';
     UI.openBulkResultModal(data, '批次操作結果');
     await UI.refreshFromServer(ctx);

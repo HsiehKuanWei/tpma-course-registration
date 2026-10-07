@@ -370,6 +370,7 @@ public static function admin_get_regs($request)
             {$lecturer_display_sql} AS lecturer,
             r.woocommerce_order_id,
             r.payment_status,
+            cert.id AS certificate_record_id,
             cert.serial AS certificate_serial,
             cert.status AS certificate_status,
             cert.issued_at AS certificate_issued_at,
@@ -2202,6 +2203,17 @@ public static function admin_update_reg($request)
         $tpma_update[$f] = sanitize_text_field($d[$f]);
     }
 
+    if (($tpma_update['status'] ?? '') === 'completed' && empty($d['force_completion'])) {
+        $warnings = self::completion_warnings_for_ids(array($id));
+        if ($warnings) {
+            return rest_ensure_response(array(
+                'success'                          => false,
+                'requires_completion_confirmation' => true,
+                'completion_warnings'              => $warnings,
+            ));
+        }
+    }
+
     $target_course_id = (int) ($tpma_update['course_id'] ?? $source_course_id);
     $target_session_id = (int) ($tpma_update['session_id'] ?? $source_session_id);
     $is_course_transfer = $target_course_id > 0 && $target_course_id !== $source_course_id;
@@ -2371,6 +2383,64 @@ public static function admin_update_reg($request)
     return rest_ensure_response($response);
 }
 
+/**
+ * Return outstanding work that an administrator must acknowledge before
+ * manually completing Woo-backed registrations. Legacy rows without a Woo
+ * order are deliberately excluded.
+ */
+private static function completion_warnings_for_ids(array $ids): array
+{
+    global $wpdb;
+
+    $ids = array_values(array_unique(array_filter(array_map('absint', $ids))));
+    if (!$ids) return array();
+
+    $placeholders = implode(',', array_fill(0, count($ids), '%d'));
+    $regs = TPMA_CR_DB::table('regs');
+    $receipts = TPMA_CR_DB::table('receipts');
+    $receipt_orders = TPMA_CR_DB::table('receipt_orders');
+    $certificates = TPMA_CR_DB::table('certificates');
+    $sql = "SELECT r.id, r.reg_no, r.student_name, r.woocommerce_order_id, r.test_score, r.certificate_passed_at,
+                   receipt.generated_file AS receipt_generated_file, receipt.status AS receipt_status, receipt.sent_at AS receipt_sent_at,
+                   certificate.generated_file AS certificate_generated_file, certificate.status AS certificate_status, certificate.sent_at AS certificate_sent_at
+            FROM {$regs} r
+            LEFT JOIN {$receipt_orders} receipt_order ON receipt_order.order_id=r.woocommerce_order_id AND receipt_order.active_slot=1
+            LEFT JOIN {$receipts} receipt ON receipt.id=receipt_order.receipt_id
+            LEFT JOIN {$certificates} certificate ON certificate.registration_id=r.id
+            WHERE r.id IN ({$placeholders}) AND r.woocommerce_order_id > 0";
+    $rows = (array) $wpdb->get_results($wpdb->prepare($sql, $ids), ARRAY_A);
+    $warnings = array();
+
+    foreach ($rows as $row) {
+        $reasons = array();
+        if (empty($row['receipt_generated_file'])) {
+            $reasons[] = '收據尚未產製';
+        } elseif ((string) ($row['receipt_status'] ?? '') !== 'sent' || empty($row['receipt_sent_at'])) {
+            $reasons[] = '收據尚未寄出';
+        }
+        if (empty($row['certificate_generated_file'])) {
+            $reasons[] = '證書尚未產製';
+        } elseif ((string) ($row['certificate_status'] ?? '') !== 'sent' || empty($row['certificate_sent_at'])) {
+            $reasons[] = '證書尚未寄出';
+        }
+        if (trim((string) ($row['test_score'] ?? '')) === '') {
+            $reasons[] = '尚無測驗成績';
+        } elseif (empty($row['certificate_passed_at'])) {
+            $reasons[] = '測驗成績未達及格標準';
+        }
+        if ($reasons) {
+            $warnings[] = array(
+                'id'           => (int) $row['id'],
+                'reg_no'       => (string) ($row['reg_no'] ?? ''),
+                'student_name' => (string) ($row['student_name'] ?? ''),
+                'reasons'      => $reasons,
+            );
+        }
+    }
+
+    return $warnings;
+}
+
 public static function admin_bulk_registrations($request)
 {
     global $wpdb;
@@ -2412,6 +2482,16 @@ public static function admin_bulk_registrations($request)
         }
         if ($value === '' || $value === null) {
             return new WP_Error('missing_value', '缺少批次套用值', array('status' => 400));
+        }
+        if ($field === 'status' && $value === 'completed' && empty($d['force_completion'])) {
+            $warnings = self::completion_warnings_for_ids($ids);
+            if ($warnings) {
+                return rest_ensure_response(array(
+                    'success'                          => false,
+                    'requires_completion_confirmation' => true,
+                    'completion_warnings'              => $warnings,
+                ));
+            }
         }
         if ($field === 'receipt_type') {
             $result = self::bulk_change_receipt_type($ids, $value);

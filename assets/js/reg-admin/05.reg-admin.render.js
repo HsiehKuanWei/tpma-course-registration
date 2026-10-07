@@ -221,6 +221,12 @@ R.receiptIsSendable = function receiptIsSendable(type, status){
 };
 
 R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
+  const sCode = row.status || 'pending';
+  const sLabel = L.statusLabel(sCode);
+  if (sCode === 'completed' || sCode === 'cancelled') {
+    const sClass = sCode === 'completed' ? 'tpma-status-pill-g1-completed' : 'tpma-status-pill-g1-cancelled';
+    return '<div class="tpma-status-icons"><span class="tpma-status-pill '+sClass+'" title="報名狀態: '+U.esc(sLabel)+'">'+U.esc(sLabel)+'</span></div>';
+  }
   const icons = [];
   if (!row.session_id) {
     icons.push('<span class="tpma-status-pill tpma-status-pill-g1-pending" title="此舊報名尚未綁定場次">待指定場次</span>');
@@ -250,8 +256,6 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
     icons.push('<span class="tpma-status-pill '+pClass+'" title="付款狀態 (WC): '+U.esc(pLabel)+'">'+U.esc(pLabel)+'</span>');
   }
 
-  const sCode = row.status || 'pending';
-  const sLabel = L.statusLabel(sCode);
   const testState = S.getTestState(row);
   const hideCertPendingWhenNoScore = (sCode === 'cert_pending' && testState === 'notyet');
   if (sLabel && !hideStatusByPayment && !hideCertPendingWhenNoScore) {
@@ -266,7 +270,15 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
       case 'cancelled': sClass='tpma-status-pill-g1-cancelled'; break;
       default: sClass='tpma-status-pill-g1-pending';
     }
-    icons.push('<span class="tpma-status-pill '+sClass+'" title="報名狀態: '+U.esc(sLabel)+'">'+U.esc(sLabel)+'</span>');
+    const certificatePreviewable = sCode === 'cert_ready'
+      && Number(row.certificate_record_id || 0) > 0
+      && String(row.certificate_status || '') === 'generated'
+      && !!row.certificate_generated_at;
+    if (certificatePreviewable) {
+      icons.push('<a href="#" class="tpma-status-pill '+sClass+' tpma-certificate-link" data-certificate-preview="'+U.esc(row.certificate_record_id)+'" title="預覽證書">'+U.esc(sLabel)+'</a>');
+    } else {
+      icons.push('<span class="tpma-status-pill '+sClass+'" title="報名狀態: '+U.esc(sLabel)+'">'+U.esc(sLabel)+'</span>');
+    }
   }
 
   const rCode = row.receipt_status || 'pending';
@@ -587,6 +599,36 @@ R.openReceiptPreview = async function openReceiptPreview(ctx, receiptId, popup){
   } catch (e) {
     API.closePdfWindow(previewWindow);
     global.alert(e.message || '無法預覽收據');
+  }
+};
+
+R.bindCertificatePreviewLink = function bindCertificatePreviewLink(ctx, link){
+  if (!link) return;
+  link.addEventListener('click', async function(event){
+    event.preventDefault();
+    event.stopPropagation();
+    const previewWindow = R.prepareReceiptPreviewWindow();
+    if (!previewWindow) return;
+    try {
+      const certificateId = parseInt(link.getAttribute('data-certificate-preview') || '0', 10) || 0;
+      if (!certificateId) throw new Error('此報名尚未有可預覽的證書。');
+      await R.openCertificatePreview(ctx, certificateId, previewWindow);
+    } catch (error) {
+      API.closePdfWindow(previewWindow);
+      global.alert(error.message || '無法預覽證書');
+    }
+  });
+};
+
+R.openCertificatePreview = async function openCertificatePreview(ctx, certificateId, popup){
+  const previewWindow = popup || R.prepareReceiptPreviewWindow();
+  if (!previewWindow) return;
+  try {
+    const blob = await API.certificateBlob(ctx, certificateId);
+    API.openPdfBlob(blob, previewWindow);
+  } catch (error) {
+    API.closePdfWindow(previewWindow);
+    global.alert(error.message || '無法預覽證書');
   }
 };
 
@@ -1101,7 +1143,11 @@ R.saveDetail = async function saveDetail(ctx, container, id, sourceRow = {}){
   }
 
   try{
-    await API.updateRegistration(ctx, payload);
+    let result = await API.updateRegistration(ctx, payload);
+    if (result && result.requires_completion_confirmation) {
+      if (!UI.confirmCompletionWarnings(result.completion_warnings)) return;
+      result = await API.updateRegistration(ctx, Object.assign({}, payload, { force_completion: true }));
+    }
     await ctx.actions.refresh();
   }catch(e){
     console.error(e);
@@ -1211,6 +1257,7 @@ R.createFlatRowCard = function createFlatRowCard(ctx, row, seq){
   cStatus.setAttribute('data-label', '狀態');
   cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
   R.bindReceiptPreviewLink(ctx, cStatus.querySelector('[data-receipt-preview-order]'), row.woocommerce_order_id);
+  R.bindCertificatePreviewLink(ctx, cStatus.querySelector('[data-certificate-preview]'));
   summary.appendChild(cStatus);
 
   const cAct = document.createElement('div');
@@ -1277,6 +1324,7 @@ R.createNestedStudentRow = function createNestedStudentRow(ctx, row, seq){
   cStatus.setAttribute('data-label', '狀態');
   cStatus.innerHTML = '<div class="tpma-cell-wrap">' + R.buildStatusIconsHtml(ctx, row) + '</div>';
   R.bindReceiptPreviewLink(ctx, cStatus.querySelector('[data-receipt-preview-order]'), row.woocommerce_order_id);
+  R.bindCertificatePreviewLink(ctx, cStatus.querySelector('[data-certificate-preview]'));
   summary.appendChild(cStatus);
 
   const cAct = document.createElement('div');
