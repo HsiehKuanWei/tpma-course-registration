@@ -9,6 +9,83 @@ if (!defined('ABSPATH')) {
  */
 class TPMA_CR_Admin_Woo_Service
 {
+    private static $syncing_order_identity = false;
+
+    public static function init(): void
+    {
+        add_action('woocommerce_after_order_object_save', array(__CLASS__, 'sync_saved_order_receipt_identity'), 99, 2);
+    }
+
+    /**
+     * Last-save-wins projection from any persisted Woo order to all linked
+     * registration rows. Internal saves made to restore a lifecycle-locked
+     * receipt type are ignored to prevent a save loop.
+     */
+    public static function sync_saved_order_receipt_identity($order, $data_store = null): void
+    {
+        if (self::$syncing_order_identity || !($order instanceof WC_Order)) {
+            return;
+        }
+
+        self::$syncing_order_identity = true;
+        try {
+            self::sync_order_receipt_identity_to_registrations($order);
+        } finally {
+            self::$syncing_order_identity = false;
+        }
+    }
+
+    private static function sync_order_receipt_identity_to_registrations($order): void
+    {
+        if (!class_exists('TPMA_CR_DB')) {
+            return;
+        }
+
+        global $wpdb;
+        $regs_table = TPMA_CR_DB::table('regs');
+        $linked_count = (int) $wpdb->get_var($wpdb->prepare(
+            "SELECT COUNT(*) FROM {$regs_table} WHERE woocommerce_order_id=%d",
+            (int) $order->get_id()
+        ));
+        if ($linked_count <= 0) {
+            return;
+        }
+
+        $receipt_type = sanitize_key((string) $order->get_meta('_tpma_receipt_type', true));
+        if (!in_array($receipt_type, array('electronic', 'paper'), true)) {
+            $receipt_type = 'electronic';
+        }
+
+        if (class_exists('TPMA_CR_Receipt_Service')) {
+            $receipt = TPMA_CR_Receipt_Service::get_receipt_for_order((int) $order->get_id());
+            if (is_array($receipt) && $receipt_type !== (string) $receipt['receipt_type']) {
+                $changed = TPMA_CR_Receipt_Service::change_receipt_type((int) $receipt['id'], $receipt_type);
+                if (is_wp_error($changed)) {
+                    // Sent and void receipts remain lifecycle-locked. Restore
+                    // the Woo projection instead of corrupting the snapshot.
+                    $order->update_meta_data('_tpma_receipt_type', (string) $receipt['receipt_type']);
+                    $order->save();
+                    $receipt_type = (string) $receipt['receipt_type'];
+                } else {
+                    $receipt_type = (string) ($changed['receipt_type'] ?? $receipt_type);
+                }
+            }
+        }
+
+        $wpdb->update(
+            $regs_table,
+            array(
+                'contact_name' => sanitize_text_field((string) $order->get_billing_first_name()),
+                'company_name' => sanitize_text_field((string) $order->get_billing_company()),
+                'tax_id'       => self::get_order_tax_id($order),
+                'receipt_type' => $receipt_type,
+            ),
+            array('woocommerce_order_id' => (int) $order->get_id()),
+            array('%s', '%s', '%s', '%s'),
+            array('%d')
+        );
+    }
+
     private static function normalize_email_list($raw): array
     {
         if (class_exists('TPMA_CR_Woo_Shared') && method_exists('TPMA_CR_Woo_Shared', 'normalize_email_list')) {
@@ -377,6 +454,25 @@ class TPMA_CR_Admin_Woo_Service
     }
 
     /**
+     * Project the registration-owned receipt identity to its Woo order.
+     * Woo fields are a compatibility snapshot only and must never be read
+     * back here as a source for registration or receipt content.
+     */
+    public static function sync_registration_receipt_identity($order, array $registration): array
+    {
+        if (!$order) {
+            return array('has_change' => false);
+        }
+
+        return self::update_order_fields($order, array(
+            'contact_name' => sanitize_text_field((string) ($registration['contact_name'] ?? '')),
+            'company_name' => sanitize_text_field((string) ($registration['company_name'] ?? '')),
+            'tax_id'       => sanitize_text_field((string) ($registration['tax_id'] ?? '')),
+            'receipt_type' => sanitize_key((string) ($registration['receipt_type'] ?? '')),
+        ));
+    }
+
+    /**
      * Keep registrations and Woo snapshots aligned when a course session time changes.
      */
     public static function sync_session_datetime_snapshot(string $regs_table, int $session_id, string $session_datetime): array
@@ -521,9 +617,7 @@ class TPMA_CR_Admin_Woo_Service
                 $r['payment_status']     = $o['status']; // 用 Woo 狀態
                 $r['order_status']       = $o['status'];
                 $r['order_total']        = $o['total'];
-                $r['contact_name']       = $o['contact_name'];
                 $r['contact_email']      = $o['contact_email'];
-                $r['company_name']       = $o['company_name'];
                 $r['phone']              = $o['phone'];
                 $r['address']            = $o['address'];
                 $r['address_postcode']   = $o['address_postcode'] ?? '';
@@ -537,7 +631,9 @@ class TPMA_CR_Admin_Woo_Service
                 if (empty($r['receipt_type']) && $o['receipt_type'] !== '') {
                     $r['receipt_type'] = $o['receipt_type'];
                 }
-                $r['tax_id']             = $o['tax_id'] !== '' ? $o['tax_id'] : $r['tax_id'];
+                // Receipt identity is owned by tpma_cr_regs. Woo is a
+                // projection of that record and must not overwrite it when
+                // reg-admin reloads the registration list.
                 $r['remit_amount_total'] = $o['remit_amount_total'];
                 $r['remit_paid_at']      = $o['remit_paid_at'] ?: $r['remit_paid_at'];
                 $r['remit_account']      = $o['remit_account'] ?: $r['remit_account'];

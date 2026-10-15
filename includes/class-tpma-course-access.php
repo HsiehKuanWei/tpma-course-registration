@@ -53,8 +53,8 @@ class TPMA_Course_Access {
         $start = self::local_mysql_timestamp((string)($session['session_datetime'] ?? ''));
         if (!$start) return false;
         $end = $start + max(1, (int)($session['duration_minutes'] ?? 180)) * MINUTE_IN_SECONDS;
-        // Meet 是場次點名入口，錄播與混合場次也必須沿用直播時間窗。
-        if ($resource === 'meet') return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end;
+        // Meet 是場次點名入口，錄播與混合場次也必須沿用直播時間窗；課後保留 30 分鐘讓學員可重新加入。
+        if ($resource === 'meet') return $now_ts >= $start - max(1, $days_before) * DAY_IN_SECONDS && $now_ts <= $end + (30 * MINUTE_IN_SECONDS);
 
         if ($mode === 'recorded') {
             $from = self::recorded_access_starts_at($session, $days_before);

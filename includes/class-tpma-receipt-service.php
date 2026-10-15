@@ -721,7 +721,8 @@ class TPMA_CR_Receipt_Service {
             $amount += (float) $order->get_total();
             $order_ids[] = (int) $order->get_id();
         }
-        $identity = self::order_payer_identity($first);
+        $identity = self::registration_payer_identity($first);
+        if (is_wp_error($identity)) return $identity;
         $receipt_type = self::resolve_registration_receipt_type($first);
         if (is_wp_error($receipt_type)) return $receipt_type;
         return array(
@@ -793,7 +794,8 @@ class TPMA_CR_Receipt_Service {
     private static function merge_identity(WC_Order $order) {
         $receipt_type = self::resolve_registration_receipt_type($order);
         if (is_wp_error($receipt_type)) return $receipt_type;
-        $identity = self::order_payer_identity($order);
+        $identity = self::registration_payer_identity($order);
+        if (is_wp_error($identity)) return $identity;
         return implode('|', array(
             $identity['identity_key'], $receipt_type,
         ));
@@ -803,21 +805,33 @@ class TPMA_CR_Receipt_Service {
      * A company receipt needs both company name and tax ID. Partial corporate
      * details are intentionally treated as an individual/contact receipt.
      */
-    private static function order_payer_identity(WC_Order $order): array {
+    private static function registration_payer_identity(WC_Order $order) {
         global $wpdb;
-        $company_name = trim((string) $order->get_billing_company());
-        $tax_id = self::get_tax_id($order);
-        $contact_name = trim((string) $wpdb->get_var($wpdb->prepare(
-            'SELECT contact_name FROM ' . TPMA_CR_DB::table('regs') . ' WHERE woocommerce_order_id=%d AND contact_name<>\'\' ORDER BY id ASC LIMIT 1',
+        $rows = $wpdb->get_results($wpdb->prepare(
+            'SELECT contact_name, company_name, tax_id FROM ' . TPMA_CR_DB::table('regs') . " WHERE woocommerce_order_id=%d AND COALESCE(status, '') <> 'cancelled' ORDER BY id ASC",
             (int) $order->get_id()
-        )));
-        if ($contact_name === '') $contact_name = trim((string) $order->get_formatted_billing_full_name());
-        if ($contact_name === '') $contact_name = trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name());
-
-        if ($company_name !== '' && $tax_id !== '') {
-            return array('payer_name' => $company_name, 'tax_id' => $tax_id, 'company_name' => $company_name, 'contact_name' => $contact_name, 'identity_key' => 'company|' . $company_name . '|' . $tax_id);
+        ), ARRAY_A);
+        if (!$rows) {
+            return new WP_Error('tpma_receipt_registration_missing', '訂單沒有有效的 TPMA 報名資料，不可建立收據付款人資料。');
         }
-        return array('payer_name' => $contact_name, 'tax_id' => '', 'company_name' => '', 'contact_name' => $contact_name, 'identity_key' => 'contact|' . $contact_name);
+
+        $identities = array();
+        foreach ($rows as $row) {
+            $contact_name = trim((string) ($row['contact_name'] ?? ''));
+            $company_name = trim((string) ($row['company_name'] ?? ''));
+            $tax_id = trim((string) ($row['tax_id'] ?? ''));
+            if ($contact_name === '') {
+                return new WP_Error('tpma_receipt_contact_missing', 'TPMA 報名資料缺少承辦人姓名，請先在 reg-admin 補齊。');
+            }
+            $identity = $company_name !== '' && $tax_id !== ''
+                ? array('payer_name' => $company_name, 'tax_id' => $tax_id, 'company_name' => $company_name, 'contact_name' => $contact_name, 'identity_key' => 'company|' . $company_name . '|' . $tax_id)
+                : array('payer_name' => $contact_name, 'tax_id' => '', 'company_name' => '', 'contact_name' => $contact_name, 'identity_key' => 'contact|' . $contact_name);
+            $identities[wp_json_encode($identity, JSON_UNESCAPED_UNICODE)] = $identity;
+        }
+        if (count($identities) !== 1) {
+            return new WP_Error('tpma_receipt_registration_identity_conflict', '同一訂單的 TPMA 報名資料付款人、公司抬頭或統編不一致，請先在 reg-admin 統一。');
+        }
+        return reset($identities);
     }
 
     /** Apply the current identity rule before rendering a persisted legacy snapshot. */

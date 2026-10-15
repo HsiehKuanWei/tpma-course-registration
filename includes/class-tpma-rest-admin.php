@@ -2116,9 +2116,11 @@ public static function admin_update_reg($request)
         'session_id',
         'class_date',
         'student_name',
+        'contact_name',
         // Company is also stored on the Woo order, but the registration is
         // the source for certificate management and learner-specific records.
         'company_name',
+        'tax_id',
         'department',
         'job_title',
         'mobile',
@@ -2271,6 +2273,34 @@ public static function admin_update_reg($request)
 
     if (!empty($tpma_update)) {
         $wpdb->update($regs_table, $tpma_update, array('id' => $id));
+
+        // Receipt identity belongs to the Woo order. Keep every registration
+        // attached to that order aligned with the reg-admin value, then use
+        // that database value (not the incoming request or Woo snapshot) for
+        // the one-way projection back to WooCommerce.
+        $identity_update = array_intersect_key($tpma_update, array_flip(array('contact_name', 'company_name', 'tax_id')));
+        if ($order_id > 0 && !empty($identity_update)) {
+            $wpdb->update(
+                $regs_table,
+                $identity_update,
+                array('woocommerce_order_id' => $order_id),
+                array_fill(0, count($identity_update), '%s'),
+                array('%d')
+            );
+        }
+
+        if ($order && class_exists('TPMA_CR_Admin_Woo_Service')) {
+            $updated_registration = $wpdb->get_row(
+                $wpdb->prepare("SELECT * FROM {$regs_table} WHERE id = %d", $id),
+                ARRAY_A
+            );
+            $identity_sync = TPMA_CR_Admin_Woo_Service::sync_registration_receipt_identity($order, (array) $updated_registration);
+            if (is_wp_error($identity_sync)) {
+                return $identity_sync;
+            }
+            $woo_changed = $woo_changed || !empty($identity_sync['has_change']);
+        }
+
         if (class_exists('TPMA_CR_Certificate_Service')) {
             TPMA_CR_Certificate_Service::sync_unsent_snapshot_for_registration($id);
         }

@@ -95,6 +95,11 @@ add_action('plugins_loaded', function () {
     ) {
         TPMA_Woo_Special_Product::init();
     }
+    if (class_exists('TPMA_CR_Admin_Woo_Service')
+        && (!class_exists('TPMA_CR_Dependencies') || TPMA_CR_Dependencies::has_woocommerce())
+    ) {
+        TPMA_CR_Admin_Woo_Service::init();
+    }
 
     // Tutor LMS integration (optional — silently skipped when Tutor is absent)
     if (class_exists('TPMA_Tutor_Bridge')) {

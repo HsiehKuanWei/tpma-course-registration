@@ -115,6 +115,7 @@ UI.getSelectedRows = function getSelectedRows(ctx){
 UI.getBulkTargetElement = function getBulkTargetElement(action){
   const map = {
     update_field: 'tpma-bulk-target-update-field',
+    receipt: 'tpma-bulk-receipt-action',
     certificate: 'tpma-bulk-certificate-action',
     send_mail: 'tpma-bulk-mail-event',
     reset_course_mail_meta: 'tpma-bulk-reset-event',
