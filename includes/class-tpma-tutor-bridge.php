@@ -3586,6 +3586,32 @@ class TPMA_Tutor_Bridge {
         return $row ?: null;
     }
 
+    private static function registration_is_inactive(array $registration): bool {
+        return in_array((string) ($registration['status'] ?? ''), array('cancelled', 'refunded'), true)
+            || in_array((string) ($registration['payment_status'] ?? ''), array('cancelled', 'wc-cancelled', 'refunded', 'wc-refunded'), true);
+    }
+
+    /** Confirm this registration owns at least one completed qualifying attempt. */
+    private static function registration_has_completed_quiz_attempt(int $registration_id, int $tutor_course_id): bool {
+        $quiz_ids = self::get_registration_score_quiz_ids($registration_id, $tutor_course_id);
+        if (empty($quiz_ids)) return false;
+
+        global $wpdb;
+        $placeholders = implode(',', array_fill(0, count($quiz_ids), '%d'));
+        $args = array_merge(array($registration_id, $tutor_course_id), $quiz_ids);
+        $sql = "SELECT 1
+                FROM {$wpdb->prefix}tutor_quiz_attempts a
+                INNER JOIN " . TPMA_CR_DB::table('quiz_contexts') . " qc ON qc.attempt_id=a.attempt_id
+                WHERE qc.registration_id=%d
+                  AND a.course_id=%d
+                  AND a.quiz_id IN ({$placeholders})
+                  AND a.total_marks>0
+                  AND COALESCE(a.attempt_status, '')<>'attempt_started'
+                  AND a.attempt_ended_at IS NOT NULL
+                LIMIT 1";
+        return (bool) $wpdb->get_var($wpdb->prepare($sql, $args));
+    }
+
     private static function get_qualifying_quiz_ids_for_course(int $course_id): array {
         if ($course_id <= 0 || !(int)get_post_meta($course_id, '_tpma_course_id', true)) return array();
         if (isset(self::$qualifying_quiz_ids_cache[$course_id])) {
@@ -3857,10 +3883,24 @@ class TPMA_Tutor_Bridge {
         if ($tutor_course_id <= 0) {
             $tutor_course_id = self::get_tutor_course_id_for_quiz($quiz_id);
         }
-        if (self::get_registration_for_tutor_course($mapped_reg_id, $tutor_course_id, $wp_user_id) === null) return;
+        $registration = self::get_registration_for_tutor_course($mapped_reg_id, $tutor_course_id, $wp_user_id);
+        if ($registration === null) return;
+        if (self::registration_is_inactive($registration)) return;
+
         $best_score = self::get_registration_best_quiz_score($mapped_reg_id, $quiz_id, $tutor_course_id);
-        $wpdb->update($regs_table, array('test_score'=>$best_score . '%'), array('id'=>$mapped_reg_id), array('%s'), array('%d'));
-        if (class_exists('TPMA_CR_Certificate_Service') && self::registration_has_passed_quiz($mapped_reg_id, $quiz_id, $tutor_course_id)) {
+        $has_passed = self::registration_has_passed_quiz($mapped_reg_id, $quiz_id, $tutor_course_id);
+        $status = (string) ($registration['status'] ?? '');
+        $updates = array('test_score' => $best_score . '%');
+
+        if ($has_passed && in_array($status, array('cert_pending', 'retake'), true)) {
+            $updates['status'] = 'cert_pending';
+        } elseif (!$has_passed && $status === 'cert_pending') {
+            $updates['status'] = 'retake';
+        }
+
+        $formats = array_fill(0, count($updates), '%s');
+        $wpdb->update($regs_table, $updates, array('id' => $mapped_reg_id), $formats, array('%d'));
+        if (class_exists('TPMA_CR_Certificate_Service') && $has_passed) {
             // The first passing attempt is the formal certificate date. The
             // certificate service allocates on passing; payment only controls
             // the later completed-status projection after delivery.
@@ -3869,6 +3909,62 @@ class TPMA_Tutor_Bridge {
                 (string) ($attempt['attempt_ended_at'] ?? '')
             );
         }
+    }
+
+    /**
+     * Incrementally correct legacy rows that have a verified Tutor attempt but
+     * have never passed it. The cursor keeps normal admin page loads bounded.
+     */
+    public static function backfill_retake_statuses(int $limit = 200): int {
+        if (!self::is_active() || (bool) get_option('tpma_cr_retake_status_backfill_complete', false)) return 0;
+
+        global $wpdb;
+        $limit = max(1, min(500, $limit));
+        $cursor = max(0, (int) get_option('tpma_cr_retake_status_backfill_cursor', 0));
+        $regs_table = TPMA_CR_DB::table('regs');
+        $courses_table = TPMA_CR_DB::table('courses');
+        $certificates_table = TPMA_CR_DB::table('certificates');
+        $rows = (array) $wpdb->get_results($wpdb->prepare(
+            "SELECT r.id, c.tutor_course_id
+             FROM {$regs_table} r
+             INNER JOIN {$courses_table} c ON c.id=r.course_id
+             LEFT JOIN {$certificates_table} cert ON cert.registration_id=r.id
+             WHERE r.id>%d
+               AND r.status='cert_pending'
+               AND COALESCE(r.test_score, '')<>''
+               AND (r.certificate_passed_at IS NULL OR r.certificate_passed_at='')
+               AND cert.id IS NULL
+               AND COALESCE(r.payment_status, '') NOT IN ('cancelled', 'wc-cancelled', 'refunded', 'wc-refunded')
+             ORDER BY r.id ASC
+             LIMIT {$limit}",
+            $cursor
+        ), ARRAY_A);
+
+        $updated = 0;
+        foreach ($rows as $row) {
+            $registration_id = (int) ($row['id'] ?? 0);
+            $tutor_course_id = (int) ($row['tutor_course_id'] ?? 0);
+            if ($registration_id <= 0 || $tutor_course_id <= 0) continue;
+            if (!self::registration_has_completed_quiz_attempt($registration_id, $tutor_course_id)) continue;
+            if (self::registration_has_passed_quiz($registration_id, 0, $tutor_course_id)) continue;
+
+            $result = $wpdb->update(
+                $regs_table,
+                array('status' => 'retake'),
+                array('id' => $registration_id, 'status' => 'cert_pending'),
+                array('%s'),
+                array('%d', '%s')
+            );
+            if ($result !== false) $updated++;
+        }
+
+        if (!empty($rows)) {
+            $last = end($rows);
+            update_option('tpma_cr_retake_status_backfill_cursor', (int) ($last['id'] ?? $cursor), false);
+        }
+        if (count($rows) < $limit) update_option('tpma_cr_retake_status_backfill_complete', 1, false);
+
+        return $updated;
     }
 
     public static function guard_quiz_start($quiz_id, $user_id): void {

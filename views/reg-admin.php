@@ -28,6 +28,7 @@ if (!function_exists('tpma_cr_asset_ver')) {
 $TPMA_ENUM = [
   // 報名狀態
   'regStatus' => [
+    'retake'       => '待重考',
     'cert_pending' => '待發證',
     'cert_ready'   => '待寄證',
     'completed'    => '已結訓',

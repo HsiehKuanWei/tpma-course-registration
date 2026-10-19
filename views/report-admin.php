@@ -66,6 +66,7 @@ if (!defined('ABSPATH')) {
           <span>報名狀態</span>
           <select id="tpma-report-status">
             <option value="">全部</option>
+            <option value="retake">待重考</option>
             <option value="cert_pending">待發證</option>
             <option value="cert_ready">待寄證</option>
             <option value="completed">已結訓</option>

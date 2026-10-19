@@ -261,7 +261,9 @@ body{ background:var(--tpma-admin-bg); }
 .tpma-status-pill-g1-pending   { background:#fff3cd; border-color:#ffeeba; color:#856404; }
 .tpma-status-pill-g1-verifying { background:#ffe6b3; border-color:#ffcc80; color:#856404; }
 .tpma-status-pill-g1-paid      { background:#d4edda; border-color:#c3e6cb; color:#155724; }
-.tpma-status-pill-g1-cert      { background:#d1ecf1; border-color:#bee5eb; color:#0c5460; }
+.tpma-status-pill-g1-retake       { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+.tpma-status-pill-g1-cert-pending { background:#f3e8ff; border-color:#d8b4fe; color:#7e22ce; }
+.tpma-status-pill-g1-cert-ready   { background:#dbeafe; border-color:#93c5fd; color:#1d4ed8; }
 .tpma-status-pill-g1-completed { background:#e2e3e5; border-color:#d6d8db; color:#383d41; }
 .tpma-status-pill-g1-cancelled { background:#f8d7da; border-color:#f5c6cb; color:#721c24; }
 

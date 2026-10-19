@@ -43,7 +43,9 @@ const labels = {
   },
   registration: {
     unknown: '未指定',
+    retake: '待重考',
     cert_pending: '待發證',
+    cert_ready: '待寄證',
     completed: '已結訓',
     hold: '保留中',
     hold_refunded: '待退款',

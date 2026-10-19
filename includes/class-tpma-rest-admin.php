@@ -249,6 +249,10 @@ public static function admin_get_regs($request)
 {
     global $wpdb;
 
+    if (class_exists('TPMA_Tutor_Bridge')) {
+        TPMA_Tutor_Bridge::backfill_retake_statuses();
+    }
+
     $regs_table      = TPMA_CR_DB::table('regs');
     $courses_table   = TPMA_CR_DB::table('courses');
     $lecturers_table = TPMA_CR_DB::table('lecturers');

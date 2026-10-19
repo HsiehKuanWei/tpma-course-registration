@@ -234,6 +234,7 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
   const pCode = row.payment_status || '';
   const pLabel = L.paymentStatusLabel(pCode);
   const hideStatusByPayment = (
+    pCode === 'pending' ||
     pCode === 'on-hold' ||
     pCode === 'cancelled' ||
     pCode === 'refunded' ||
@@ -264,8 +265,9 @@ R.buildStatusIconsHtml = function buildStatusIconsHtml(ctx, row){
       case 'pending': sClass='tpma-status-pill-g1-pending'; break;
       case 'verifying': sClass='tpma-status-pill-g1-verifying'; break;
       case 'paid': sClass='tpma-status-pill-g1-paid'; break;
-      case 'cert_pending':
-      case 'cert_ready': sClass='tpma-status-pill-g1-cert'; break;
+      case 'retake': sClass='tpma-status-pill-g1-retake'; break;
+      case 'cert_pending': sClass='tpma-status-pill-g1-cert-pending'; break;
+      case 'cert_ready': sClass='tpma-status-pill-g1-cert-ready'; break;
       case 'completed': sClass='tpma-status-pill-g1-completed'; break;
       case 'cancelled': sClass='tpma-status-pill-g1-cancelled'; break;
       default: sClass='tpma-status-pill-g1-pending';
