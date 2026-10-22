@@ -131,7 +131,7 @@ class TPMA_CR_Receipt_Service {
         if (!($order instanceof WC_Order)) {
             return new WP_Error('tpma_receipt_order_not_found', '找不到 WooCommerce 訂單。');
         }
-        $receipt_type = self::resolve_registration_receipt_type($order);
+        $receipt_type = self::resolve_receipt_type($order);
         if (is_wp_error($receipt_type)) {
             return $receipt_type;
         }
@@ -721,22 +721,41 @@ class TPMA_CR_Receipt_Service {
             $amount += (float) $order->get_total();
             $order_ids[] = (int) $order->get_id();
         }
-        $identity = self::registration_payer_identity($first);
+        $identity = self::payer_identity($first);
         if (is_wp_error($identity)) return $identity;
-        $receipt_type = self::resolve_registration_receipt_type($first);
+        $receipt_type = self::resolve_receipt_type($first);
         if (is_wp_error($receipt_type)) return $receipt_type;
+        $is_generic_tax_exempt = self::is_generic_tax_exempt_order($first);
         return array(
             'serial' => $serial, 'receipt_type' => $receipt_type,
             'payer_name' => $identity['payer_name'], 'tax_id' => $identity['tax_id'],
             'company_name' => $identity['company_name'], 'contact_name' => $identity['contact_name'],
             'amount' => round($amount), 'amount_formatted' => number_format(round($amount)), 'amount_chinese' => self::amount_to_chinese(round($amount)),
             'amount_digits' => self::amount_digits_for_receipt(round($amount)),
-            'item_name' => self::build_item_name($order_ids), 'issue_date' => current_time('mysql'), 'issue_date_roc' => self::roc_date(current_time('timestamp')),
+            'item_name' => self::build_item_name($order_ids, $is_generic_tax_exempt), 'issue_date' => current_time('mysql'), 'issue_date_roc' => self::roc_date(current_time('timestamp')),
+            'is_generic_tax_exempt' => $is_generic_tax_exempt,
             'order_ids' => $order_ids,
         );
     }
 
-    private static function build_item_name(array $order_ids): string {
+    private static function build_item_name(array $order_ids, bool $is_generic_tax_exempt = false): string {
+        if ($is_generic_tax_exempt) {
+            $parts = array();
+            foreach ($order_ids as $order_id) {
+                $order = function_exists('wc_get_order') ? wc_get_order((int) $order_id) : null;
+                if (!$order) continue;
+                foreach ($order->get_items() as $item) {
+                    if (!$item instanceof WC_Order_Item_Product) continue;
+                    $name = class_exists('WC_OPay_Invoice_Item_Alias')
+                        ? trim((string) WC_OPay_Invoice_Item_Alias::get_item_name($item))
+                        : trim((string) $item->get_meta('_opay_invoice_item_name', true));
+                    if ($name === '') $name = trim((string) $item->get_name());
+                    if ($name === '') $name = '未命名商品';
+                    $parts[] = $name . 'X' . max(1, (int) $item->get_quantity());
+                }
+            }
+            return $parts ? implode('、', $parts) : '商品費';
+        }
         global $wpdb;
         $order_ids = array_values(array_unique(array_filter(array_map('intval', $order_ids))));
         if (!$order_ids) {
@@ -792,9 +811,9 @@ class TPMA_CR_Receipt_Service {
     }
 
     private static function merge_identity(WC_Order $order) {
-        $receipt_type = self::resolve_registration_receipt_type($order);
+        $receipt_type = self::resolve_receipt_type($order);
         if (is_wp_error($receipt_type)) return $receipt_type;
-        $identity = self::registration_payer_identity($order);
+        $identity = self::payer_identity($order);
         if (is_wp_error($identity)) return $identity;
         return implode('|', array(
             $identity['identity_key'], $receipt_type,
@@ -834,13 +853,66 @@ class TPMA_CR_Receipt_Service {
         return reset($identities);
     }
 
+    private static function payer_identity(WC_Order $order) {
+        if (self::is_generic_tax_exempt_order($order)) {
+            $company_name = trim((string) $order->get_billing_company());
+            $contact_name = trim((string) trim($order->get_billing_first_name() . ' ' . $order->get_billing_last_name()));
+            $tax_id = trim((string) $order->get_meta('_opay_tax_id', true));
+            if ($tax_id === '') $tax_id = trim((string) $order->get_meta('_billing_vat_id', true));
+            $payer_name = $company_name !== '' ? $company_name : $contact_name;
+            if ($payer_name === '') $payer_name = '未具名付款人';
+            return array(
+                'payer_name' => $payer_name,
+                'tax_id' => $tax_id,
+                'company_name' => $company_name,
+                'contact_name' => $contact_name,
+                'identity_key' => 'generic|' . $payer_name . '|' . $tax_id,
+            );
+        }
+        return self::registration_payer_identity($order);
+    }
+
+    private static function is_generic_tax_exempt_order(WC_Order $order): bool {
+        if (!self::order_is_fully_tax_exempt($order)) return false;
+        global $wpdb;
+        $has_registration = (int) $wpdb->get_var($wpdb->prepare(
+            'SELECT COUNT(*) FROM ' . TPMA_CR_DB::table('regs') . ' WHERE woocommerce_order_id=%d',
+            (int) $order->get_id()
+        ));
+        return $has_registration === 0;
+    }
+
+    private static function order_is_fully_tax_exempt(WC_Order $order): bool {
+        $items = $order->get_items();
+        if (!$items) return false;
+        foreach ($items as $item) {
+            if (!($item instanceof WC_Order_Item_Product)) return false;
+            $snapshot = (string) $item->get_meta('_opay_tax_status', true);
+            if ($snapshot !== '' && $snapshot === 'taxable') return false;
+            if ($snapshot === '') {
+                $product = $item->get_product();
+                if (!$product || $product->get_tax_status() === 'taxable') return false;
+            }
+        }
+        return true;
+    }
+
+    private static function resolve_receipt_type(WC_Order $order) {
+        if (self::is_generic_tax_exempt_order($order)) return 'electronic';
+        return self::resolve_registration_receipt_type($order);
+    }
+
     /** Apply the current identity rule before rendering a persisted legacy snapshot. */
     private static function normalize_snapshot_identity(array $snapshot): array {
         $company_name = trim((string) ($snapshot['company_name'] ?? ''));
         $contact_name = trim((string) ($snapshot['contact_name'] ?? ''));
         $tax_id = trim((string) ($snapshot['tax_id'] ?? ''));
         if ($contact_name === '') $contact_name = trim((string) ($snapshot['payer_name'] ?? ''));
-        if ($company_name !== '' && $tax_id !== '') {
+        if (!empty($snapshot['is_generic_tax_exempt']) && $company_name !== '') {
+            $snapshot['payer_name'] = $company_name;
+            $snapshot['tax_id'] = $tax_id;
+            $snapshot['company_name'] = $company_name;
+        } elseif ($company_name !== '' && $tax_id !== '') {
             $snapshot['payer_name'] = $company_name;
             $snapshot['tax_id'] = $tax_id;
             $snapshot['company_name'] = $company_name;

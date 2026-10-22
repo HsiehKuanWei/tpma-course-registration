@@ -456,7 +456,8 @@ class TPMA_CR_Receipt_Admin {
         // Receipt company/tax remain immutable snapshot data. Only legacy
         // snapshots without contact_name may use the linked order for a
         // contact-name display fallback, mirroring receipt_identity().
-        $heading = 'CASE WHEN ' . $snapshot_company . ' IS NOT NULL AND ' . $snapshot_tax_id . ' IS NOT NULL THEN ' . $snapshot_company
+        $is_generic_tax_exempt = "COALESCE(JSON_EXTRACT(r.snapshot, '$.is_generic_tax_exempt'), false)";
+        $heading = 'CASE WHEN (' . $snapshot_company . ' IS NOT NULL AND ' . $snapshot_tax_id . ' IS NOT NULL) OR (' . $is_generic_tax_exempt . ' AND ' . $snapshot_company . ' IS NOT NULL) THEN ' . $snapshot_company
             . ' WHEN ' . $snapshot_contact . ' IS NOT NULL THEN ' . $snapshot_contact
             . " WHEN COALESCE(JSON_CONTAINS_PATH(r.snapshot, 'one', '$.contact_name'), 0)=0 THEN COALESCE(" . $legacy_contact . ', ' . $billing['full_name'] . ", '') ELSE '' END";
         return '(SELECT MIN(COALESCE(DATE(rs.session_datetime), rr.class_date)) FROM ' . $links . ' ros '
@@ -1209,7 +1210,7 @@ class TPMA_CR_Receipt_Admin {
         $company = trim((string) ($snapshot['company_name'] ?? ''));
         $tax_id = trim((string) ($snapshot['tax_id'] ?? ''));
         $contact = trim((string) ($snapshot['contact_name'] ?? ''));
-        if ($company !== '' && $tax_id !== '') {
+        if ((!empty($snapshot['is_generic_tax_exempt']) && $company !== '') || ($company !== '' && $tax_id !== '')) {
             return array('kind' => 'company', 'company_name' => $company, 'tax_id' => $tax_id, 'contact_name' => '');
         }
         if ($contact !== '') {
