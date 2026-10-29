@@ -127,6 +127,10 @@ if (!defined('ABSPATH')) {
           <div class="tpma-report-table-wrap" id="tpma-table-operations-overview"></div>
         </article>
         <article class="tpma-report-card tpma-report-card-wide">
+          <h2>資訊來源分析</h2>
+          <div class="tpma-chart-box tpma-source-analysis-chart"><canvas id="tpma-chart-source-analysis" aria-label="資訊來源分析圖表" role="img"></canvas></div>
+        </article>
+        <article class="tpma-report-card tpma-report-card-wide">
           <h2>未開班分析</h2>
           <div class="tpma-report-card-toolbar" aria-label="未開班分析設定">
             <label class="tpma-report-control">

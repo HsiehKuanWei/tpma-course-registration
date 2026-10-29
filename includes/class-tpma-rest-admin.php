@@ -534,6 +534,7 @@ public static function admin_reports_summary($request)
     );
     $summary['unopened'] = $unopened_rows;
     $summary['unopened_overview'] = self::build_unopened_overview_groups($unopened_rows);
+    $summary['source_analysis'] = self::build_report_source_analysis($rows);
     $summary['finance']['lecturer_fees'] = self::build_report_lecturer_fees($rows);
     $summary['finance']['overview'] = self::build_finance_overview($summary);
     $summary['comparisons'] = self::build_report_comparisons(
@@ -656,6 +657,7 @@ private static function report_registration_rows(array $filters): array
             r.class_date,
             r.student_name,
             r.company_name,
+            r.source,
             r.note,
             r.remit_amount,
             r.status,
@@ -1034,6 +1036,45 @@ private static function report_group_add(array &$groups, string $key, string $la
     }
     $groups[$key]['learners'] += $learners;
     $groups[$key]['revenue'] += $revenue;
+}
+
+private static function build_report_source_analysis(array $rows): array
+{
+    $groups = array();
+    $total = count($rows);
+
+    foreach ($rows as $row) {
+        $label = trim((string)($row['source'] ?? ''));
+        if ($label === '') {
+            $label = '未填寫';
+        }
+
+        if (!isset($groups[$label])) {
+            $groups[$label] = array(
+                'label' => $label,
+                'learners' => 0,
+            );
+        }
+        $groups[$label]['learners']++;
+    }
+
+    foreach ($groups as &$group) {
+        $group['percentage'] = $total > 0
+            ? round(((int)$group['learners'] / $total) * 100, 1)
+            : 0.0;
+    }
+    unset($group);
+
+    usort($groups, static function ($left, $right) {
+        $left_learners = (int)($left['learners'] ?? 0);
+        $right_learners = (int)($right['learners'] ?? 0);
+        if ($left_learners === $right_learners) {
+            return strcmp((string)($left['label'] ?? ''), (string)($right['label'] ?? ''));
+        }
+        return $left_learners < $right_learners ? 1 : -1;
+    });
+
+    return array_values($groups);
 }
 
 private static function report_sort_groups(array $groups, int $limit = 12, string $field = 'learners'): array

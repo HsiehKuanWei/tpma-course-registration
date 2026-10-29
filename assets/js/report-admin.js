@@ -209,17 +209,22 @@ function renderChartFallback(canvas, config){
   canvas.hidden = true;
   const data = config && config.data ? config.data : {};
   const chartLabels = Array.isArray(data.labels) ? data.labels : [];
+  const fallbackLimit = config && Number.isFinite(Number(config.fallbackLimit))
+    ? Math.max(0, Math.floor(Number(config.fallbackLimit)))
+    : 12;
+  const fallbackLabels = fallbackLimit > 0 ? chartLabels.slice(0, fallbackLimit) : chartLabels;
   const dataset = data.datasets && data.datasets[0] ? data.datasets[0] : {};
   const values = Array.isArray(dataset.data) ? dataset.data.map(function(v){ return Number(v || 0); }) : [];
+  const displayValues = Array.isArray(dataset.displayValues) ? dataset.displayValues : [];
   const max = Math.max.apply(null, values.concat([1]));
   const fallback = document.createElement('div');
   fallback.className = 'tpma-chart-fallback';
   fallback.setAttribute('role', 'img');
   fallback.setAttribute('aria-label', '圖表套件未載入，改以簡易長條圖呈現。');
-  fallback.innerHTML = chartLabels.slice(0, 12).map(function(label, index){
+  fallback.innerHTML = fallbackLabels.map(function(label, index){
     const value = values[index] || 0;
     const width = Math.max(2, Math.round((value / max) * 100));
-    return '<div class="tpma-chart-fallback-row"><span>' + esc(label) + '</span><div><i style="width:' + width + '%"></i></div><strong>' + esc(number(value)) + '</strong></div>';
+    return '<div class="tpma-chart-fallback-row"><span>' + esc(label) + '</span><div><i style="width:' + width + '%"></i></div><strong>' + esc(displayValues[index] || number(value)) + '</strong></div>';
   }).join('') || '<p class="tpma-report-empty">圖表套件未載入，且目前沒有可視化資料。</p>';
   box.appendChild(fallback);
 }
@@ -460,6 +465,51 @@ function renderOverviewSections(data){
   nestedOverviewTable('tpma-table-unopened', unopenedGroups, 'unopened');
 }
 
+function renderSourceAnalysis(data){
+  const sources = Array.isArray(data.source_analysis) ? data.source_analysis : [];
+  const learners = sources.map(function(source){ return Number(source.learners || 0); });
+  const sourceLabel = function(source){
+    const label = source.label || '未填寫';
+    const percentage = Number(source.percentage || 0).toLocaleString('zh-TW', { maximumFractionDigits: 1 });
+    return label + '（' + number(source.learners) + ' / ' + percentage + '%）';
+  };
+  setChartHeight('tpma-chart-source-analysis', sources.length, 1);
+  chart('tpma-chart-source-analysis', {
+    type: 'bar',
+    fallbackLimit: 0,
+    data: {
+      labels: sources.map(sourceLabel),
+      datasets: [{
+        label: '報名人次',
+        data: learners,
+        displayValues: sources.map(sourceLabel),
+        backgroundColor: '#0f6c7b',
+        borderColor: '#0f6c7b',
+        borderWidth: 1,
+        borderSkipped: false,
+        maxBarThickness: 28,
+        categoryPercentage: 0.8,
+        barPercentage: 0.9
+      }]
+    },
+    options: Object.assign(baseOptions(true), {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          mode: 'nearest',
+          intersect: true,
+          callbacks: {
+            label: function(context){
+              const source = sources[context.dataIndex] || {};
+              return '報名人次：' + number(source.learners) + '（' + Number(source.percentage || 0).toLocaleString('zh-TW', { maximumFractionDigits: 1 }) + '%）';
+            }
+          }
+        }
+      }
+    })
+  });
+}
+
 function renderPeriodAnalysis(data){
   const yearlyAnalysis = (data.analysis && data.analysis.yearly) || [];
   const yearlyTotals = yearlyAnalysis.reduce(function(sum, r){
@@ -610,6 +660,7 @@ function renderCharts(data){
   state.lastData = data;
   renderPeriodAnalysis(data);
   renderOverviewSections(data);
+  renderSourceAnalysis(data);
   renderFinanceOverview(data);
   const comparisons = data.comparisons || {};
   renderComparisonCard('tpma-chart-year-comparison', 'tpma-table-year-comparison', comparisons.year);

@@ -65,6 +65,9 @@ class TPMA_Tutor_Bridge {
         add_action('template_redirect', [__CLASS__, 'prepare_qualifying_quiz_request'], 4);
         add_filter('tutor_single_quiz/top', [__CLASS__, 'filter_qualifying_quiz_top'], 99, 1);
         add_filter('tutor_single_quiz/content', [__CLASS__, 'filter_qualifying_quiz_content'], 99, 1);
+        // Tutor 4 renders quiz content through the learning-area template and
+        // no longer runs tutor_single_quiz/content there.
+        add_filter('tutor_learning_area_content', [__CLASS__, 'filter_qualifying_quiz_learning_area_content'], 99, 1);
         add_filter('tutor_course_completed_percent', [__CLASS__, 'force_completed_progress_after_pass'], 99, 4);
         add_filter('tutor_course/single/complete_form', [__CLASS__, 'hide_tpma_complete_form_after_pass'], 99, 1);
         add_filter('tutor_course/single/complete_form', [__CLASS__, 'render_tpma_quiz_completion_notice'], 100, 1);
@@ -84,11 +87,20 @@ class TPMA_Tutor_Bridge {
         add_filter('tutor_get_course_topics', [__CLASS__, 'filter_course_topics_for_access'], 20, 1);
         add_filter('tutor_course_contents_where_clause', [__CLASS__, 'exclude_session_recordings_from_progress'], 20, 2);
         add_action('pre_get_posts', [__CLASS__, 'filter_session_topics_query'], 20);
+        add_action('wp', [__CLASS__, 'deduplicate_tutor_quiz_learning_area_hooks'], 1);
         add_action('template_redirect', [__CLASS__, 'protect_session_content'], 5);
         add_filter('tutor_lesson/single/video', [__CLASS__, 'protect_session_lesson_output'], 99, 1);
         add_filter('tutor_lesson/single/content', [__CLASS__, 'protect_session_lesson_output'], 99, 1);
         add_filter('tutor_lesson/single/attachments', [__CLASS__, 'protect_session_lesson_output'], 99, 1);
         add_filter('tutor/single/next_previous_pagination', [__CLASS__, 'filter_next_previous_pagination'], 99, 1);
+
+        // Tutor Pro's Google Meet template still renders the legacy spotlight
+        // markup. Use the Tutor 4 learning area shell and render the original
+        // Meet content within it instead.
+        add_filter('template_include', [__CLASS__, 'filter_google_meet_learning_template'], 200, 1);
+        add_action('tutor_single_content_tutor-google-meet', [__CLASS__, 'render_google_meet_learning_content'], 10, 1);
+        add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue_google_meet_learning_area_compatibility'], 100);
+        add_filter('tutor_dashboard_url', [__CLASS__, 'filter_google_meet_dashboard_url'], 20, 2);
 
         // Inject magic link variables into mail context
         add_filter('tpma_cr_mail_context', [__CLASS__, 'inject_mail_context'], 10, 3);
@@ -114,6 +126,158 @@ class TPMA_Tutor_Bridge {
 
     public static function refresh_active_state(): void {
         self::$tutor_active = null;
+    }
+
+    /**
+     * Replace Tutor Pro's legacy Google Meet spotlight template only after it
+     * has already granted the viewer access to the meeting.
+     */
+    public static function filter_google_meet_learning_template(string $template): string {
+        if (!is_singular('tutor-google-meet')
+            || !class_exists('\\TutorPro\\GoogleMeet\\GoogleMeet')
+            || !function_exists('tutor_get_template')) {
+            return $template;
+        }
+
+        $plugin_data = \TutorPro\GoogleMeet\GoogleMeet::meta_data();
+        $legacy_template = isset($plugin_data['templates'])
+            ? $plugin_data['templates'] . 'single-meeting.php'
+            : '';
+
+        if ($legacy_template === ''
+            || wp_normalize_path($template) !== wp_normalize_path($legacy_template)) {
+            return $template;
+        }
+
+        return tutor_get_template('learning-area.index');
+    }
+
+    /**
+     * Render Tutor Pro's original meeting details inside Tutor 4's learning
+     * area. The meeting-part templates remain the source of all Meet data and
+     * presentation rules.
+     */
+    public static function render_google_meet_learning_content($meeting = null): void {
+        if (!is_singular('tutor-google-meet')
+            || !class_exists('\\TutorPro\\GoogleMeet\\GoogleMeet')
+            || !class_exists('\\TutorPro\\GoogleMeet\\Utilities\\Utilities')) {
+            return;
+        }
+
+        $meeting = $meeting instanceof WP_Post ? $meeting : get_post();
+        if (!$meeting instanceof WP_Post || $meeting->post_type !== 'tutor-google-meet') {
+            return;
+        }
+
+        $event_details = json_decode((string)get_post_meta($meeting->ID, 'tutor-google-meet-event-details', true));
+        if (!is_object($event_details)
+            || empty($event_details->start_datetime)
+            || empty($event_details->end_datetime)
+            || empty($event_details->timezone)) {
+            return;
+        }
+
+        $plugin_data = \TutorPro\GoogleMeet\GoogleMeet::meta_data();
+        $templates = isset($plugin_data['templates']) ? (string)$plugin_data['templates'] : '';
+        if ($templates === '') {
+            return;
+        }
+
+        $end_time_utc = strtotime(\TutorPro\GoogleMeet\Utilities\Utilities::get_gmt_date_from_timezone_date(
+            (string)$event_details->end_datetime,
+            (string)$event_details->timezone
+        ));
+        $meeting_part = time() > $end_time_utc ? 'meeting-parts/expired.php' : 'meeting-parts/ongoing.php';
+        $template = $templates . $meeting_part;
+        if (!file_exists($template)) {
+            return;
+        }
+
+        echo '<div class="tutor-google-meeting-content tutor-p-32">';
+        tutor_load_template_from_custom_path($template, array(
+            'meeting' => $meeting,
+            'event_details' => $event_details,
+        ));
+
+        if (time() > $end_time_utc && function_exists('tutor_lesson_mark_complete_html')) {
+            echo '<div class="tutor-learning-area-footer">';
+            tutor_lesson_mark_complete_html();
+            echo '</div>';
+        }
+
+        echo '</div>';
+    }
+
+    /**
+     * Tutor 4.2 recognizes lesson and quiz URLs, but Tutor Pro Google Meet
+     * uses the separate meet-lessons path. Normalize only while Tutor's
+     * learning-area bundle initializes, then restore the visible URL.
+     */
+    public static function enqueue_google_meet_learning_area_compatibility(): void {
+        if (!is_singular('tutor-google-meet') || !wp_script_is('tutor-learning', 'enqueued')) {
+            return;
+        }
+
+        $before = <<<'JS'
+(function () {
+    var path = window.location.pathname;
+    if (path.indexOf('/meet-lessons/') === -1) return;
+
+    window.tpmaGoogleMeetLearningAreaUrl = window.location.href;
+    var restored = false;
+    window.tpmaRestoreGoogleMeetLearningAreaUrl = function () {
+        if (restored || !window.tpmaGoogleMeetLearningAreaUrl) return;
+
+        restored = true;
+        window.history.replaceState(
+            window.history.state,
+            document.title,
+            window.tpmaGoogleMeetLearningAreaUrl
+        );
+        delete window.tpmaGoogleMeetLearningAreaUrl;
+        delete window.tpmaRestoreGoogleMeetLearningAreaUrl;
+    };
+
+    window.history.replaceState(
+        window.history.state,
+        document.title,
+        window.location.href.replace('/meet-lessons/', '/lessons/')
+    );
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('alpine:init', function () {
+            window.setTimeout(window.tpmaRestoreGoogleMeetLearningAreaUrl, 0);
+        }, { once: true });
+        window.setTimeout(window.tpmaRestoreGoogleMeetLearningAreaUrl, 10000);
+    }
+})();
+JS;
+        $after = <<<'JS'
+(function () {
+    if (document.readyState !== 'loading' && window.tpmaRestoreGoogleMeetLearningAreaUrl) {
+        window.setTimeout(window.tpmaRestoreGoogleMeetLearningAreaUrl, 0);
+    }
+})();
+JS;
+
+        wp_add_inline_script('tutor-learning', $before, 'before');
+        wp_add_inline_script('tutor-learning', $after, 'after');
+    }
+
+    /**
+     * The Tutor 4 learning-area header uses the dashboard URL for its back
+     * button. Google Meet is course content, so return to its course instead.
+     */
+    public static function filter_google_meet_dashboard_url(string $url, string $sub_url = ''): string {
+        if ($sub_url !== '' || !is_singular('tutor-google-meet') || !function_exists('tutor_utils')) {
+            return $url;
+        }
+
+        $meeting_id = (int)get_queried_object_id();
+        $course_id = $meeting_id > 0 ? (int)tutor_utils()->get_course_id_by_subcontent($meeting_id) : 0;
+        $course_url = $course_id > 0 ? get_permalink($course_id) : false;
+
+        return $course_url ? $course_url : $url;
     }
 
     /**
@@ -1812,6 +1976,50 @@ class TPMA_Tutor_Bridge {
             array('key' => '_tpma_session_id', 'value' => $allowed ?: array(0), 'compare' => 'IN', 'type' => 'NUMERIC'),
         );
         $query->set('meta_query', $meta_query);
+    }
+
+    /**
+     * Tutor 4.2 can register its Quiz renderer more than once after an update.
+     * The learning-area invokes those actions once per content item, so every
+     * duplicate callback produces another identical sidebar card and quiz view.
+     */
+    public static function deduplicate_tutor_quiz_learning_area_hooks(): void {
+        if (is_admin()
+            || !class_exists('\TUTOR\Quiz')
+            || !function_exists('tutor_utils')
+            || !tutor_utils()->is_learning_area()) {
+            return;
+        }
+
+        global $wp_filter;
+        $hooks = array(
+            'tutor_learning_area_nav_item_tutor_quiz' => 'render_nav_item',
+            'tutor_single_content_tutor_quiz' => 'render_single_content',
+        );
+
+        foreach ($hooks as $hook_name => $method) {
+            $hook = $wp_filter[$hook_name] ?? null;
+            if (!is_object($hook) || empty($hook->callbacks) || !is_array($hook->callbacks)) continue;
+
+            $renderer_found = false;
+            foreach ($hook->callbacks as $priority => $callbacks) {
+                foreach ((array) $callbacks as $callback) {
+                    $function = $callback['function'] ?? null;
+                    if (!is_array($function)
+                        || !isset($function[0], $function[1])
+                        || !$function[0] instanceof \TUTOR\Quiz
+                        || $function[1] !== $method) {
+                        continue;
+                    }
+
+                    if ($renderer_found) {
+                        remove_action($hook_name, $function, (int) $priority);
+                        continue;
+                    }
+                    $renderer_found = true;
+                }
+            }
+        }
     }
 
     public static function protect_session_content(): void {
@@ -4000,6 +4208,25 @@ class TPMA_Tutor_Bridge {
             $html = $notice . $html;
         }
         return $html;
+    }
+
+    /**
+     * Tutor 4's learning-area quiz template has its own start/retry controls.
+     * Keep the server-side start guard and hide those controls after a pass.
+     */
+    public static function filter_qualifying_quiz_learning_area_content(string $html): string {
+        $quiz_id = (int) get_queried_object_id();
+        if (!self::is_qualifying_quiz($quiz_id)) {
+            global $tutor_current_post;
+            $quiz_id = $tutor_current_post instanceof WP_Post ? (int) $tutor_current_post->ID : 0;
+        }
+        if (!self::is_qualifying_quiz($quiz_id) || !self::current_registration_has_passed_quiz($quiz_id)) {
+            return $html;
+        }
+
+        $notice = '<div class="tutor-alert tutor-success tpma-course-completed-notice" role="status"><strong>恭喜您已通過測驗，本課程已完成。</strong></div>';
+        $style = '<style>.tutor-quiz .tutor-learning-area-footer{display:none!important}</style>';
+        return $notice . $style . $html;
     }
 
     public static function hide_tpma_complete_form_after_pass(string $html): string {
