@@ -215,6 +215,8 @@ UI.updateBulkToolbar = function updateBulkToolbar(ctx){
     hint = '寄信會由伺服器再次檢查資格；收據通知會按 ' + orderIds.size + ' 筆訂單去重。';
   } else if (action === 'reset_course_mail_meta') {
     hint = '只會清除課程開放類寄件紀錄，不會清除證書或收據紀錄。';
+  } else if (action === 'receipt_resend') {
+    hint = '只重寄已寄收據；合併收據依收據編號去重，不會清除原寄件紀錄。';
   } else if (action === 'update_field' && target === 'status') {
     hint = '課後付款會同步影響同一 Woo 訂單狀態。';
   } else if (action === 'update_field' && target === 'receipt_type') {
@@ -481,6 +483,9 @@ UI.applyBulk = async function applyBulk(ctx){
     payload.action = 'reset_course_mail_meta';
     payload.event_key = target;
     if (!confirm('確定重置所選資料對應訂單 / 場次的課程寄件紀錄？')) return;
+  } else if (action === 'receipt_resend') {
+    payload.action = 'resend_receipt_notice';
+    if (!confirm('確定重新寄送所選資料的已寄收據？合併收據只寄一次，原寄件紀錄會保留。')) return;
   } else if (['receipt_generate', 'receipt_regenerate', 'receipt_print', 'receipt_download', 'receipt_void', 'receipt_merge'].indexOf(action) !== -1) {
     const rows = UI.getSelectedRows(ctx);
     const orderIds = Array.from(new Set(rows.map(row => parseInt(row.woocommerce_order_id || '0', 10)).filter(Boolean)));

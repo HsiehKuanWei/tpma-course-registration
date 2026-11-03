@@ -191,7 +191,15 @@ class TPMA_CR_Certificate_Service {
 
     public static function get_effective_file(int $certificate_id) {
         $certificate = self::get($certificate_id);
-        if (!$certificate || empty($certificate['generated_file'])) return new WP_Error('tpma_certificate_file_missing', '證書 PDF 尚未產生。');
+        if (!$certificate) return new WP_Error('tpma_certificate_not_found', '找不到證書。');
+        $snapshot = self::current_snapshot($certificate);
+        if (is_wp_error($snapshot)) return $snapshot;
+        if (empty($certificate['generated_file']) || wp_json_encode($snapshot) !== wp_json_encode((array) ($certificate['snapshot'] ?? array()))) {
+            $rendered = self::render_current_pdf($certificate_id);
+            if (is_wp_error($rendered)) return $rendered;
+            $certificate = self::get($certificate_id);
+            if (!$certificate || empty($certificate['generated_file'])) return new WP_Error('tpma_certificate_file_missing', '證書 PDF 尚未產生。');
+        }
         $dir = self::private_dir();
         if (is_wp_error($dir)) return $dir;
         $path = wp_normalize_path(trailingslashit($dir) . ltrim((string) $certificate['generated_file'], '/\\'));
@@ -240,10 +248,18 @@ class TPMA_CR_Certificate_Service {
         $dir = self::private_dir();
         if (is_wp_error($dir)) return $dir;
         $path = trailingslashit($dir) . sanitize_file_name($certificate['serial'] . '.pdf');
-        $snapshot = self::complete_snapshot($certificate);
-        $result = self::render_pdf($snapshot, $path);
-        if (is_wp_error($result) || !self::is_valid_pdf($path)) {
+        $snapshot = self::current_snapshot($certificate);
+        if (is_wp_error($snapshot)) return $snapshot;
+        $temporary_path = tempnam($dir, 'tpma-certificate-');
+        if ($temporary_path === false) return new WP_Error('tpma_certificate_pdf_temp_failed', '無法建立證書暫存檔。');
+        $result = self::render_pdf($snapshot, $temporary_path);
+        if (is_wp_error($result) || !self::is_valid_pdf($temporary_path)) {
+            @unlink($temporary_path);
             return is_wp_error($result) ? $result : new WP_Error('tpma_certificate_pdf_missing', '證書 PDF 輸出失敗。');
+        }
+        if (!@rename($temporary_path, $path)) {
+            @unlink($temporary_path);
+            return new WP_Error('tpma_certificate_pdf_replace_failed', '無法更新證書 PDF 檔案。');
         }
         global $wpdb;
         $fields = array(
@@ -253,12 +269,10 @@ class TPMA_CR_Certificate_Service {
             'updated_by' => get_current_user_id(),
             'updated_at' => current_time('mysql'),
         );
-        // Repair incomplete historical import snapshots before their first delivery only.
-        if (empty($certificate['sent_at']) && wp_json_encode($snapshot) !== wp_json_encode((array) $certificate['snapshot'])) {
-            $fields['snapshot'] = wp_json_encode($snapshot, JSON_UNESCAPED_UNICODE);
-        }
+        $fields['snapshot'] = wp_json_encode($snapshot, JSON_UNESCAPED_UNICODE);
         // Regenerating an already delivered file must not undo completion status.
-        $wpdb->update(TPMA_CR_DB::table('certificates'), $fields, array('id' => $certificate_id));
+        $updated = $wpdb->update(TPMA_CR_DB::table('certificates'), $fields, array('id' => $certificate_id));
+        if ($updated === false) return new WP_Error('tpma_certificate_record_update_failed', '證書 PDF 已產生，但無法更新證書紀錄。');
         if (empty($certificate['sent_at'])) {
             $wpdb->update(TPMA_CR_DB::table('regs'), array('status' => 'cert_ready'), array('id' => (int) $certificate['registration_id']), array('%s'), array('%d'));
         }
@@ -493,20 +507,11 @@ class TPMA_CR_Certificate_Service {
         $mpdf->WriteFixedPosHTML('<div style="' . $style . '">' . $content . '</div>', $x, $y, $width, $height, 'visible');
     }
 
-    /** Fill only missing fields in old, pre-fix import snapshots from the current registration context. */
-    private static function complete_snapshot(array $certificate): array {
-        $snapshot = (array) ($certificate['snapshot'] ?? array());
+    /** The registration database is the sole source for certificate content. */
+    private static function current_snapshot(array $certificate) {
         $registration = self::get_registration((int) ($certificate['registration_id'] ?? 0));
-        if (!$registration) return $snapshot;
-        $fresh = self::build_snapshot($registration, (string) ($certificate['serial'] ?? ''));
-        if (is_wp_error($fresh)) return $snapshot;
-        foreach (array('serial', 'company_name', 'job_title', 'student_name', 'course_name', 'course_date', 'course_date_roc', 'passed_at', 'passed_at_roc') as $key) {
-            if (trim((string) ($snapshot[$key] ?? '')) === '' && trim((string) ($fresh[$key] ?? '')) !== '') $snapshot[$key] = $fresh[$key];
-        }
-        // The bottom date rule changed from pass date to course date; amend unsent historical previews as well.
-        $snapshot['passed_at'] = $fresh['passed_at'];
-        $snapshot['passed_at_roc'] = $fresh['passed_at_roc'];
-        return $snapshot;
+        if (!$registration) return new WP_Error('tpma_certificate_registration_missing', '找不到對應報名資料。');
+        return self::build_snapshot($registration, (string) ($certificate['serial'] ?? ''));
     }
 
     private static function pdf_config(): array {

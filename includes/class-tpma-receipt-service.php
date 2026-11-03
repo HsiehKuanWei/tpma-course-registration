@@ -536,7 +536,7 @@ class TPMA_CR_Receipt_Service {
         return $receipt ? self::get_effective_file((int) $receipt['id']) : new WP_Error('tpma_receipt_not_found', '訂單尚未開立收據。');
     }
 
-    public static function mark_sent($receipt_id) {
+    public static function mark_sent($receipt_id, $preserve_sent_at = false) {
         $receipt = self::get_receipt($receipt_id);
         if (!$receipt || $receipt['status'] === self::STATUS_VOID) {
             return new WP_Error('tpma_receipt_not_sendable', '此收據不可標記為已寄送。');
@@ -546,7 +546,13 @@ class TPMA_CR_Receipt_Service {
             return $file;
         }
         global $wpdb;
-        $wpdb->update(TPMA_CR_DB::table('receipts'), array('status' => self::STATUS_SENT, 'sent_at' => current_time('mysql'), 'updated_by' => get_current_user_id(), 'updated_at' => current_time('mysql')), array('id' => (int) $receipt['id']), array('%s', '%s', '%d', '%s'), array('%d'));
+        $data = array('status' => self::STATUS_SENT, 'updated_by' => get_current_user_id(), 'updated_at' => current_time('mysql'));
+        $formats = array('%s', '%d', '%s');
+        if (!$preserve_sent_at || empty($receipt['sent_at'])) {
+            $data['sent_at'] = current_time('mysql');
+            $formats[] = '%s';
+        }
+        $wpdb->update(TPMA_CR_DB::table('receipts'), $data, array('id' => (int) $receipt['id']), $formats, array('%d'));
         self::project_receipt_status((int) $receipt['id'], self::STATUS_SENT);
         return self::get_receipt((int) $receipt['id']);
     }

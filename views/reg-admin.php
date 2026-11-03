@@ -366,6 +366,7 @@ $TPMA_OPTIONS_FOR_JS = [
         <option value="receipt_download">批次下載收據</option>
         <option value="receipt_void">批次作廢收據</option>
         <option value="receipt_merge">合併開立收據</option>
+        <option value="receipt_resend">批次重寄已寄收據</option>
       </select>
       <select id="tpma-bulk-certificate-action" class="tpma-bulk-target" data-bulk-for="certificate">
         <option value="">選擇證書操作</option>

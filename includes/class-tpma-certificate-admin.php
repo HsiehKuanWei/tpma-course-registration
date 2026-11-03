@@ -134,7 +134,7 @@ class TPMA_CR_Certificate_Admin {
     private static function render_one(int $id) {
         $certificate = TPMA_CR_Certificate_Service::get($id); if (!$certificate) return new WP_Error('tpma_certificate_not_found', '找不到證書。', array('status' => 404));
         $file = TPMA_CR_Certificate_Service::render_current_pdf($id); if (is_wp_error($file)) return $file;
-        return rest_ensure_response(array('certificate' => self::item_payload($certificate)));
+        return rest_ensure_response(array('certificate' => self::item_payload(TPMA_CR_Certificate_Service::get($id))));
     }
 
     private static function allocate_one(int $registration_id) {
@@ -154,7 +154,7 @@ class TPMA_CR_Certificate_Admin {
     private static function stream_batch(array $ids, bool $download) {
         if (!function_exists('tpma_mpdf_create')) return new WP_Error('tpma_certificate_mpdf_unavailable', 'TPMA mPDF Service 尚未啟用。', array('status' => 503));
         $mpdf = tpma_mpdf_create(array('format' => 'A4', 'margin_left' => 0, 'margin_right' => 0, 'margin_top' => 0, 'margin_bottom' => 0)); if (is_wp_error($mpdf)) return $mpdf;
-        $included = 0; foreach ($ids as $id) { $file = TPMA_CR_Certificate_Service::get_effective_file($id); if (is_wp_error($file)) continue; try { $pages = (int) $mpdf->SetSourceFile($file); for ($page = 1; $page <= $pages; $page++) { $mpdf->AddPage(); $mpdf->UseTemplate($mpdf->ImportPage($page), 0, 0, $mpdf->w, $mpdf->h); $included++; } } catch (Throwable $e) { return new WP_Error('tpma_certificate_batch_failed', '合併證書失敗：' . $e->getMessage(), array('status' => 500)); } }
+        $included = 0; foreach ($ids as $id) { $file = TPMA_CR_Certificate_Service::get_effective_file($id); if (is_wp_error($file)) return $file; try { $pages = (int) $mpdf->SetSourceFile($file); for ($page = 1; $page <= $pages; $page++) { $mpdf->AddPage(); $mpdf->UseTemplate($mpdf->ImportPage($page), 0, 0, $mpdf->w, $mpdf->h); $included++; } } catch (Throwable $e) { return new WP_Error('tpma_certificate_batch_failed', '合併證書失敗：' . $e->getMessage(), array('status' => 500)); } }
         if (!$included) return new WP_Error('tpma_certificate_batch_empty', '所選證書尚無可用 PDF。', array('status' => 400));
         $destination = class_exists('\\Mpdf\\Output\\Destination') ? \Mpdf\Output\Destination::STRING_RETURN : 'S'; self::stream_pdf((string) $mpdf->Output('', $destination), 'tpma-certificates-' . wp_date('Ymd-His') . '.pdf', $download);
     }

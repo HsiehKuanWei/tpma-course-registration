@@ -2094,7 +2094,7 @@ class TPMA_CR_Mail_Dispatcher
         if (is_wp_error($receipt_eligibility)) {
             return self::result_skip($result, $order_id, 'receipt_source_order_not_sendable', $receipt_eligibility->get_error_message());
         }
-        if (($receipt['receipt_type'] ?? '') === 'paper' && ($receipt['status'] ?? '') !== TPMA_CR_Receipt_Service::STATUS_SCANNED) {
+        if (($receipt['receipt_type'] ?? '') === 'paper' && !in_array(($receipt['status'] ?? ''), array(TPMA_CR_Receipt_Service::STATUS_SCANNED, TPMA_CR_Receipt_Service::STATUS_SENT), true)) {
             return self::result_skip($result, $order_id, 'receipt_scan_required', '紙本收據須先上傳加蓋實印的掃描檔，才可寄發。');
         }
         if (($receipt['receipt_type'] ?? '') !== 'paper' && !in_array(($receipt['status'] ?? ''), array(TPMA_CR_Receipt_Service::STATUS_GENERATED, TPMA_CR_Receipt_Service::STATUS_SENT), true)) {
@@ -2209,7 +2209,7 @@ class TPMA_CR_Mail_Dispatcher
             }
         }
 
-        $marked = TPMA_CR_Receipt_Service::mark_sent($receipt_id);
+        $marked = TPMA_CR_Receipt_Service::mark_sent($receipt_id, !empty($receipt['sent_at']));
         if (is_wp_error($marked)) {
             return self::result_fail($result, $order_id, 'receipt_mark_sent_failed', '信件已送出，但無法更新收據寄發狀態：' . $marked->get_error_message());
         }

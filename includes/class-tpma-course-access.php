@@ -10,11 +10,13 @@ class TPMA_Course_Access {
     const SESSION_MIN_TTL = 28800;
     const SESSION_EXTRA_TTL = 7200;
     private static $portal_schema_checked = false;
+    private static $identity_bar_context = null;
 
     public static function init(): void {
         add_action('init', array(__CLASS__, 'handle_portal'), 98);
         add_action('wp_logout', array(__CLASS__, 'clear_portal_selection_on_logout'), 10, 1);
         add_action('wp_footer', array(__CLASS__, 'render_identity_bar'));
+        add_action('wp_enqueue_scripts', array(__CLASS__, 'enqueue_identity_bar_assets'));
         add_action('tutor_quiz/start/after', array(__CLASS__, 'map_quiz_attempt'), 10, 3);
         add_action('woocommerce_order_status_processing', array(__CLASS__, 'maybe_send_access_event_for_order'), 20, 1);
         add_action('woocommerce_order_status_completed', array(__CLASS__, 'maybe_send_access_event_for_order'), 20, 1);
@@ -714,19 +716,41 @@ class TPMA_Course_Access {
         return array('new_user_id'=>$new_user_id, 'new_enrollment_id'=>$new_enrollment_id);
     }
 
-    public static function render_identity_bar(): void {
+    private static function identity_bar_context() {
+        if (self::$identity_bar_context !== null) return self::$identity_bar_context;
         $session = self::read_portal_session();
         $reg_id = (int)($session['registration_id'] ?? 0);
-        if ($reg_id <= 0) return;
+        if ($reg_id <= 0) return self::$identity_bar_context = false;
         global $wpdb;
         $name = $wpdb->get_var($wpdb->prepare("SELECT student_name FROM " . TPMA_CR_DB::table('regs') . " WHERE id=%d", $reg_id));
-        if (!$name) return;
+        if (!$name) return self::$identity_bar_context = false;
+        return self::$identity_bar_context = array('session' => $session, 'name' => $name);
+    }
+
+    public static function enqueue_identity_bar_assets(): void {
+        if (!self::identity_bar_context()) return;
+        $css_path = TPMA_CR_PATH . 'assets/css/identity-bar.css';
+        $js_path = TPMA_CR_PATH . 'assets/js/identity-bar.js';
+        wp_enqueue_style('tpma-identity-bar', TPMA_CR_URL . 'assets/css/identity-bar.css', array(), filemtime($css_path));
+        wp_enqueue_script('tpma-identity-bar', TPMA_CR_URL . 'assets/js/identity-bar.js', array(), filemtime($js_path), true);
+    }
+
+    public static function render_identity_bar(): void {
+        $context = self::identity_bar_context();
+        if (!$context) return;
+        $session = $context['session'];
         $url = add_query_arg(array(
             'tpma_portal' => '1',
             'switch' => '1',
             'tpma_switch_nonce' => (string)($session['switch_nonce'] ?? ''),
         ), home_url('/'));
-        echo '<aside style="position:fixed;right:16px;bottom:16px;z-index:99999;background:#17342f;color:#fff;padding:10px 14px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.22)">目前學員：' . esc_html($name) . ' <a style="color:#9de5d8;margin-left:8px" href="' . esc_url($url) . '">切換學員</a></aside>';
+        echo '<aside id="tpma-identity-bar" class="tpma-identity-bar" aria-label="目前學員">';
+        echo '<button type="button" class="tpma-identity-bar__handle" aria-label="拖曳學員資訊；方向鍵也可移動" title="拖曳或用方向鍵移動">⋮⋮</button>';
+        echo '<span class="tpma-identity-bar__name">目前學員：' . esc_html($context['name']) . '</span>';
+        echo '<a class="tpma-identity-bar__switch" href="' . esc_url($url) . '">切換學員</a>';
+        echo '<button type="button" class="tpma-identity-bar__collapse" aria-label="隱藏學員資訊" title="隱藏學員資訊">−</button>';
+        echo '<button type="button" class="tpma-identity-bar__expand" aria-label="顯示學員資訊" title="顯示學員資訊" hidden>學員</button>';
+        echo '</aside>';
     }
 
     public static function map_quiz_attempt($quiz_id, $user_id, $attempt_id): void {

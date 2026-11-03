@@ -2581,6 +2581,8 @@ public static function admin_bulk_registrations($request)
         $result = self::bulk_send_mail($ids, $event_key, $force);
     } elseif (in_array($action, array('certificate_allocate', 'certificate_render', 'certificate_send'), true)) {
         $result = self::bulk_certificate_operation($ids, $action, $force);
+    } elseif ($action === 'resend_receipt_notice') {
+        $result = self::bulk_resend_receipt_notice($ids);
     } elseif ($action === 'reset_course_mail_meta') {
         $result = self::bulk_reset_course_mail_meta($ids, $event_key);
     } else {
@@ -3403,6 +3405,50 @@ private static function bulk_reset_course_mail_meta(array $ids, string $event_ke
             continue;
         }
         $result['updated'] += TPMA_CR_Mail_Dispatcher::reset_access_event_meta_for_order($order, $session_id, $event_key);
+    }
+
+    return $result;
+}
+
+private static function bulk_resend_receipt_notice(array $ids): array
+{
+    $result = self::empty_bulk_result();
+    $result['processed'] = count($ids);
+    if (!class_exists('TPMA_CR_Receipt_Service') || !class_exists('TPMA_CR_Mail_Dispatcher') || !function_exists('wc_get_order')) {
+        return self::bulk_add_fail($result, 0, 'receipt_service_unavailable', '收據寄件模組未載入');
+    }
+
+    $rows = self::get_registration_rows($ids);
+    $receipt_orders = array();
+    foreach ($ids as $id) {
+        $row = $rows[$id] ?? null;
+        if (!$row) {
+            $result = self::bulk_add_skip($result, $id, 'registration_not_found');
+            continue;
+        }
+        $order_id = (int) ($row['woocommerce_order_id'] ?? 0);
+        $receipt = $order_id > 0 ? TPMA_CR_Receipt_Service::get_receipt_for_order($order_id) : null;
+        if (!is_array($receipt)) {
+            $result = self::bulk_add_skip($result, $id, 'receipt_not_found', '尚未開立收據。');
+            continue;
+        }
+        if (($receipt['status'] ?? '') !== TPMA_CR_Receipt_Service::STATUS_SENT || empty($receipt['sent_at'])) {
+            $result = self::bulk_add_skip($result, $id, 'receipt_not_sent', '只有已寄收據可重新寄送。');
+            continue;
+        }
+        $receipt_orders[(int) $receipt['id']] = $order_id;
+    }
+
+    foreach ($receipt_orders as $receipt_id => $order_id) {
+        $order = wc_get_order($order_id);
+        if (!$order) {
+            $result = self::bulk_add_skip($result, $receipt_id, 'order_not_found');
+            continue;
+        }
+        $part = TPMA_CR_Mail_Dispatcher::send_receipt_notice($order, array('force' => true));
+        $result['sent'] += (int) ($part['sent'] ?? 0);
+        $result['skipped'] = array_merge($result['skipped'], (array) ($part['skipped'] ?? array()));
+        $result['failed'] = array_merge($result['failed'], (array) ($part['failed'] ?? array()));
     }
 
     return $result;

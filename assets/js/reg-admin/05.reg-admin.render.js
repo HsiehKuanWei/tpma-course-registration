@@ -1005,6 +1005,18 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
       await refreshReceipt('收據已寄發給來源訂單承辦人。');
     } catch (error) { global.alert(error.message || '收據寄發失敗'); }
   };
+  const actionResend = async function(){
+    try {
+      const receipt = await withReceipt();
+      if (!receipt || receipt.status !== 'sent' || !receipt.sent_at) {
+        throw new Error('只有已寄收據可重新寄送。');
+      }
+      if (!global.confirm('確定重新寄送收據 ' + receipt.serial + '？原寄件紀錄與已寄狀態會保留。')) return;
+      const updated = await API.sendReceipt(ctx, receipt.id, true);
+      syncReceiptControls(updated);
+      await refreshReceipt('收據已重新寄送。');
+    } catch (error) { global.alert(error.message || '收據重新寄送失敗'); }
+  };
   const actionChangeReceiptType = async function(receiptType){
     const receipt = await withReceipt();
     if (!receipt || receipt.status === 'sent' || receipt.status === 'void') {
@@ -1039,7 +1051,10 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
     const actions = [];
     if (!receipt) actions.push({ key: 'generate', label: '生成收據' });
     else if (receipt.status === 'void') actions.push({ key: 'generate', label: '重新開立收據' });
-    else if (receipt.status === 'sent') actions.push({ key: 'void', label: '作廢收據' });
+    else if (receipt.status === 'sent') {
+      actions.push({ key: 'resend', label: '重新寄送收據' });
+      actions.push({ key: 'void', label: '作廢收據' });
+    }
     else {
       actions.push({ key: 'regenerate', label: '重新生成收據' });
       if (receipt.receipt_type === 'paper' && receipt.status === 'awaiting_scan') {
@@ -1058,7 +1073,7 @@ R.renderDetailEdit = function renderDetailEdit(ctx, container, row){
       actions.map(function(action){ return '<button type="button" class="tpma-receipt-menu-item" data-receipt-action="'+U.esc(action.key)+'">'+U.esc(action.label)+'</button>'; }).join('') +
       '</div>';
     receiptActionSlot.appendChild(menu);
-    R.bindReceiptActionMenu(menu, { generate: actionGenerate, regenerate: actionRegenerate, upload_scan: actionUploadScan, send: actionSend, void: actionVoid });
+    R.bindReceiptActionMenu(menu, { generate: actionGenerate, regenerate: actionRegenerate, upload_scan: actionUploadScan, send: actionSend, resend: actionResend, void: actionVoid });
   };
   const syncReceiptControls = function(receipt){
     currentReceipt = receipt || null;
